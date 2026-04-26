@@ -1,0 +1,13 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,deep_dungeon,floor,scaling,floor_power_growth,,,,,ratio,Per-floor power scaling
+2,deep_dungeon,floor,structure,checkpoint_interval,,,,,floor,Checkpoint floor interval
+3,deep_dungeon,reward,curve,milestone_reward_multiplier,,,,,ratio,Milestone reward growth
+4,deep_dungeon,session,pacing,target_floor_time,,,,,min,Average time per floor
+5,deep_dungeon,freeze,structure,floor_structure,simple_rooms_loop,,,,,enum,L2 frozen
+6,deep_dungeon,freeze,growth,scaling_approach,milestone_spike,,,,,enum,L2 frozen
+7,deep_dungeon,freeze,milestone,milestone_trigger,either_combo,,,,,enum,L2 frozen
+8,deep_dungeon,freeze,reward,key_reward_variance,mixed_variance_everywhere,,,,,enum,L2 frozen
+9,deep_dungeon,freeze,progression,progression_goal,room_clear,,,,,enum,L2 frozen
+10,deep_dungeon,freeze,milestone,milestone_boss_pool,mechanic_prefix_random,,,,,enum,L2 frozen
+11,deep_dungeon,freeze,settlement,max_floor_and_exit,segments_and_extract,,,,,enum,L2 frozen
+12,deep_dungeon,freeze,settlement,reward_settlement_on_exit,combo_milestone_linear,,,,,enum,L2 frozen

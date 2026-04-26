@@ -1,0 +1,16 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,node_validation_arena,v1,waves,wave_count,3,1,20,1,count,Number of minion waves before boss
+2,node_validation_arena,v1,waves,wave1_enemy_count,4,1,50,1,count,Enemies in wave 1
+3,node_validation_arena,v1,waves,wave2_enemy_count,6,1,50,1,count,Enemies in wave 2
+4,node_validation_arena,v1,waves,wave3_enemy_count,8,1,50,1,count,Enemies in wave 3
+5,node_validation_arena,v1,waves,spawn_interval_sec,0.8,0.1,5,0.1,sec,Delay between spawns within a wave
+6,node_validation_arena,v1,waves,wave_break_sec,1.5,0,30,0.1,sec,Pause after wave clear before next wave
+7,node_validation_arena,v1,enemy,minion_base_hp,120,1,999999,1,hp,Grunt HP baseline for tuning
+8,node_validation_arena,v1,enemy,minion_base_attack,14,1,9999,1,damage,Grunt attack power for tuning
+9,node_validation_arena,v1,boss,boss_base_hp,4500,1,99999999,1,hp,Boss HP pool
+10,node_validation_arena,v1,boss,boss_phase_count,3,1,4,1,count,Boss phases (aligns phase_3_to_4_flexible minimum)
+11,node_validation_arena,v1,boss,boss_hp_phase_fraction,0.33,0.05,0.95,0.01,ratio,HP fraction threshold per phase step (simplified equal thirds)
+12,node_validation_arena,v1,boss,boss_time_phase_sec,45,5,600,1,sec,Time-based phase push (hp_plus_time) if boss alive this long in phase
+13,node_validation_arena,v1,boss,boss_base_attack,32,1,9999,1,damage,Boss strike damage baseline
+14,node_validation_arena,v1,boss,boss_pattern_cooldown_sec,2.5,0.5,30,0.1,sec,Between boss pattern volleys
+15,node_validation_arena,v1,ui,portal_label,Node Validation,,,,string,Hub portal display key

@@ -1,0 +1,5 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,mainline,chapter,pacing,chapter_target_duration,,,,,min,Target chapter run duration
+2,mainline,chapter,difficulty,chapter_power_gate,,,,,score,Recommended squad power threshold
+3,mainline,boss,structure,boss_phase_count,,,,,count,Boss phase target by chapter
+4,mainline,reward,settlement,fail_reward_ratio,,,,,ratio,Partial reward retention on fail

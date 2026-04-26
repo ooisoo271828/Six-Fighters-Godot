@@ -1,0 +1,9 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,ruins_escape_l3,freeze,rooms,room_generation_rule,depth_banded_weights,,,,,enum,L3 frozen
+2,ruins_escape_l3,freeze,rooms,depth_band_count,3,,,1,count,L3 suggested band count for v1
+3,ruins_escape_l3,freeze,chaser,chaser_tier_count,3_tiers,,,,,enum,L3 frozen
+4,ruins_escape_l3,freeze,chaser,tier1_trigger_ratio,0.33,,,,,ratio,L3 hybrid-trigger tier threshold
+5,ruins_escape_l3,freeze,chaser,tier2_trigger_ratio,0.66,,,,,ratio,L3 hybrid-trigger tier threshold
+6,ruins_escape_l3,freeze,insurance,insurance_acquisition,pre-equipped-craft,,,,,enum,L3 frozen
+7,ruins_escape_l3,freeze,insurance,insurance_coverage,protect-slots-fixed,,,,,enum,L3 frozen
+8,ruins_escape_l3,freeze,insurance,insurance_protected_slots_count,2,,,1,count,L3 frozen protected slots

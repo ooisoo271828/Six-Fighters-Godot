@@ -1,0 +1,34 @@
+# Godot
+.godot/
+android/
+*.translation
+*.import
+*.fbx
+*.glb
+*.gltf
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+.opencode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Build artifacts
+dist/
+*.log
+tmp_execute.json
+.temp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

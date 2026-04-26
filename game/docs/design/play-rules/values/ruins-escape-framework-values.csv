@@ -1,0 +1,8 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,ruins_escape,loss,death,death_loss_ratio,0.8,,,0.01,ratio,L2 frozen
+2,ruins_escape,loot,protection,protection_mechanism,consumable_insurance,,,,enum,L2 frozen
+3,ruins_escape,threat,chase,chaser_trigger_mode,hybrid_trigger,,,,enum,L2 frozen
+4,ruins_escape,extraction,availability,extraction_model,multi_hidden_exits,,,,enum,L2 frozen
+5,ruins_escape,session,duration,run_duration_min,6,,,1,min,L2 frozen
+6,ruins_escape,session,duration,run_duration_max,10,,,1,min,L2 frozen
+7,ruins_escape,reward,shape,reward_shape,stable_plus_rare,,,,enum,L2 frozen

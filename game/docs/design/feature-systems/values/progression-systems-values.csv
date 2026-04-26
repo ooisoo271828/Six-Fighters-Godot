@@ -1,0 +1,31 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,progression,baseline,level,max_level_cap,70,1,100,1,level,Long-term level cap
+2,progression,baseline,rank,rank_tier_count,6,2,10,1,count,Number of rank tiers
+3,progression,baseline,skill,skill_upgrade_cap,15,1,30,1,level,Skill enhancement cap per hero
+4,progression,baseline,curve,power_growth_target_multiplier,18.0,5,50,0.5,ratio,Target long-term power multiplier (design target)
+5,progression,baseline,economy,upgrade_cost_scale,1.20,1.0,3.0,0.01,ratio,Generic cost scaling factor (used by rank material cost)
+
+6,progression,baseline,level,xp_per_upgrade_material,250,1,10000,1,xp_per_material,XP granted by one upgrade material unit
+7,progression,baseline,level,xp_base,120,1,5000,1,xp,Required XP curve base
+8,progression,baseline,level,xp_level_exponent,1.90,0.5,5.0,0.01,exponent,Required XP curve exponent
+9,progression,baseline,level,xp_growth_multiplier,1.07,1.0,1.5,0.01,ratio,Required XP curve growth multiplier
+10,progression,baseline,level,level_stat_multiplier_base,1.00,0.5,2.0,0.01,ratio,Level stat multiplier base
+11,progression,baseline,level,level_stat_multiplier_growth,1.015,1.0,1.1,0.001,ratio,Level stat multiplier growth per level
+
+12,progression,baseline,rank,min_level_for_rank_2,15,1,70,1,level,Minimum hero level for Rank 2
+13,progression,baseline,rank,min_level_for_rank_3,27,1,70,1,level,Minimum hero level for Rank 3
+14,progression,baseline,rank,min_level_for_rank_4,40,1,70,1,level,Minimum hero level for Rank 4
+15,progression,baseline,rank,min_level_for_rank_5,54,1,70,1,level,Minimum hero level for Rank 5
+16,progression,baseline,rank,min_level_for_rank_6,68,1,70,1,level,Minimum hero level for Rank 6
+
+17,progression,baseline,rank,rank_upgrade_material_cost_base,120,1,100000,1,material,Base universal material cost for rank-up
+18,progression,baseline,rank,rank_upgrade_material_cost_growth,1.65,1.0,5.0,0.01,ratio,Rank-up universal material cost growth
+19,progression,baseline,rank,rank_upgrade_hero_shard_cost_base,25,1,100000,1,shard,Base hero shard cost for rank-up
+20,progression,baseline,rank,rank_upgrade_hero_shard_cost_growth,1.75,1.0,5.0,0.01,ratio,Rank-up hero shard cost growth
+21,progression,baseline,rank,rank_stat_multiplier_growth,1.12,1.0,2.0,0.01,ratio,Rank stat multiplier growth per tier
+
+22,progression,baseline,skill,hero_shard_to_skill_xp_ratio,80,1,10000,1,xp_per_shard,Conversion rate: hero shards -> skill XP
+23,progression,baseline,skill,skill_xp_base,300,1,100000,1,xp,Required skill XP curve base
+24,progression,baseline,skill,skill_xp_level_exponent,1.35,0.5,5.0,0.01,exponent,Required skill XP curve exponent
+25,progression,baseline,skill,skill_xp_growth_multiplier,1.12,1.0,1.8,0.01,ratio,Required skill XP curve growth multiplier
+26,progression,baseline,skill,skill_xp_per_upgrade_material,50,1,10000,1,xp_per_material,Optional universal material contribution to skill XP

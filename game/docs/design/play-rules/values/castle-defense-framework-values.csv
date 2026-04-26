@@ -1,0 +1,13 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,castle_defense,wave,pacing,wave_interval,,,,,sec,Time interval between waves
+2,castle_defense,structure,upgrade,upgrade_cost_scale,,,,,ratio,Structure upgrade cost growth
+3,castle_defense,enemy,pressure,edge_spawn_density,,,,,count_per_min,Enemy spawn density from edges
+4,castle_defense,reward,settlement,wave_milestone_reward_ratio,,,,,ratio,Reward growth by wave milestone
+5,castle_defense,freeze,layout,defense_core_position,multi_structures,,,,,enum,L2 frozen
+6,castle_defense,freeze,wave,enemy_approach_pattern,waves_mixed,,,,,enum,L2 frozen
+7,castle_defense,freeze,resource,upgrade_resource_shape,generic_materials,,,,,enum,L2 frozen
+8,castle_defense,freeze,enemy,enemy_target_priority,balanced,,,,,enum,L2 frozen
+9,castle_defense,freeze,wave,wave_break_windows,yes_short_breaks,,,,,enum,L2 frozen
+10,castle_defense,freeze,structure,tower_upgrade_structure,branchful_tree,,,,,enum,L2 frozen
+11,castle_defense,freeze,enemy,enemy_architecture_binding,loose_binding,,,,,enum,L2 frozen
+12,castle_defense,freeze,resource,material_drop_link,direct_from_kill,,,,,enum,L2 frozen

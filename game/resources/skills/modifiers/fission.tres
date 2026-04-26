@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ModifierDef" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/modifier_def.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	modifier_id = "fission"
+	display_name = "分裂"
+	modifier_type = 1
+	trigger_timing = 3
+	priority = 50
+	condition_tag = ""
+	half_life_distance = 150.0
+	split_count = 2
+	scale_factor = 0.7
+	damage_factor = 0.6
+	split_angle_spread_deg = 30.0

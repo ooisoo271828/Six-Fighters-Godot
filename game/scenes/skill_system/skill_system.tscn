@@ -1,0 +1,34 @@
+[gd_scene load_steps=9 format=3 uid="uid://cxkqwerty1234"]
+
+[ext_resource type="Script" path="res://scripts/skill_system/skill_root.gd" id="1_root"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_registry.gd" id="2_reg"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/modifier_registry.gd" id="3_mod_reg"]
+[ext_resource type="Script" path="res://scripts/skill_system/core/modifier_processor.gd" id="4_mod_proc"]
+[ext_resource type="Script" path="res://scripts/skill_system/signal_bus/skill_signal_bus.gd" id="5_bus"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/projectile_pool.gd" id="6_pool"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/executor_pool.gd" id="7_exec_pool"]
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/skill_vfx_manager.gd" id="8_vfx"]
+
+[node name="SkillSystem" type="Node"]
+script = ExtResource("1_root")
+
+[node name="SkillRegistry" type="Node" parent="."]
+script = ExtResource("2_reg")
+
+[node name="ModifierRegistry" type="Node" parent="."]
+script = ExtResource("3_mod_reg")
+
+[node name="ModifierProcessor" type="Node" parent="."]
+script = ExtResource("4_mod_proc")
+
+[node name="SkillSignalBus" type="Node" parent="."]
+script = ExtResource("5_bus")
+
+[node name="ProjectilePool" type="Node2D" parent="."]
+script = ExtResource("6_pool")
+
+[node name="ExecutorPool" type="Node" parent="."]
+script = ExtResource("7_exec_pool")
+
+[node name="SkillVFXManager" type="Node" parent="."]
+script = ExtResource("8_vfx")

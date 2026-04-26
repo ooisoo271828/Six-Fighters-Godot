@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ModifierDef" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/modifier_def.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	modifier_id = "bounce"
+	display_name = "弹射"
+	modifier_type = 1
+	trigger_timing = 1
+	priority = 60
+	condition_tag = ""
+	max_bounces = 2

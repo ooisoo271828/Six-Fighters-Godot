@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SkillVisualDefDefault" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/core/skill_visual_def_default.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	skill_id = "moss_small_a"
+	projectile_kind = "ice_burst"
+	core_color = Color(0.5, 1.0, 0.8, 1.0)
+	core_radius = 10.0
+	ribbon_width = 6.0
+	trail_color = Color(0.4, 0.9, 0.7, 0.9)
+	speed = 200.0
+	telegraph_ms = 400
+	impact_level_str = "large"

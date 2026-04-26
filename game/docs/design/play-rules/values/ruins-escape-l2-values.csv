@@ -1,0 +1,10 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,ruins_escape_l2,freeze,loss,loss_severity,high_loss_80,,,,enum,L2 frozen decision
+2,ruins_escape_l2,freeze,loss,death_loss_ratio,0.8,,,0.01,ratio,L2 frozen decision
+3,ruins_escape_l2,freeze,extraction,extraction_model,multi_hidden_exits,,,,enum,L2 frozen decision
+4,ruins_escape_l2,freeze,protection,protection_mechanism,consumable_insurance,,,,enum,L2 frozen decision
+5,ruins_escape_l2,freeze,chaser,chaser_trigger_mode,hybrid_trigger,,,,enum,L2 frozen decision
+6,ruins_escape_l2,freeze,duration,run_duration_target,short_6_to_10,,,,enum,L2 frozen decision
+7,ruins_escape_l2,freeze,duration,run_duration_min,6,,,1,min,L2 frozen decision
+8,ruins_escape_l2,freeze,duration,run_duration_max,10,,,1,min,L2 frozen decision
+9,ruins_escape_l2,freeze,reward,extraction_reward_shape,stable_plus_rare,,,,enum,L2 frozen decision

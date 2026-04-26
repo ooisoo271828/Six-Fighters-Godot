@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SkillVisualDefDefault" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/core/skill_visual_def_default.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	skill_id = "ember_basic"
+	projectile_kind = "fire_orb"
+	core_color = Color(1.0, 0.5, 0.1, 1.0)
+	core_radius = 5.0
+	ribbon_width = 3.5
+	trail_color = Color(1.0, 0.3, 0.0, 0.8)
+	speed = 280.0
+	telegraph_ms = 180
+	impact_level_str = "medium"

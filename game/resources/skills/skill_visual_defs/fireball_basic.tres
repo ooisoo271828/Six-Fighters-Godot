@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="SkillVisualDefDefault" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/core/skill_visual_def_default.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	skill_id = "fireball_basic"
+	projectile_kind = "fireball"
+	core_color = Color(1.0, 0.5, 0.05, 1.0)
+	core_radius = 8.0
+	core_texture_path = "res://assets/textures/vfx/fire_core_64.png"
+	glow_enabled = true
+	trail_color = Color(1.0, 0.3, 0.0, 0.8)
+	ribbon_width = 5.0
+	trail_texture_path = ""
+	trail_particle_enabled = true
+	trail_particle_count = 6
+	trail_particle_lifetime = 0.2
+	speed = 320.0
+	telegraph_ms = 350
+	impact_level_str = "strong"
+	explosion_texture_path = "res://assets/textures/vfx/fire_particle_32.png"
+	explosion_particle_count = 30
+	explosion_lifetime = 0.5
+	explosion_radius_mult = 3.5
+	hit_particle_count = 30

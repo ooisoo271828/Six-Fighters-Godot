@@ -1,0 +1,6 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,gacha_loop,baseline,pull,pity_count,,,,,,count,Pity/guarantee threshold placeholder
+2,gacha_loop,baseline,economy,daily_pull_target,,,,,,count,Daily pull target placeholder
+3,gacha_loop,baseline,economy,weekly_pull_target,,,,,,count,Weekly pull target placeholder
+4,gacha_loop,baseline,duplicate,duplicate_refund_ratio,,,,,,ratio,Duplicate to progression conversion efficiency placeholder
+5,gacha_loop,baseline,resource,upgrade_material_faucet_ratio,,,,,,ratio,Share of stage materials that flow into upgrade materials placeholder

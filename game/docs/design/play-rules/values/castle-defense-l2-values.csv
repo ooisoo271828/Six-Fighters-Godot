@@ -1,0 +1,9 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,castle_defense_l2,freeze,layout,defense_core_position,multi_structures,,,,,enum,L2 frozen decision
+2,castle_defense_l2,freeze,wave,enemy_approach_pattern,waves_mixed,,,,,enum,L2 frozen decision
+3,castle_defense_l2,freeze,resource,upgrade_resource_shape,generic_materials,,,,,enum,L2 frozen decision
+4,castle_defense_l2,freeze,enemy,enemy_target_priority,balanced,,,,,enum,L2 frozen decision
+5,castle_defense_l2,freeze,wave,wave_break_windows,yes_short_breaks,,,,,enum,L2 frozen decision
+6,castle_defense_l2,freeze,structure,tower_upgrade_structure,branchful_tree,,,,,enum,L2 frozen decision
+7,castle_defense_l2,freeze,enemy,enemy_architecture_binding,loose_binding,,,,,enum,L2 frozen decision
+8,castle_defense_l2,freeze,resource,material_drop_link,direct_from_kill,,,,,enum,L2 frozen decision

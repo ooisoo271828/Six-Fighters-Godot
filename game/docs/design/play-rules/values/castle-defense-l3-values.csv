@@ -1,0 +1,7 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,castle_defense_l3,freeze,tower,tower_prereq_style,hard_prereq_graph,,,,,enum,L3 frozen
+2,castle_defense_l3,freeze,wave,mixed_wave_schedule,weighted_random_per_run,,,,,enum,L3 frozen
+3,castle_defense_l3,freeze,drops,drop_encoding,tiered_drop_table,,,,,enum,L3 frozen
+4,castle_defense_l3,freeze,drops,tier_count,3,,,,count,L3 suggested material tiers
+5,castle_defense_l3,freeze,upgrade,upgrade_cost_shape,linear_cost_increase,,,,,enum,L3 frozen
+6,castle_defense_l3,freeze,upgrade,upgrade_time_policy,no_time_restriction,,,,,enum,L3 frozen

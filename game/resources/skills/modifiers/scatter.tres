@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ModifierDef" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/modifier_def.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	modifier_id = "scatter"
+	display_name = "散射"
+	modifier_type = 0
+	trigger_timing = 0
+	priority = 10
+	condition_tag = ""
+	num_projectiles = 5
+	fan_angle_deg = 60.0

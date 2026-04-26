@@ -1,0 +1,10 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,hero_squad,baseline,squad,active_slot_count,6,6,6,1,count,Six active heroes (fixed)
+2,hero_squad,baseline,roles,role_family_count,4,4,4,1,count,Frontliner/DPS/Support/Control
+3,hero_squad,baseline,preset,preset_slot_count,5,1,20,1,count,Max saved squad presets
+4,hero_squad,baseline,rarity,hero_rarity_tier_count,4,2,10,1,count,Hero rarity tier count returned by acquisition
+5,hero_squad,baseline,duplicate,duplicate_shards_per_rarity_tier_1,5,0,1000,1,shard,Hero shards granted for a duplicate at rarity tier 1
+6,hero_squad,baseline,duplicate,duplicate_shards_per_rarity_tier_2,10,0,1000,1,shard,Hero shards granted for a duplicate at rarity tier 2
+7,hero_squad,baseline,duplicate,duplicate_shards_per_rarity_tier_3,20,0,1000,1,shard,Hero shards granted for a duplicate at rarity tier 3
+8,hero_squad,baseline,duplicate,duplicate_shards_per_rarity_tier_4,40,0,1000,1,shard,Hero shards granted for a duplicate at rarity tier 4
+9,hero_squad,baseline,preset,preset_requires_all_slots_owned,1,0,1,1,flag,Whether preset load requires all 6 heroes to be owned/unlocked in v1

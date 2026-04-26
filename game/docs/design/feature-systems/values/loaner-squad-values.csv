@@ -1,0 +1,4 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,loaner_squad,baseline,profile,loaner_profile_level,40,1,100,1,level,Default effective hero level for loaner stages
+2,loaner_squad,baseline,profile,loaner_profile_rank_tier,3,1,10,1,count,Default effective rank tier for loaner stages
+3,loaner_squad,baseline,profile,loaner_profile_skill_enhancement_level,8,0,30,1,level,Default effective skill enhancement level for loaner stages

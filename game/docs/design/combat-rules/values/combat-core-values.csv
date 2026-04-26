@@ -1,0 +1,10 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,combat_core,baseline,control,player_control_mode,move_only,,,,enum,Baseline control token
+2,combat_core,baseline,squad,ai_control_mode,fixed_role_ai,,,,enum,Baseline AI control token
+3,combat_core,baseline,readability,hazard_signal_policy,strict_global_standard,,,,enum,Baseline hazard signal policy token
+4,combat_core,baseline,fail_policy,fail_reward_policy,partial_reward,,,,enum,Baseline fail reward token
+5,combat_core,baseline,duration,combat_duration_normal_min,,,,,min,min,Normal target duration min (fill later)
+6,combat_core,baseline,duration,combat_duration_normal_max,,,,,max,max,Normal target duration max (fill later)
+7,combat_core,baseline,duration,combat_duration_boss_min,,,,,min,min,Boss target duration min (fill later)
+8,combat_core,baseline,duration,combat_duration_boss_max,,,,,max,max,Boss target duration max (fill later)
+9,combat_core,baseline,boss,boss_transition_mode,hp_plus_time,,,,enum,Baseline boss transition token

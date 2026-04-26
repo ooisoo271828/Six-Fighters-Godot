@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SkillDef" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+[resource]
+	script = ExtResource("1")
+	skill_id = "fireball_basic"
+	display_name = "火球术"
+	category = 0
+	base_damage = 45.0
+	damage_type = 1
+	cooldown = 1.2
+	rage_cost = 0.0
+	stun_chance = 0.0
+	stun_duration = 0.0
+	cast_range = 400.0
+	cast_time = 0.0
+	telegraph_ms = 350
+	target_mode = 0
+	max_targets = 1
+	effect_type = "emit_projectile"
+	base_modifier_ids = []
+	description = "向目标发射烁热火球，命中时造成范围爆炸伤害。"

@@ -1,0 +1,11 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,combat_core_l2,freeze,control,ai_control_mode,fixed_role_ai,,,,enum,v1 frozen
+2,combat_core_l2,freeze,boss,boss_transition_mode,hp_plus_time,,,,enum,v1 frozen
+3,combat_core_l2,freeze,readability,hazard_signal_policy,strict_global_standard,,,,enum,v1 frozen
+4,combat_core_l2,freeze,reward,fail_reward_policy,partial_reward,,,,enum,v1 frozen
+5,combat_core_l2,freeze,duration,combat_duration_normal_min,3,,,1,min,v1 target
+6,combat_core_l2,freeze,duration,combat_duration_normal_max,5,,,1,min,v1 target
+7,combat_core_l2,freeze,duration,combat_duration_boss_min,5,,,1,min,v1 target
+8,combat_core_l2,freeze,duration,combat_duration_boss_max,7,,,1,min,v1 target
+9,combat_core_l2,freeze,tempo,combat_tempo,mid_balanced,,,,enum,v1 frozen
+10,combat_core_l2,freeze,boss,boss_structure,phase_3_to_4_flexible,,,,enum,v1 frozen

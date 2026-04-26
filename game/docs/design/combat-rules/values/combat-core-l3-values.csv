@@ -1,0 +1,13 @@
+id,submodule,category,parameter,key,value,min,max,step,unit,notes
+1,squad_autonomy,freeze,control,ai_control_mode,fixed_role_ai,,,,enum,v1 frozen
+2,squad_autonomy,freeze,control,control_depth,move_only,,,,enum,v1 frozen
+3,boss_grammar,freeze,transition,boss_transition_mode,hp_plus_time,,,,enum,v1 frozen
+4,boss_grammar,freeze,structure,boss_structure,phase_3_to_4_flexible,,,,enum,v1 frozen
+5,readability,freeze,signal,hazard_signal_policy,strict_global_standard,,,,enum,v1 frozen
+6,readability,freeze,policy,readability_policy,mixed_cap_soft_normal_hard_critical,,,,enum,v1 frozen
+7,combat_run,freeze,reward,fail_reward_policy,partial_reward,,,,enum,v1 frozen
+8,combat_run,freeze,duration,combat_duration_normal_min,3,,,1,min,v1 target
+9,combat_run,freeze,duration,combat_duration_normal_max,5,,,1,min,v1 target
+10,combat_run,freeze,duration,combat_duration_boss_min,5,,,1,min,v1 target
+11,combat_run,freeze,duration,combat_duration_boss_max,7,,,1,min,v1 target
+12,combat_run,freeze,intensity,inrun_roguelite_intensity,medium,,,,enum,v1 frozen

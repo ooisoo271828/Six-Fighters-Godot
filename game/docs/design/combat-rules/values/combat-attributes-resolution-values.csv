@@ -1,0 +1,62 @@
+id,domain,category,parameter,key,value,min,max,step,unit,notes
+1,combat_attributes_resolution,v1_resolution,hit,hit_chance_min,0,0,1,,prob,Lower clamp for hitQuality
+2,combat_attributes_resolution,v1_resolution,hit,hit_chance_max,1,0,1,,prob,Upper clamp for hitQuality
+3,combat_attributes_resolution,v1_resolution,hit,hit_chance_slope,1,0,5,0.01,ratio,Slope for hitQuality curve
+4,combat_attributes_resolution,v1_resolution,hit,hit_chance_bias,0,-5,5,0.01,ratio,Bias for hitQuality curve
+5,combat_attributes_resolution,v1_resolution,crit,crit_chance_min,0,0,1,,prob,Lower clamp for crit chance
+6,combat_attributes_resolution,v1_resolution,crit,crit_chance_max,1,0,1,,prob,Upper clamp for crit chance
+7,combat_attributes_resolution,v1_resolution,crit,crit_chance_base,0,0,1,0.01,prob,Base crit chance term
+8,combat_attributes_resolution,v1_resolution,crit,crit_chance_rate_scale,1,0,10,0.01,ratio,Scaling from attacker crit_rate to probability
+9,combat_attributes_resolution,v1_resolution,crit,crit_multiplier_min,1,1,10,,multiplier,Lower clamp for crit multiplier
+10,combat_attributes_resolution,v1_resolution,crit,crit_multiplier_max,3,1,10,,multiplier,Upper clamp for crit multiplier
+11,combat_attributes_resolution,v1_resolution,crit,crit_multiplier_base,1,0,10,0.01,multiplier,Base term for crit multiplier
+12,combat_attributes_resolution,v1_resolution,crit,crit_multiplier_power,1,0,10,0.01,ratio,Scaling from attacker crit_power to crit multiplier
+13,combat_attributes_resolution,v1_resolution,element_damage,element_damage_multiplier_min,0.1,0,10,,multiplier,Lower clamp for elemental damage multiplier
+14,combat_attributes_resolution,v1_resolution,element_damage,element_damage_multiplier_max,3,0,10,,multiplier,Upper clamp for elemental damage multiplier
+15,combat_attributes_resolution,v1_resolution,element_damage,element_damage_multiplier_base,1,0,10,0.01,multiplier,Base term for element resistance mapping
+16,combat_attributes_resolution,v1_resolution,element_damage,element_damage_multiplier_scale,-0.1,-5,0,0.01,ratio,Scale from element_resistance to damage multiplier
+17,combat_attributes_resolution,v1_resolution,dot,dot_tick_interval_sec,0.5,0.05,5,0.05,sec,Shared tick interval for DOT/CC statuses
+18,combat_attributes_resolution,v1_resolution,dot,dot_inherit_crit,yes,,,,enum,Whether DOT tick potency inherits crit from triggering hit
+19,combat_attributes_resolution,v1_resolution,status,status_refresh_mode,refresh_duration_to_base_plus_stack_value,,,,enum,How to compute duration refresh after application
+20,combat_attributes_resolution,v1_resolution,status,status_refresh_even_at_cap,yes,,,,enum,Whether refresh is applied even when stack already at cap
+21,combat_attributes_resolution,v1_resolution,status,status_stack_increment_per_hit,1,1,10,1,count,Stacks added per eligible elemental hit
+22,combat_attributes_resolution,v1_resolution,status_burn,burn_status_duration_base_sec,4,0.1,30,0.1,sec,Base burn duration in seconds
+23,combat_attributes_resolution,v1_resolution,status_burn,burn_status_duration_per_stack_add_sec,1,0,10,0.1,sec,Additional duration per burn stack
+24,combat_attributes_resolution,v1_resolution,status_burn,burn_status_stack_max,5,1,30,1,count,Maximum burn stacks
+25,combat_attributes_resolution,v1_resolution,status_burn,burn_dot_damage_ratio_base,0.15,0,5,0.01,ratio,Base DOT tick damage ratio
+26,combat_attributes_resolution,v1_resolution,status_burn,burn_dot_damage_ratio_per_extra_stack,0.05,0,5,0.01,ratio,Additional DOT tick damage ratio per extra stack
+27,combat_attributes_resolution,v1_resolution,status_frost,frost_status_duration_base_sec,3,0.1,30,0.1,sec,Base frost duration in seconds
+28,combat_attributes_resolution,v1_resolution,status_frost,frost_status_duration_per_stack_add_sec,1,0,10,0.1,sec,Additional duration per frost stack
+29,combat_attributes_resolution,v1_resolution,status_frost,frost_status_stack_max,5,1,30,1,count,Maximum frost stacks
+30,combat_attributes_resolution,v1_resolution,status_frost,frost_dot_damage_ratio_base,0.1,0,5,0.01,ratio,Base frost DOT tick damage ratio
+31,combat_attributes_resolution,v1_resolution,status_frost,frost_dot_damage_ratio_per_extra_stack,0.05,0,5,0.01,ratio,Additional frost DOT tick damage ratio per extra stack
+32,combat_attributes_resolution,v1_resolution,cc_frost,frost_cc_slow_strength_per_stack,0.05,0,1,0.01,ratio,Slow/CC strength per frost stack
+33,combat_attributes_resolution,v1_resolution,cc_frost,frost_cc_slow_strength_max,0.5,0,1,0.01,ratio,Clamp for CC slow strength
+34,combat_attributes_resolution,v1_resolution,status_shock,shock_status_duration_base_sec,2.5,0.1,30,0.1,sec,Base shock duration in seconds
+35,combat_attributes_resolution,v1_resolution,status_shock,shock_status_duration_per_stack_add_sec,1,0,10,0.1,sec,Additional duration per shock stack
+36,combat_attributes_resolution,v1_resolution,status_shock,shock_status_stack_max,5,1,30,1,count,Maximum shock stacks
+37,combat_attributes_resolution,v1_resolution,status_shock,shock_dot_damage_ratio_base,0.12,0,5,0.01,ratio,Deprecated: shock no longer deals DOT tick damage (defense debuff instead)
+38,combat_attributes_resolution,v1_resolution,status_shock,shock_dot_damage_ratio_per_extra_stack,0.04,0,5,0.01,ratio,Deprecated: shock no longer deals DOT tick damage (defense debuff instead)
+39,combat_attributes_resolution,v1_resolution,status_poison,poison_status_duration_base_sec,3,0.1,30,0.1,sec,Base poison duration in seconds
+40,combat_attributes_resolution,v1_resolution,status_poison,poison_status_duration_per_stack_add_sec,1,0,10,0.1,sec,Additional duration per poison stack
+41,combat_attributes_resolution,v1_resolution,status_poison,poison_status_stack_max,5,1,30,1,count,Maximum poison stacks
+42,combat_attributes_resolution,v1_resolution,status_poison,poison_dot_damage_ratio_base,0.14,0,5,0.01,ratio,Base poison DOT tick damage ratio
+43,combat_attributes_resolution,v1_resolution,status_poison,poison_dot_damage_ratio_per_extra_stack,0.04,0,5,0.01,ratio,Additional poison DOT tick damage ratio per extra stack
+44,combat_attributes_resolution,v1_resolution,element_damage,element_application_stack_max_scale,1,0.1,10,0.01,ratio,Global scale for stack interaction (placeholder, can be removed when finalized)
+45,combat_attributes_resolution,v1_resolution,hit_outcome,glancing_damage_multiplier_min,0.1,0,1,,multiplier,Min for glance damage multiplier
+46,combat_attributes_resolution,v1_resolution,hit_outcome,glancing_damage_multiplier_max,0.2,0,1,,multiplier,Max for glance damage multiplier
+47,combat_attributes_resolution,v1_resolution,hit_outcome,deflect_damage_multiplier,0.5,0,1,,multiplier,Fixed deflect damage multiplier
+48,combat_attributes_resolution,v1_resolution,hit_roundtable,hit_roundtable_softmax_k,8,0,100,0.1,ratio,Softmax sharpness for roundtable weights
+49,combat_attributes_resolution,v1_resolution,hit_roundtable,hit_roundtable_min_prob,0.02,0,1,0.001,prob,Prune outcomes below this probability threshold
+50,combat_attributes_resolution,v1_resolution,hit_roundtable,hit_roundtable_min_outcomes,2,1,4,1,count,Minimum outcomes kept after pruning (v1 recommends 2)
+51,combat_attributes_resolution,v1_resolution,stun,stun_resistance_offset,1,0,50,0.01,ratio,Offset added to resistance in contest ratio denominator
+52,combat_attributes_resolution,v1_resolution,stun,stun_duration_multiplier_base,1,0,5,0.01,ratio,Base multiplier applied to stun duration
+53,combat_attributes_resolution,v1_resolution,stun,stun_duration_multiplier_scale,0.5,0,5,0.01,ratio,Scale from (contest-1) to duration multiplier
+54,combat_attributes_resolution,v1_resolution,stun,stun_duration_multiplier_min,0.2,0,2,0.01,ratio,Clamp lower bound for stunDurationMultiplier
+55,combat_attributes_resolution,v1_resolution,stun,stun_duration_multiplier_max,2,0.5,10,0.01,ratio,Clamp upper bound for stunDurationMultiplier
+56,combat_attributes_resolution,v1_resolution,stun,stun_duration_min_sec,0.2,0.01,5,0.01,sec,Clamp lower bound for stun duration seconds
+57,combat_attributes_resolution,v1_resolution,stun,stun_duration_max_sec,8,0.5,60,0.1,sec,Clamp upper bound for stun duration seconds
+58,combat_attributes_resolution,v1_resolution,status_shock,shock_damage_taken_multiplier_min,1,0,10,,multiplier,Clamp minimum for shock damage taken multiplier
+59,combat_attributes_resolution,v1_resolution,status_shock,shock_damage_taken_multiplier_max,3,0,10,,multiplier,Clamp maximum for shock damage taken multiplier
+60,combat_attributes_resolution,v1_resolution,status_shock,shock_damage_taken_multiplier_base,1.05,0,10,0.01,multiplier,Base multiplier applied to instantDamage while shock is active
+61,combat_attributes_resolution,v1_resolution,status_shock,shock_damage_taken_multiplier_per_extra_stack,0.05,0,10,0.01,multiplier,Additional multiplier per extra shock stack (over 1)

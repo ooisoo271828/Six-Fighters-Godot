@@ -1,0 +1,9 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,deep_dungeon_l2,freeze,structure,floor_structure,simple_rooms_loop,,,,,enum,L2 frozen decision
+2,deep_dungeon_l2,freeze,growth,scaling_approach,milestone_spike,,,,,enum,L2 frozen decision
+3,deep_dungeon_l2,freeze,milestone,milestone_trigger,either_combo,,,,,enum,L2 frozen decision
+4,deep_dungeon_l2,freeze,reward,key_reward_variance,mixed_variance_everywhere,,,,,enum,L2 frozen decision
+5,deep_dungeon_l2,freeze,progression,progression_goal,room_clear,,,,,enum,L2 frozen decision
+6,deep_dungeon_l2,freeze,milestone,milestone_boss_pool,mechanic_prefix_random,,,,,enum,L2 frozen decision
+7,deep_dungeon_l2,freeze,settlement,max_floor_and_exit,segments_and_extract,,,,,enum,L2 frozen decision
+8,deep_dungeon_l2,freeze,settlement,reward_settlement_on_exit,combo_milestone_linear,,,,,enum,L2 frozen decision

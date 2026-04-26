@@ -1,0 +1,8 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,deep_dungeon_l3,freeze,segment,segment_size_model,adaptive_by_build_performance,,,,,enum,L3 frozen
+2,deep_dungeon_l3,freeze,segment,segment_exit_trigger,after_segment_clear,,,,,enum,L3 frozen
+3,deep_dungeon_l3,freeze,milestone,milestone_count_policy,adaptive_to_floor_clear,,,,,enum,L3 frozen
+4,deep_dungeon_l3,freeze,prefix,prefix_to_reward_encoding,prefix_bonus_on_base,,,,,enum,L3 frozen
+5,deep_dungeon_l3,freeze,prefix,prefix_reroll_policy,costed_reroll,,,,,enum,L3 frozen
+6,deep_dungeon_l3,freeze,prefix,reroll_currency_token,,,,,currency,L3 reroll spend token (config)
+7,deep_dungeon_l3,freeze,prefix,reroll_limit_per_segment,1,,,,count,L3 contract default

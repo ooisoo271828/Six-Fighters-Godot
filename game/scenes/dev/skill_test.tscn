@@ -1,0 +1,89 @@
+[gd_scene format=3 uid="uid://skilltest01"]
+
+[ext_resource type="Script" uid="uid://b8xbrrvh1qq1u" path="res://scenes/skill_system/nodes/debug_test.gd" id="2_debug"]
+[ext_resource type="PackedScene" uid="uid://cxkqwerty1234" path="res://scenes/skill_system/skill_system.tscn" id="3_skill_system"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
+bg_color = Color(0.15, 0.15, 0.2, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.4, 0.6, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="SkillTestScene" type="Node2D"]
+
+[node name="SkillSystem" type="Node" parent="." instance=ExtResource("3_skill_system")]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="DebugPanel" type="PanelContainer" parent="CanvasLayer"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 320.0
+offset_bottom = 480.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_1")
+
+[node name="Margin" type="MarginContainer" parent="CanvasLayer/DebugPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="CanvasLayer/DebugPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+layout_mode = 2
+text = "技能系统调试器"
+horizontal_alignment = 1
+
+[node name="Separator1" type="HSeparator" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="SkillLabel" type="Label" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+layout_mode = 2
+text = "选择技能"
+
+[node name="SkillList" type="OptionButton" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+item_count = 3
+popup/item_0/text = "ironwall_basic（直线）"
+popup/item_0/id = 0
+popup/item_1/text = "ironwall_small_a（火球）"
+popup/item_1/id = 1
+popup/item_2/text = "ember_basic（追踪）"
+popup/item_2/id = 2
+
+[node name="Separator2" type="HSeparator" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="TestBtn" type="Button" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "点击场景任意位置施放"
+
+[node name="StatusLabel" type="Label" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "状态: 就绪"
+horizontal_alignment = 1
+
+[node name="Separator3" type="HSeparator" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="InfoLabel" type="Label" parent="CanvasLayer/DebugPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "项目数: 0"
+horizontal_alignment = 1
+
+[node name="DebugScript" type="Node" parent="."]
+script = ExtResource("2_debug")

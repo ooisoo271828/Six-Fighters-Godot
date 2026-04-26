@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://cxkqwerty5678"]
+
+[ext_resource type="Script" path="res://scripts/skill_system/pools/projectile_node.gd" id="1_pnode"]
+
+[node name="Projectile" type="Node2D"]
+script = ExtResource("1_pnode")
+
+[node name="Core" type="Sprite2D" parent="."]
+modulate = Color(0.8, 0.85, 1.0, 1.0)
+
+[node name="Trail" type="Node2D" parent="."]

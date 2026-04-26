@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cxkqwerty9999"]
+
+[ext_resource type="Script" path="res://scripts/skill_system/core/skill_executor.gd" id="1_exec"]
+
+[node name="Executor" type="Node"]
+script = ExtResource("1_exec")

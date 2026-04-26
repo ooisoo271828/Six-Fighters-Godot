@@ -1,0 +1,7 @@
+id,mode,category,parameter,key,value,min,max,step,unit,notes
+1,stage_dungeon,baseline,session,stage_target_duration_min,,,,,min,sec,Stage run duration min placeholder
+2,stage_dungeon,baseline,session,stage_target_duration_max,,,,,max,sec,Stage run duration max placeholder
+3,stage_dungeon,baseline,wave,wave_count_per_run,,,,,count,wave count placeholder
+4,stage_dungeon,baseline,boss,boss_hp_multiplier,,,,,ratio,Boss HP scaling placeholder
+5,stage_dungeon,baseline,reward,fail_reward_ratio,,,,,ratio,Partial reward retention placeholder
+6,stage_dungeon,baseline,spawn,elite_spawn_rate,,,,,count_per_min,Elite spawn rate placeholder
