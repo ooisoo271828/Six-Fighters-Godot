@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://arena_main"]
+[gd_scene load_steps=2 format=3 uid="uid://arena_battle"]
 
 [ext_resource type="Script" path="res://scripts/arena/arena_scene.gd" id="1_arena"]
 

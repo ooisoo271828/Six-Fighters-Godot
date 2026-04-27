@@ -1,13 +1,10 @@
 ## SkillVisualDefDefault — 技能视觉定义（程序化默认实现）
 ## 继承 SkillVisualDef，统一视觉参数体系
+## 注意：core_color 和 core_radius 已移至基类 SkillVisualDef
 class_name SkillVisualDefDefault
 extends SkillVisualDef
 
 # ── Default 特有的字段（不在基类中的）──
-## 核心球体颜色（留空则用纹理）
-@export var core_color: Color = Color(0.8, 0.85, 1.0)
-## 核心球体半径（像素）
-@export var core_radius: float = 4.0
 ## Ribbon 拖尾宽度（Line2D 模式）
 @export var ribbon_width: float = 3.0
 

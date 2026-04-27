@@ -1,24 +1,46 @@
-[gd_resource type="Resource" script_class="SkillVisualDefDefault" load_steps=2 format=3]
-[ext_resource type="Script" path="res://scripts/skill_system/core/skill_visual_def_default.gd" id="1"]
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3 uid="uid://csup35wtg42vh"]
+
+[ext_resource type="Script" uid="uid://ge330whaolln" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_4huj3"]
+
 [resource]
-	script = ExtResource("1")
-	skill_id = "fireball_basic"
-	projectile_kind = "fireball"
-	core_color = Color(1.0, 0.5, 0.05, 1.0)
-	core_radius = 8.0
-	core_texture_path = "res://assets/textures/vfx/fire_core_64.png"
-	glow_enabled = true
-	trail_color = Color(1.0, 0.3, 0.0, 0.8)
-	ribbon_width = 5.0
-	trail_texture_path = ""
-	trail_particle_enabled = true
-	trail_particle_count = 6
-	trail_particle_lifetime = 0.2
-	speed = 320.0
-	telegraph_ms = 350
-	impact_level_str = "strong"
-	explosion_texture_path = "res://assets/textures/vfx/fire_particle_32.png"
-	explosion_particle_count = 30
-	explosion_lifetime = 0.5
-	explosion_radius_mult = 3.5
-	hit_particle_count = 30
+script = ExtResource("1_4huj3")
+skill_id = "fireball_basic"
+projectile_kind = 1
+telegraph_shape = 1
+core_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
+core_width = 36.0
+core_height = 36.0
+core_radius = 18.0
+core_inner_enabled = true
+core_inner_color = Color(0.9098039, 0.38431373, 0.30588236, 1)
+core_inner_width = 21.0
+core_inner_height = 17.0
+core_inner_offset = Vector2(2, -2)
+core_hotspot_enabled = true
+core_hotspot_color = Color(1, 0.6431373, 0.5294118, 1)
+core_hotspot_width = 11.0
+core_hotspot_height = 9.0
+core_hotspot_offset = Vector2(-4, 3)
+core_nose_enabled = true
+core_nose_color = Color(0.8509804, 0.26666668, 0.20784314, 1)
+core_nose_length = 18.0
+core_nose_width = 5.0
+core_glow_radius = 21.0
+core_glow_color = Color(1, 0.43529412, 0.37254903, 1)
+jitter_enabled = true
+tex_core_path = "res://assets/textures/vfx/fire_core_64.png"
+tex_glow_path = "res://assets/textures/vfx/soft_circle_64.png"
+tex_trail_path = "res://assets/textures/vfx/fire_particle_32.png"
+tex_explosion_path = "res://assets/textures/vfx/spark_16.png"
+tex_front_flame_path = "res://assets/textures/vfx/fire_particle_16.png"
+front_flame_enabled = true
+front_flame_color_1 = Color(1, 0.48235294, 0.4117647, 1)
+front_flame_color_2 = Color(0.8352941, 0.21176471, 0.17254902, 1)
+trail_particle_enabled = true
+trail_particle_lifetime = 0.3
+trail_color_1 = Color(1, 0.8235294, 0.76862746, 1)
+trail_color_2 = Color(1, 0.7294118, 0.62352943, 1)
+trail_color_3 = Color(1, 0.9137255, 0.8901961, 1)
+impact_color = Color(1, 0.9019608, 0.7294118, 1)
+impact_shake_strength = 110.0
+impact_shake_duration = 0.0032

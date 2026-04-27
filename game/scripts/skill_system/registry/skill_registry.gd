@@ -153,6 +153,11 @@ func _load_all_skills() -> void:
 			register_skill(skill_def)
 			loaded_count += 1
 			
+			# 从 CSV 数值表格加载战斗数值
+			var csv_data := SkillDef.load_csv_for_skill(skill_def.skill_id)
+			if not csv_data.is_empty():
+				skill_def.load_values_from_csv(csv_data)
+			
 			# 尝试加载对应的视觉定义
 			var visual_def: Resource = load(visuals_path + file_name)
 			if visual_def != null and visual_def is SkillVisualDef:

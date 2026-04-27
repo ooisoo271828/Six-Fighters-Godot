@@ -126,7 +126,7 @@ func _on_portal_pressed() -> void:
 		return
 	
 	GameManager.set_roster(selected_heroes)
-	get_tree().change_scene_to_file("res://scenes/arena/main.tscn")
+	get_tree().change_scene_to_file("res://scenes/arena/battle.tscn")
 
 func _on_skill_viewer_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/viewer/skill_viewer.tscn")
