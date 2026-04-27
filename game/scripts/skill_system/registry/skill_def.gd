@@ -100,7 +100,7 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 
 ## 静态方法：从 CSV 文件加载某个 skill_id 的所有数值
 ## 返回：Dictionary { "base_damage": 42, "cooldown": 2.8, ... }
-static func load_csv_for_skill(skill_id: String) -> Dictionary:
+static func load_csv_for_skill(search_id: String) -> Dictionary:
 	var result := {}
 	var csv_path := "res://docs/design/combat-rules/values/skill-values.csv"
 	
@@ -149,11 +149,11 @@ static func load_csv_for_skill(skill_id: String) -> Dictionary:
 		if row.size() <= max(category_idx, parameter_idx, key_idx, value_idx):
 			continue
 		
-		var category = row[category_idx].strip_edges()
-		if category != skill_id:
+		var row_category = row[category_idx].strip_edges()
+		if row_category != search_id:
 			continue
 		
-		var parameter = row[parameter_idx].strip_edges()
+		var _parameter = row[parameter_idx].strip_edges()
 		var key = row[key_idx].strip_edges()
 		var value = row[value_idx].strip_edges()
 		
@@ -165,7 +165,7 @@ static func load_csv_for_skill(skill_id: String) -> Dictionary:
 	file.close()
 	
 	if result.is_empty():
-		push_warning("[SkillDef] No CSV data found for skill_id: %s" % skill_id)
+		push_warning("[SkillDef] No CSV data found for skill_id: %s" % search_id)
 	
 	return result
 

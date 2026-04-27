@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3 uid="uid://missile_storm_def"]
+
+[ext_resource type="Script" uid="uid://boty6cd3ndrfv" path="res://scripts/skill_system/registry/skill_def.gd" id="1_h6g8x"]
+
+[resource]
+script = ExtResource("1_h6g8x")
+skill_id = "missile_storm"
+display_name = "导弹风暴"
+damage_type = 0
+base_damage = 30.0
+cooldown = 3.0
+cast_range = 350.0
+telegraph_ms = 220
+effect_type = "emit_projectile"
+description = "发射 9~12 枚导弹，沿弧线弹道追踪目标"

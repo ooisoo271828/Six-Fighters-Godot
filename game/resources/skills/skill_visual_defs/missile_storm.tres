@@ -1,0 +1,88 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3 uid="uid://missile_storm_vis"]
+
+[ext_resource type="Script" uid="uid://ge330whaolln" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_c7xsd"]
+
+[resource]
+script = ExtResource("1_c7xsd")
+skill_id = "missile_storm"
+projectile_kind = 3
+telegraph_shape = 0
+trajectory_type = 2
+speed = 450.0
+projectile_count_min = 9
+projectile_count_max = 12
+projectile_stagger_sec = 0.0
+
+# 弹体核心 - 12×12 浅黄导弹
+core_color = Color(0.9529412, 0.8745098, 0.62352943, 1)
+core_width = 12.0
+core_height = 12.0
+core_radius = 6.0
+core_inner_enabled = true
+core_inner_color = Color(0.84313726, 0.5529412, 0.22745098, 1)
+core_inner_width = 6.0
+core_inner_height = 6.0
+core_inner_offset = Vector2(0, 0)
+core_hotspot_enabled = false
+core_nose_enabled = false
+core_glow_radius = 11.0
+core_glow_color = Color(1, 0.43529412, 0.37254903, 1)
+core_glow_alpha = 0.43
+jitter_enabled = true
+jitter_amplitude = 0.6
+jitter_freq_x = 3.1
+jitter_freq_y = 2.7
+
+# 纹理 - 无专用纹理，使用程序化白圆
+tex_core_path = ""
+tex_glow_path = ""
+tex_trail_path = ""
+tex_explosion_path = ""
+tex_front_flame_path = ""
+tex_nose_path = ""
+
+# 前缘火焰 - 关闭
+front_flame_enabled = false
+
+# 拖尾粒子 - 小型弥散粒子
+trail_particle_enabled = true
+trail_particle_count = 5
+trail_particle_lifetime = 0.18
+trail_radius_min = 0.1
+trail_radius_max = 0.25
+trail_back_dist_min = 8.0
+trail_back_dist_max = 24.0
+trail_spread_min = 8.0
+trail_spread_max = 8.0
+trail_color_1 = Color(1, 0.9411765, 0.8627451, 1)
+trail_color_2 = Color(1, 0.7882353, 0.56078434, 1)
+trail_color_3 = Color(1, 1, 1, 1)
+trail_life_min = 0.08
+trail_life_max = 0.18
+
+# 彗星拖尾 Line2D（3 层）
+comet_enabled = true
+comet_max_samples = 28
+comet_outer_width = 6.0
+comet_outer_color = Color(1, 0.9411765, 0.8627451, 1)
+comet_outer_alpha = 0.35
+comet_mid_width = 3.4
+comet_mid_color = Color(1, 0.7882353, 0.56078434, 1)
+comet_mid_alpha = 0.62
+comet_inner_width = 1.8
+comet_inner_color = Color(1, 1, 1, 1)
+comet_inner_alpha = 0.96
+comet_sway_freq = 0.7
+comet_sway_amplitude = 1.1
+
+# 爆炸 - 中等强度，黄色系
+impact_spark_count_min = 10
+impact_spark_count_max = 14
+impact_speed_min = 24.0
+impact_speed_max = 72.0
+impact_life_min = 0.12
+impact_life_max = 0.22
+impact_color = Color(1, 0.9019608, 0.7294118, 1)
+impact_particle_count = 12
+impact_lifetime = 0.22
+impact_shake_strength = 0.0

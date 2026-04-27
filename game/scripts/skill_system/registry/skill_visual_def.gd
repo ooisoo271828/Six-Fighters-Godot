@@ -57,6 +57,11 @@ var impact_level: int = 1
 # ── 速度参数 ──
 @export var speed: float = 300.0  # 投射物速度（像素/秒）
 
+# ── 多弹道参数 ──
+@export var projectile_count_min: int = 1
+@export var projectile_count_max: int = 1
+@export var projectile_stagger_sec: float = 0.0  # 每枚导弹的延迟间隔
+
 # ═══════════════════════════════════════════
 # ── 多层弹体核心 ──
 # ═══════════════════════════════════════════
@@ -162,6 +167,30 @@ var impact_level: int = 1
 @export var trail_life_max: float = 0.45
 ## 旧参数兼容
 @export var trail_texture_path: String = ""
+
+# ═══════════════════════════════════════════
+# ── 彗星拖尾（Line2D 实线拖尾） ──
+# ═══════════════════════════════════════════
+@export_group("Comet Trail", "comet_")
+
+@export var comet_enabled: bool = false
+## 最大采样点数
+@export var comet_max_samples: int = 28
+## 外层线宽/颜色/透明度
+@export var comet_outer_width: float = 6.0
+@export var comet_outer_color: Color = Color.WHITE
+@export var comet_outer_alpha: float = 0.35
+## 中层线宽/颜色/透明度
+@export var comet_mid_width: float = 3.4
+@export var comet_mid_color: Color = Color.WHITE
+@export var comet_mid_alpha: float = 0.62
+## 内层线宽/颜色/透明度
+@export var comet_inner_width: float = 1.8
+@export var comet_inner_color: Color = Color.WHITE
+@export var comet_inner_alpha: float = 0.96
+## 蛇形摆动参数
+@export var comet_sway_freq: float = 0.7
+@export var comet_sway_amplitude: float = 1.1
 
 # ═══════════════════════════════════════════
 # ── 增强爆炸 / 命中 ──

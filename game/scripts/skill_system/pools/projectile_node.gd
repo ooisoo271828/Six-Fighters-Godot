@@ -44,6 +44,13 @@ var _jitter_time: float = 0.0
 var _last_trail_pos: Vector2
 const TRAIL_EMIT_INTERVAL: float = 0.016  # ~60fps
 
+## ── 彗星拖尾（Line2D 三层绘制）──
+var _comet_line_outer: Line2D
+var _comet_line_mid: Line2D
+var _comet_line_inner: Line2D
+var _trail_positions: Array[Vector2] = []
+const MAX_TRAIL_POINTS := 28
+
 ## ── 程序化纹理缓存（所有 ProjectileNode 共享）──
 static var _shared_circle_tex: Texture2D
 static var _shared_nose_tex: Texture2D
@@ -226,6 +233,19 @@ func _setup_visuals() -> void:
 	_front_flame_particles.process_material = flame_mat
 	add_child(_front_flame_particles)
 
+	# 彗星拖尾 Line2D（3 层）
+	_comet_line_outer = Line2D.new()
+	_comet_line_outer.antialiased = true
+	add_child(_comet_line_outer)
+
+	_comet_line_mid = Line2D.new()
+	_comet_line_mid.antialiased = true
+	add_child(_comet_line_mid)
+
+	_comet_line_inner = Line2D.new()
+	_comet_line_inner.antialiased = true
+	add_child(_comet_line_inner)
+
 
 ## ── 应用视觉配置 ──
 
@@ -234,16 +254,21 @@ func _apply_visual() -> void:
 		return
 
 	var core_radius: float = _visual_def.core_radius if "core_radius" in _visual_def else 4.0
-	_chain.current_radius = core_radius
-	_chain.base_radius = core_radius
 
-	# ── 确定核心尺寸 ──
+	# ── 确定核心尺寸（先声明，命中检测要用）──
 	var core_w: float = _visual_def.core_width if "core_width" in _visual_def and _visual_def.core_width > 0 else core_radius * 2.0
 	var core_h: float = _visual_def.core_height if "core_height" in _visual_def and _visual_def.core_height > 0 else core_radius * 2.0
+
+	# 命中检测半径：使用核心视觉尺寸的 1.5 倍（中层区域触发）
+	var core_half: float = max(core_w, core_h) * 0.5
+	_chain.current_radius = max(core_radius, core_half * 1.5)
+	_chain.base_radius = core_radius
+	if "speed" in _visual_def:
+		_chain.speed = _visual_def.speed
 	var core_color: Color = _visual_def.core_color if "core_color" in _visual_def else Color.WHITE
 
 	# ── 确定基础纹理 ──
-	var base_tex: CompressedTexture2D = _core_texture if _core_texture else _get_shared_circle_texture()
+	var base_tex: Texture2D = _core_texture if _core_texture else _get_shared_circle_texture()
 	var tex_size := base_tex.get_size() if base_tex else Vector2(16, 16)
 
 	# ── 颜色覆盖（Modifier 可能设置）──
@@ -321,7 +346,7 @@ func _apply_visual() -> void:
 		var nose_length: float = _visual_def.core_nose_length if "core_nose_length" in _visual_def else 0.0
 		var nose_width: float = _visual_def.core_nose_width if "core_nose_width" in _visual_def else 0.0
 		if nose_length > 0.0 and nose_width > 0.0:
-			var nose_tex: CompressedTexture2D = _nose_texture if _nose_texture else _get_shared_nose_texture()
+			var nose_tex: Texture2D = _nose_texture if _nose_texture else _get_shared_nose_texture()
 			_nose_sprite.texture = nose_tex
 			var nose_tex_size := nose_tex.get_size() if nose_tex else Vector2(16, 16)
 			_nose_sprite.scale = Vector2(nose_length / nose_tex_size.x, nose_width / nose_tex_size.y)
@@ -341,6 +366,16 @@ func _apply_visual() -> void:
 	var flame_enabled: bool = _visual_def.front_flame_enabled if "front_flame_enabled" in _visual_def else false
 	if flame_enabled:
 		_configure_front_flame()
+
+	# ── 8. 彗星拖尾 Line2D ──
+	# Godot 4.6 bool 属性有缓存 bug，fallback 用 outer_width > 0 判定
+	var comet_on: bool = false
+	if "comet_enabled" in _visual_def:
+		comet_on = _visual_def.comet_enabled
+		if not comet_on and _visual_def.comet_outer_width > 0:
+			comet_on = true
+	if comet_on:
+		_configure_comet_trail()
 
 	# ── 投射物整体缩放 ──
 	var proj_scale: float = _visual_def.projectile_scale if "projectile_scale" in _visual_def else 1.0
@@ -375,13 +410,23 @@ func _configure_trail_particles() -> void:
 	# 创建粒子材质
 	var mat := ParticleProcessMaterial.new()
 	var dir = -_chain.direction if _chain.direction.length() > 0 else Vector2.UP
-	var back_vel := (back_min + back_max) / 2.0
 	mat.direction = Vector3(dir.x * 50, dir.y * 50, 0)
 	mat.spread = (spread_min + spread_max) / 2.0
 	mat.initial_velocity_min = back_min
 	mat.initial_velocity_max = back_max
 	mat.scale_min = radius_min
 	mat.scale_max = radius_max
+
+	# 拖尾粒子缩放曲线：刚离开火球时保持较大，中段开始衰减，尾部稀疏
+	var trail_curve := Curve.new()
+	trail_curve.add_point(Vector2(0.0, 1.0))
+	trail_curve.add_point(Vector2(0.15, 0.95))
+	trail_curve.add_point(Vector2(0.35, 0.7))
+	trail_curve.add_point(Vector2(0.6, 0.3))
+	trail_curve.add_point(Vector2(1.0, 0.0))
+	var trail_curve_tex := CurveTexture.new()
+	trail_curve_tex.curve = trail_curve
+	mat.scale_curve = trail_curve_tex
 	_trail_particles.process_material = mat
 	_trail_particles.emitting = true
 
@@ -389,7 +434,7 @@ func _configure_trail_particles() -> void:
 ## ── 配置前缘火焰粒子 ──
 
 func _configure_front_flame() -> void:
-	var flame_tex: CompressedTexture2D = _front_flame_texture if _front_flame_texture else _trail_texture
+	var flame_tex: Texture2D = _front_flame_texture if _front_flame_texture else _trail_texture
 	if flame_tex:
 		_front_flame_particles.texture = flame_tex
 	else:
@@ -397,10 +442,10 @@ func _configure_front_flame() -> void:
 
 	var count: int = _visual_def.front_flame_count if "front_flame_count" in _visual_def else 12
 	var inner_min: float = _visual_def.front_flame_inner_min if "front_flame_inner_min" in _visual_def else 1.2
-	var inner_max: float = _visual_def.front_flame_inner_max if "front_flame_inner_max" in _visual_def else 5.5
-	var outer_min: float = _visual_def.front_flame_outer_min if "front_flame_outer_min" in _visual_def else 5.5
+	var _inner_max: float = _visual_def.front_flame_inner_max if "front_flame_inner_max" in _visual_def else 5.5
+	var _outer_min: float = _visual_def.front_flame_outer_min if "front_flame_outer_min" in _visual_def else 5.5
 	var outer_max: float = _visual_def.front_flame_outer_max if "front_flame_outer_max" in _visual_def else 14.0
-	var life_min: float = _visual_def.front_flame_life_min if "front_flame_life_min" in _visual_def else 0.1
+	var _life_min: float = _visual_def.front_flame_life_min if "front_flame_life_min" in _visual_def else 0.1
 	var life_max: float = _visual_def.front_flame_life_max if "front_flame_life_max" in _visual_def else 0.195
 
 	_front_flame_particles.amount = count * 3
@@ -422,6 +467,33 @@ func _configure_front_flame() -> void:
 	mat.gravity = Vector3.ZERO
 	_front_flame_particles.process_material = mat
 	_front_flame_particles.emitting = true
+
+
+## ── 配置彗星拖尾 Line2D ──
+
+func _configure_comet_trail() -> void:
+	var outer_w: float = _visual_def.comet_outer_width if "comet_outer_width" in _visual_def else 6.0
+	var outer_c: Color = _visual_def.comet_outer_color if "comet_outer_color" in _visual_def else Color.WHITE
+	var outer_a: float = _visual_def.comet_outer_alpha if "comet_outer_alpha" in _visual_def else 0.35
+	var mid_w: float = _visual_def.comet_mid_width if "comet_mid_width" in _visual_def else 3.4
+	var mid_c: Color = _visual_def.comet_mid_color if "comet_mid_color" in _visual_def else Color.WHITE
+	var mid_a: float = _visual_def.comet_mid_alpha if "comet_mid_alpha" in _visual_def else 0.62
+	var inner_w: float = _visual_def.comet_inner_width if "comet_inner_width" in _visual_def else 1.8
+	var inner_c: Color = _visual_def.comet_inner_color if "comet_inner_color" in _visual_def else Color.WHITE
+	var inner_a: float = _visual_def.comet_inner_alpha if "comet_inner_alpha" in _visual_def else 0.96
+
+	_comet_line_outer.width = outer_w
+	_comet_line_outer.default_color = Color(outer_c.r, outer_c.g, outer_c.b, outer_a)
+	_comet_line_mid.width = mid_w
+	_comet_line_mid.default_color = Color(mid_c.r, mid_c.g, mid_c.b, mid_a)
+	_comet_line_inner.width = inner_w
+	_comet_line_inner.default_color = Color(inner_c.r, inner_c.g, inner_c.b, inner_a)
+
+	var max_pts: int = _visual_def.comet_max_samples if "comet_max_samples" in _visual_def else 28
+	_trail_positions.clear()
+	_trail_positions.resize(max_pts)
+	for i in range(max_pts):
+		_trail_positions[i] = global_position
 
 
 ## ── 每帧更新 ──
@@ -459,6 +531,16 @@ func _process(dt: float) -> void:
 
 	# 更新拖尾粒子
 	_update_trail_emitter(dt)
+
+	# 更新彗星拖尾 Line2D
+	# Godot 4.6 bool 缓存 bug fallback
+	var _comet_active: bool = false
+	if "comet_enabled" in _visual_def:
+		_comet_active = _visual_def.comet_enabled
+		if not _comet_active and _visual_def.comet_outer_width > 0:
+			_comet_active = true
+	if _comet_line_outer != null and _comet_active:
+		_update_comet_trail()
 
 	# 检查命中目标
 	_check_hit()
@@ -556,6 +638,32 @@ func _update_trail_emitter(_dt: float) -> void:
 	pass
 
 
+## ── 彗星拖尾更新 ──
+
+func _update_comet_trail() -> void:
+	# 记录位置历史
+	_trail_positions.push_front(global_position)
+	var max_pts: int = _visual_def.comet_max_samples if "comet_max_samples" in _visual_def else 28
+	while _trail_positions.size() > max_pts:
+		_trail_positions.pop_back()
+
+	# 应用蛇形摆动（仅对历史点，不影响弹体本身）
+	var sway_freq: float = _visual_def.comet_sway_freq if "comet_sway_freq" in _visual_def else 0.7
+	var sway_amp: float = _visual_def.comet_sway_amplitude if "comet_sway_amplitude" in _visual_def else 1.1
+	var swayed := _trail_positions.duplicate()
+	var fwd := _chain.direction if _chain.direction.length() > 0 else Vector2.RIGHT
+	var perp := fwd.rotated(PI / 2.0)
+	for i in range(swayed.size()):
+		var t := float(i) / float(max(1, swayed.size()))
+		var offset := sin(t * TAU * sway_freq + _elapsed * 2.0) * sway_amp * t
+		swayed[i] += perp * offset
+
+	# 更新 3 层 Line2D
+	_comet_line_outer.points = swayed
+	_comet_line_mid.points = swayed
+	_comet_line_inner.points = swayed
+
+
 ## ── 命中检测 ──
 
 func _check_hit() -> void:
@@ -596,20 +704,39 @@ func _on_chain_destroyed(_destroyed_chain: ExecutionChain) -> void:
 	if _signal_bus:
 		_signal_bus.behavior_complete.emit(self)
 
-	# 停止粒子
+	# 立即停止粒子发射
 	if _trail_particles:
 		_trail_particles.emitting = false
 	if _front_flame_particles:
 		_front_flame_particles.emitting = false
 
-	# 触发爆炸视觉
+	# 清除彗星拖尾 Line2D
+	if _comet_line_outer != null:
+		_comet_line_outer.points = []
+	if _comet_line_mid != null:
+		_comet_line_mid.points = []
+	if _comet_line_inner != null:
+		_comet_line_inner.points = []
+	_trail_positions.clear()
+
+	# 火球体快速淡出（300ms）
+	var fade_tween := create_tween()
+	fade_tween.set_parallel(true)
+	var all_sprites := [_glow_sprite, _core_sprite, _inner_sprite, _hotspot_sprite, _nose_sprite]
+	for s in all_sprites:
+		if s and is_instance_valid(s) and s.visible:
+			fade_tween.tween_property(s, "modulate:a", 0.0, 0.3)
+
+	# 触发爆炸视觉（与淡出同时）
 	_spawn_explosion()
 
-	# 归还池
+	# 等待淡出完成 + 爆炸粒子播放，然后归还池
 	var pool = get_parent()
 	if pool.has_method("despawn"):
-		# 延迟归还，等待爆炸粒子播放
-		await get_tree().create_timer(0.5).timeout
+		await get_tree().create_timer(0.6).timeout
+		for s in all_sprites:
+			if s and is_instance_valid(s):
+				s.visible = false
 		pool.despawn(self)
 
 
@@ -619,87 +746,110 @@ func _spawn_explosion() -> void:
 	if _visual_def == null:
 		return
 
-	# 创建爆炸粒子节点
-	var explosion := GPUParticles2D.new()
-	explosion.global_position = global_position
-
-	# 设置纹理
-	var exp_tex: CompressedTexture2D = _explosion_texture if _explosion_texture else _core_texture
-	if exp_tex:
-		explosion.texture = exp_tex
-
-	# 读取增强参数
+	# ── 读取参数 ──
 	var spark_min: int = _visual_def.impact_spark_count_min if "impact_spark_count_min" in _visual_def else 10
 	var spark_max: int = _visual_def.impact_spark_count_max if "impact_spark_count_max" in _visual_def else 14
 	var speed_min: float = _visual_def.impact_speed_min if "impact_speed_min" in _visual_def else 24.0
 	var speed_max: float = _visual_def.impact_speed_max if "impact_speed_max" in _visual_def else 72.0
-	var life_min: float = _visual_def.impact_life_min if "impact_life_min" in _visual_def else 0.12
 	var life_max: float = _visual_def.impact_life_max if "impact_life_max" in _visual_def else 0.22
 	var impact_color: Color = _visual_def.impact_color if "impact_color" in _visual_def else Color.WHITE
-
-	# 旧参数兼容
 	var particle_count: int = _visual_def.explosion_particle_count if "explosion_particle_count" in _visual_def else 20
 	var lifetime: float = _visual_def.explosion_lifetime if "explosion_lifetime" in _visual_def else 0.4
-	var radius_mult: float = _visual_def.explosion_radius_mult if "explosion_radius_mult" in _visual_def else 2.0
 
-	# 如果没有增强参数，使用旧参数
 	if impact_color == Color.WHITE:
 		var base_color: Color = _visual_def.core_color if "core_color" in _visual_def else Color.WHITE
 		impact_color = base_color
 
-	# 粒子数量取增强参数范围中值
-	var spark_count := (spark_min + spark_max) / 2
+	var spark_count := int((spark_min + spark_max) * 0.5)
 	if spark_count < particle_count:
 		spark_count = particle_count
 
-	explosion.amount = spark_count
-	explosion.lifetime = maxf(life_max, lifetime)
-	explosion.one_shot = true
-	explosion.explosiveness = 0.9
-	explosion.randomness = 0.3
+	var spark_life := maxf(life_max, lifetime)
 
-	# 颜色
+	# ── 1. 高速火花粒子（打击力量感）──
+	var explosion := GPUParticles2D.new()
+	explosion.global_position = global_position
+	explosion.texture = _explosion_texture if _explosion_texture else _core_texture
+	explosion.amount = spark_count
+	explosion.lifetime = spark_life
+	explosion.one_shot = true
+	explosion.explosiveness = 0.6
+	explosion.randomness = 0.5
 	explosion.modulate = impact_color
 
-	# 创建粒子材质
-	var mat := ParticleProcessMaterial.new()
-	mat.direction = Vector3(0, 0, 0)  # 从中心向四周
-	mat.spread = 180.0
-	mat.initial_velocity_min = speed_min
-	mat.initial_velocity_max = speed_max
-	mat.scale_min = 0.3
-	mat.scale_max = 1.0
-	mat.gravity = Vector3(0, 50, 0)  # 轻微下落
-	explosion.process_material = mat
+	var mat1 := ParticleProcessMaterial.new()
+	mat1.direction = Vector3(0, 0, 0)
+	mat1.spread = 252.0
+	mat1.initial_velocity_min = speed_min
+	mat1.initial_velocity_max = speed_max
+	mat1.scale_min = 0.3
+	mat1.scale_max = 1.0
+	mat1.gravity = Vector3(0, 50, 0)
+	mat1.angle_min = 0.0
+	mat1.angle_max = 360.0
+	mat1.angular_velocity_min = -300.0
+	mat1.angular_velocity_max = 300.0
 
-	# 加入场景
+	var c1 := Curve.new()
+	c1.add_point(Vector2(0.0, 0.4))
+	c1.add_point(Vector2(0.15, 1.0))
+	c1.add_point(Vector2(0.5, 0.6))
+	c1.add_point(Vector2(1.0, 0.0))
+	var ct1 := CurveTexture.new()
+	ct1.curve = c1
+	mat1.scale_curve = ct1
+	explosion.process_material = mat1
 	get_tree().root.add_child(explosion)
 	explosion.emitting = true
 
-	# 屏幕震动
-	var shake_str: float = _visual_def.impact_shake_strength if "impact_shake_strength" in _visual_def else 0.0
-	if shake_str > 0.0:
-		_apply_screen_shake(shake_str)
+	# ── 2. 慢速火焰碎片（绽放火焰效果）──
+	var flame_tex: Texture2D = _front_flame_texture if _front_flame_texture else _trail_texture
+	var flame_color := Color(
+		minf(impact_color.r * 1.2, 1.0),
+		impact_color.g * 0.6,
+		impact_color.b * 0.2,
+		1.0
+	)
 
-	# 自动释放
-	await get_tree().create_timer(life_max + 0.3).timeout
+	var fragments := GPUParticles2D.new()
+	fragments.global_position = global_position
+	if flame_tex:
+		fragments.texture = flame_tex
+	fragments.amount = ceili(float(spark_count) * 0.5)
+	fragments.lifetime = spark_life * 1.5
+	fragments.one_shot = true
+	fragments.explosiveness = 0.4
+	fragments.randomness = 0.7
+	fragments.modulate = flame_color
+
+	var mat2 := ParticleProcessMaterial.new()
+	mat2.direction = Vector3(0, 0, 0)
+	mat2.spread = 360.0
+	mat2.initial_velocity_min = speed_min * 0.2
+	mat2.initial_velocity_max = speed_max * 0.3
+	mat2.scale_min = 0.8
+	mat2.scale_max = 2.5
+	mat2.gravity = Vector3(0, 30, 0)
+	mat2.angle_min = 0.0
+	mat2.angle_max = 360.0
+	mat2.angular_velocity_min = -100.0
+	mat2.angular_velocity_max = 100.0
+
+	var c2 := Curve.new()
+	c2.add_point(Vector2(0.0, 0.2))
+	c2.add_point(Vector2(0.1, 1.0))
+	c2.add_point(Vector2(0.4, 0.8))
+	c2.add_point(Vector2(1.0, 0.0))
+	var ct2 := CurveTexture.new()
+	ct2.curve = c2
+	mat2.scale_curve = ct2
+	fragments.process_material = mat2
+	get_tree().root.add_child(fragments)
+	fragments.emitting = true
+
+	# ── 自动释放 ──
+	await get_tree().create_timer(spark_life * 2.0).timeout
 	if is_instance_valid(explosion):
 		explosion.queue_free()
-
-
-## ── 屏幕震动 ──
-
-func _apply_screen_shake(strength: float) -> void:
-	var camera := get_viewport().get_camera_2d()
-	if camera == null:
-		return
-	var shake_dur: float = _visual_def.impact_shake_duration if "impact_shake_duration" in _visual_def else 0.1
-	var original_offset := camera.offset
-	var tween := create_tween()
-	for i in range(3):
-		var shake_offset := Vector2(
-			randf_range(-strength, strength),
-			randf_range(-strength, strength)
-		)
-		tween.tween_property(camera, "offset", original_offset + shake_offset, shake_dur / 3.0)
-	tween.tween_property(camera, "offset", original_offset, shake_dur / 3.0)
+	if is_instance_valid(fragments):
+		fragments.queue_free()

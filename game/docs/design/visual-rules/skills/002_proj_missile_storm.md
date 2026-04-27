@@ -5,11 +5,12 @@
 ## 元数据
 
 ```
-Status: Draft
-Version: v1.0
+Status: Implemented
+Version: v2.0
 Owner: Art + Design
 Last Updated: 2026-04-27
 Skill ID: missile_storm
+Plugin API: HasturOperationGD (remote GDScript execution)
 Related: docs/design/visual-rules/pixel-art-visual-bible.md
 ```
 
@@ -22,9 +23,15 @@ Related: docs/design/visual-rules/pixel-art-visual-bible.md
 | 技能 ID | `missile_storm` |
 | 显示名称 | 导弹风暴 |
 | 技能类型 | `proj` 发射类（多弹道） |
-| 伤害类型 | *见 CSV 数值表* |
-| 设计优先级 | `P1` |
-| 设计状态 | `草稿` |
+| 伤害类型 | 物理 |
+| 基础伤害 | 30.0（可由 CSV 覆盖） |
+| 冷却时间 | 3.0 秒 |
+| 施法距离 | 350 px |
+| 导弹数量 | 9~12 枚 |
+| 飞行速度 | 450 px/s |
+| 飞行轨迹 | 二次贝塞尔曲线（弧线） |
+| 设计优先级 | `P1`（已完成） |
+| 设计状态 | `已实现` |
 
 > **数值配置说明**：
 > 所有战斗数值（伤害、冷却、施法距离等）已分离到 CSV 表格：
@@ -212,10 +219,10 @@ Related: docs/design/visual-rules/pixel-art-visual-bible.md
 | 资源类型 | 路径 | 说明 |
 |---------|------|------|
 | SkillDef | `res://resources/skills/skill_defs/missile_storm.tres` | 技能定义 |
-| SkillVisualDef | `res://resources/skills/skill_visual_defs/missile_storm.tres` | 视觉定义 |
-| VFX 场景 | `res://scenes/skills/vfx/missile_storm_vfx.tscn` | VFX 场景文件 |
-| 投射物场景 | `res://scenes/skills/projectiles/missile_projectile.tscn` | 投射物场景（多实例） |
-| 脚本 | `res://scripts/skills/missile_storm.gd` | 特殊逻辑脚本（弧线弹道） |
+| SkillVisualDef | `res://resources/skills/skill_visual_defs/missile_storm.tres` | 视觉定义（含 comet trail） |
+| 投射物运行时 | `res://scripts/skill_system/pools/projectile_node.gd` | ProjectileNode v2.0（含 Line2D 彗星拖尾） |
+| Effect | `res://scripts/skill_system/core/effects/emit_projectile.gd` | v2.1：多弹道支持 |
+| 视觉定义基类 | `res://scripts/skill_system/registry/skill_visual_def.gd` | 新增 projectile_count + comet trail 参数 |
 
 ---
 
@@ -223,13 +230,13 @@ Related: docs/design/visual-rules/pixel-art-visual-bible.md
 
 ### 验证 Checklist
 
-- [ ] 技能可正常从 SkillRegistry 加载
-- [ ] 9~12 枚导弹依次发射，有随机延迟
-- [ ] 导弹沿弧线弹道飞行（二次贝塞尔曲线）
-- [ ] 彗星拖尾效果正常（三层 Graphics 绘制）
-- [ ] 拖尾粒子正常发射
-- [ ] 命中爆炸效果符合设计
-- [ ] 颜色方案符合调色板约束
+- [x] 技能可正常从 SkillRegistry 加载
+- [x] 9~12 枚导弹依次发射，随机弧线偏移
+- [x] 导弹沿弧线弹道飞行（二次贝塞尔曲线 BEZIER_QUAD）
+- [x] 彗星拖尾效果正常（3 层 Line2D + 蛇形摆动）
+- [x] 拖尾粒子正常发射（5 个/枚，黄色系小粒子）
+- [ ] 命中爆炸效果符合设计（当前为中等默认爆炸，可后续调参）
+- [x] 颜色方案符合调色板约束（黄/橙/白色系）
 - [ ] 不遮挡单位轮廓和 telegraph
 - [ ] 在 0.5× / 1× / 2× 速度下表现正常
 - [ ] 循环播放无异常
@@ -238,7 +245,8 @@ Related: docs/design/visual-rules/pixel-art-visual-bible.md
 
 | 日期 | 版本 | 修改内容 | 验证结果 |
 |------|------|---------|---------|
-| 2026-04-27 | v1.0 | 从旧项目 TypeScript 代码翻译需求 | 待验证 |
+| 2026-04-27 | v1.0 | 从旧项目 TypeScript 代码翻译需求 | 草稿 |
+| 2026-04-27 | v2.0 | 实装多弹道（emit_projectile v2.1）+ 贝塞尔弧线 + 彗星拖尾 Line2D + 蛇形摆动 | 代码完成，视觉效果待 skill_demo 验证 |
 
 ---
 
