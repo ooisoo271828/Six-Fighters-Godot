@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "shake_strong"
+kind = 2
+params = {
+"strength": 3.0,
+"duration": 0.15
+}

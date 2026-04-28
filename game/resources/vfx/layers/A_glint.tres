@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "glint"
+kind = 3
+params = {
+"color": Color(1, 1, 1, 1),
+"duration": 0.08,
+"radius": 12.0
+}

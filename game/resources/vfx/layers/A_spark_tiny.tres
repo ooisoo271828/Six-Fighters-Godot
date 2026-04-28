@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "spark_tiny"
+kind = 0
+params = {
+"count": 6,
+"speed_min": 30.0,
+"speed_max": 60.0,
+"size_min": 0.2,
+"size_max": 0.5,
+"color": Color(0.85, 0.85, 0.85, 1),
+"lifetime": 0.2,
+"spread": 360.0
+}

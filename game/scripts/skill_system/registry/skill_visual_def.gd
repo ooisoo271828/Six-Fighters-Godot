@@ -101,6 +101,11 @@ var impact_level: int = 1
 @export var core_glow_color: Color = Color.WHITE
 @export var core_glow_alpha: float = 0.48
 
+# ── 外层辉光（第二层光晕） ──
+@export var core_glow2_radius: float = 0.0  # 0 = 禁用
+@export var core_glow2_color: Color = Color.WHITE
+@export var core_glow2_alpha: float = 0.25
+
 # ═══════════════════════════════════════════
 # ── 核心抖动 ──
 # ═══════════════════════════════════════════
@@ -209,6 +214,21 @@ var impact_level: int = 1
 @export var impact_radius_mult: float = 2.0
 @export var impact_shake_strength: float = 0.0
 @export var impact_shake_duration: float = 0.0
+
+# ═══════════════════════════════════════════
+# ── VFX 层级池配置（v0.3） ──
+# ═══════════════════════════════════════════
+@export_group("VFX Tier Overrides", "hit_vfx_")
+
+## A层（小组）调用的效果 ID。空 = 使用全局默认。
+@export var hit_vfx_tier_A: String = ""
+## B层（中组）调用的效果 ID。空 = 使用全局默认。
+@export var hit_vfx_tier_B: String = ""
+## C层（大组）调用的效果 ID。空 = 使用全局默认。
+@export var hit_vfx_tier_C: String = ""
+
+## 技能自定义 Layer（不走层级池，技能独有效果）
+@export var custom_hit_layers: Array[Resource] = []
 
 # ── 旧参数兼容（不推荐新技能使用） ──
 @export var glow_enabled: bool = true

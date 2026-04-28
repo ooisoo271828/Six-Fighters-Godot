@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "burst_fire"
+kind = 0
+params = {
+"count": 22,
+"speed_min": 100.0,
+"speed_max": 200.0,
+"size_min": 0.5,
+"size_max": 1.2,
+"color": Color(1.0, 0.4, 0.1, 1),
+"lifetime": 0.4,
+"spread": 360.0
+}

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="VFXGlobalConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_global_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+tier_defaults = {
+"A": "spark_tiny",
+"B": "spark_phys",
+"C": ""
+}

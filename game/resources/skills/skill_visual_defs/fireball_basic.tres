@@ -57,3 +57,8 @@ impact_particle_count = 200
 impact_lifetime = 0.5
 impact_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
 impact_shake_strength = 0.0
+# VFX 层级池配置
+hit_vfx_tier_A = ""
+hit_vfx_tier_B = "spark_fire"
+hit_vfx_tier_C = "burst_fire"
+custom_hit_layers = []

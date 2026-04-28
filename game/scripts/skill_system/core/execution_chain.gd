@@ -19,6 +19,7 @@ var direction: Vector2 = Vector2.RIGHT
 var speed: float = 300.0
 var distance_traveled: float = 0.0
 var travel_time_multiplier: float = 1.0
+var spawn_delay: float = 0.0          # 发射延迟（实现子弹 staggered launch）
 
 ## 轨迹类型（CurvedPath 决定）
 var trajectory_type: int = 0  # 0=直线，1+=曲线类型枚举
@@ -118,6 +119,7 @@ func duplicate() -> ExecutionChain:
 	c.speed = speed
 	c.distance_traveled = 0.0
 	c.travel_time_multiplier = travel_time_multiplier
+	c.spawn_delay = spawn_delay
 	c.trajectory_type = trajectory_type
 	c.control_point_offset = control_point_offset
 	c.damage = damage
