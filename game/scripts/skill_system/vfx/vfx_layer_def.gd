@@ -13,7 +13,10 @@ extends Resource
 	"sprite_burst:1",
 	"screen_shake:2",
 	"flash:3",
-	"ring:4"
+	"ring:4",
+	"shockwave:5",
+	"afterimage:6",
+	"rim_glow:7"
 )
 var kind: int = 0
 

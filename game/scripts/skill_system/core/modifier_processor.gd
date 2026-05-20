@@ -21,43 +21,22 @@ func resolve(
 	modifiers: Array[SkillModifier],
 	context: SkillEffect.SkillExecutionContext
 ) -> Array[ExecutionChain]:
-	# 1. 构建根链
-	var root_chain := ExecutionChain.new()
-	root_chain.chain_id = generate_chain_id()
-	root_chain.effect = effect
-	root_chain.effect_id = effect.get_effect_id()
-	root_chain.caster = context.caster
-	root_chain.target = context.target
-	root_chain.target_pos = context.target_pos
-	root_chain.direction = context.direction
-	root_chain.position = context.caster.global_position
-	root_chain.damage = context.damage
-	root_chain.damage_type = context.damage_type
-	root_chain.base_damage = context.damage
-	root_chain.skill_id = context.skill_id
-	root_chain.current_radius = 4.0
-	root_chain.base_radius = 4.0
-	root_chain.scale = 1.0
-	root_chain.base_scale = 1.0
-	root_chain.projectile_hp = 0.0
-	root_chain.can_be_targeted = false
-	root_chain.speed = 300.0
-	root_chain.behavior_state = "Flying"
-	root_chain.travel_time_multiplier = 1.0
-	root_chain.modifier_stack = modifiers.duplicate()
+	# 1. 让 Effect 生成基础链（多弹道技能返回 N 条链，单弹道返回 1 条）
+	var leaf_chains: Array[ExecutionChain] = effect.execute(context)
 
-	# 2. 按优先级排序（从小到大）
+	# 2. 按优先级排序 Modifier（从小到大）
 	var sorted_mods := modifiers.duplicate()
 	sorted_mods.sort_custom(_sort_by_priority)
 
-	# 3. 执行 Modifier 链
-	var all_chains := _process_chain(root_chain, sorted_mods)
-
-	# 4. 过滤掉 Destroyed 状态的链
+	# 3. 对每条叶子链执行 Modifier 链，汇总所有结果
 	var result: Array[ExecutionChain]
-	for c in all_chains:
-		if c.behavior_state != "Destroyed":
-			result.append(c)
+	for chain in leaf_chains:
+		chain.chain_id = generate_chain_id()
+		chain.modifier_stack = modifiers.duplicate()
+		var processed := _process_chain(chain, sorted_mods)
+		for c in processed:
+			if c.behavior_state != "Destroyed":
+				result.append(c)
 
 	return result
 

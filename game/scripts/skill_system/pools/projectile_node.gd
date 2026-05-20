@@ -29,6 +29,9 @@ var _explosion_texture: Texture2D
 var _front_flame_texture: Texture2D
 var _nose_texture: Texture2D
 
+## ── Shader 资源（静态共享）──
+static var _glow_shader: Shader
+
 ## ── 运动状态 ──
 var _elapsed: float = 0.0
 var _distance: float = 0.0
@@ -56,13 +59,22 @@ var _trail_offsets: Array[Vector2] = []   # 局部偏移量（相对子弹当前
 var _last_global_pos: Vector2              # 上一帧全局位置，用于计算移动补偿
 const MAX_TRAIL_POINTS := 28
 
-## ── 程序化纹理缓存（所有 ProjectileNode 共享）──
-static var _shared_circle_tex: Texture2D
-static var _shared_nose_tex: Texture2D
+## ── 路径粒子 ──
+var _path_particles_enabled: bool = false
+var _path_particle_interval: float = 0.04
+var _path_particle_lifetime: float = 0.3
+var _path_particle_color: Color = Color(1, 0.8, 0.4, 0.6)
+var _path_particle_size: float = 0.25
+var _path_particle_timer: float = 0.0
 
-static var _shared_ray_tex: Texture2D
+## ── 纹理管理器引用 ──
+var _tex_manager: VFXTextureManager
 
 func _ready() -> void:
+	_tex_manager = VFXTextureManager.get_instance()
+	# 加载 Glow Shader（静态共享，所有弹体共用）
+	if _glow_shader == null:
+		_glow_shader = load("res://scripts/skill_system/vfx/shaders/glow_shader.gdshader")
 	_setup_visuals()
 
 
@@ -101,85 +113,16 @@ func initialize(chain: ExecutionChain, visual_def: Resource, signal_bus: Node) -
 	set_process(true)
 
 
-## ── 获取或创建共享的程序化纹理 ──
+## ── 纹理获取（通过 VFXTextureManager）──
 
-static func _get_shared_circle_texture() -> Texture2D:
-	if _shared_circle_tex != null:
-		return _shared_circle_tex
-	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	for x in range(16):
-		for y in range(16):
-			var dx := float(x) - 7.5
-			var dy := float(y) - 7.5
-			if dx * dx + dy * dy <= 49.0:
-				img.set_pixel(x, y, Color.WHITE)
-	_shared_circle_tex = ImageTexture.create_from_image(img)
-	return _shared_circle_tex
+func _get_circle_tex() -> Texture2D:
+	return _tex_manager.get_texture(VFXTextureManager.CIRCLE)
 
+func _get_nose_tex() -> Texture2D:
+	return _tex_manager.get_texture(VFXTextureManager.NOSE_TRIANGLE)
 
-static func _get_shared_nose_texture() -> Texture2D:
-	if _shared_nose_tex != null:
-		return _shared_nose_tex
-	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	# 右指三角形：尖端在右侧
-	for y in range(16):
-		var half_h: float = 8.0 - abs(float(y) - 7.5)
-		if half_h <= 0.0:
-			continue
-		for x in range(16):
-			var progress: float = float(x) / 15.0
-			var max_half: float = half_h * (1.0 - progress * 0.7)
-			var dy: float = abs(float(y) - 7.5)
-			if dy <= max_half and x >= 4:
-				img.set_pixel(x, y, Color.WHITE)
-	_shared_nose_tex = ImageTexture.create_from_image(img)
-	return _shared_nose_tex
-
-
-static func _get_shared_ray_texture() -> Texture2D:
-	if _shared_ray_tex != null:
-		return _shared_ray_tex
-	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	# 绘制辐射射线：从中心向外发散的12条光纹
-	var cx := 15.5
-	var cy := 15.5
-	# 核心光晕（中心亮斑）
-	for x in range(32):
-		for y in range(32):
-			var dx := float(x) - cx
-			var dy := float(y) - cy
-			var dist := sqrt(dx*dx + dy*dy)
-			# 中心实心圆（半径5）
-			if dist <= 4.5:
-				img.set_pixel(x, y, Color(1, 1, 1, 1))
-			# 中心到半透明的渐变（半径5~12）
-			elif dist <= 11.5:
-				var a := 1.0 - (dist - 4.5) / 7.0
-				img.set_pixel(x, y, Color(1, 1, 1, a * 0.6))
-	# 辐射射线（12条）
-	for r in range(12):
-		var angle := float(r) / 12.0 * TAU
-		var sin_a := sin(angle)
-		var cos_a := cos(angle)
-		for d in range(3, 18):
-			var px := int(cx + cos_a * float(d) + 0.5)
-			var py := int(cy + sin_a * float(d) + 0.5)
-			if px >= 0 and px < 32 and py >= 0 and py < 32:
-				# 射线渐变透明
-				var a := 1.0 - float(d - 3) / 15.0
-				# 射线宽度3像素（画3条相邻线）
-				for w in range(-1, 2):
-					var wx := int(cx + cos_a * float(d) + sin_a * float(w) * 0.5 + 0.5)
-					var wy := int(cy + sin_a * float(d) - cos_a * float(w) * 0.5 + 0.5)
-					if wx >= 0 and wx < 32 and wy >= 0 and wy < 32:
-						var existing := img.get_pixel(wx, wy)
-						var new_a := maxf(existing.a, a * 0.35)
-						img.set_pixel(wx, wy, Color(1, 1, 1, new_a))
-	_shared_ray_tex = ImageTexture.create_from_image(img)
-	return _shared_ray_tex
+func _get_ray_tex() -> Texture2D:
+	return _tex_manager.get_texture(VFXTextureManager.RAY_STARBURST)
 
 ## ── 加载纹理资源 ──
 
@@ -327,7 +270,7 @@ func _apply_visual() -> void:
 	var core_color: Color = _visual_def.core_color if "core_color" in _visual_def else Color.WHITE
 
 	# ── 确定基础纹理 ──
-	var base_tex: Texture2D = _core_texture if _core_texture else _get_shared_circle_texture()
+	var base_tex: Texture2D = _core_texture if _core_texture else _get_circle_tex()
 	var tex_size := base_tex.get_size() if base_tex else Vector2(16, 16)
 
 	# ── 颜色覆盖（Modifier 可能设置）──
@@ -339,10 +282,18 @@ func _apply_visual() -> void:
 	if glow_radius > 0.0:
 		var glow_color: Color = _visual_def.core_glow_color if "core_glow_color" in _visual_def else Color.WHITE
 		var glow_alpha: float = _visual_def.core_glow_alpha if "core_glow_alpha" in _visual_def else 0.48
-		_glow_sprite.texture = _glow_texture if _glow_texture else _get_shared_circle_texture()
+		_glow_sprite.texture = _glow_texture if _glow_texture else _get_circle_tex()
 		var glow_tex_size := _glow_sprite.texture.get_size() if _glow_sprite.texture else Vector2(16, 16)
 		_glow_sprite.scale = Vector2(glow_radius * 2.0 / glow_tex_size.x, glow_radius * 2.0 / glow_tex_size.y)
-		_glow_sprite.modulate = Color(glow_color.r, glow_color.g, glow_color.b, glow_alpha)
+		# 应用 Glow Shader
+		if _glow_shader:
+			var mat := _tex_manager.get_shared_material(
+				"res://scripts/skill_system/vfx/shaders/glow_shader.gdshader",
+				{"glow_color": glow_color, "glow_strength": 1.5, "glow_radius": glow_radius}
+			)
+			_glow_sprite.material = mat
+		else:
+			_glow_sprite.modulate = Color(glow_color.r, glow_color.g, glow_color.b, glow_alpha)
 		_glow_sprite.visible = true
 	else:
 		# 旧参数兼容：glow_enabled
@@ -351,7 +302,15 @@ func _apply_visual() -> void:
 			_glow_sprite.texture = _glow_texture if _glow_texture else base_tex
 			var glow_tex_size := _glow_sprite.texture.get_size() if _glow_sprite.texture else tex_size
 			_glow_sprite.scale = Vector2.ONE * (core_radius * 3.5) / glow_tex_size.x
-			_glow_sprite.modulate = Color(core_color.r, core_color.g, core_color.b, 0.35)
+			# 应用 Glow Shader
+			if _glow_shader:
+				var mat := _tex_manager.get_shared_material(
+					"res://scripts/skill_system/vfx/shaders/glow_shader.gdshader",
+					{"glow_color": core_color, "glow_strength": 1.2, "glow_radius": core_radius * 3.5}
+				)
+				_glow_sprite.material = mat
+			else:
+				_glow_sprite.modulate = Color(core_color.r, core_color.g, core_color.b, 0.35)
 			_glow_sprite.visible = true
 		else:
 			_glow_sprite.visible = false
@@ -361,10 +320,18 @@ func _apply_visual() -> void:
 	if glow2_radius > 0.0:
 		var glow2_color: Color = _visual_def.core_glow2_color if "core_glow2_color" in _visual_def else Color.WHITE
 		var glow2_alpha: float = _visual_def.core_glow2_alpha if "core_glow2_alpha" in _visual_def else 0.25
-		_glow2_sprite.texture = _glow_texture if _glow_texture else _get_shared_circle_texture()
+		_glow2_sprite.texture = _glow_texture if _glow_texture else _get_circle_tex()
 		var g2_tex_size := _glow2_sprite.texture.get_size() if _glow2_sprite.texture else Vector2(16, 16)
 		_glow2_sprite.scale = Vector2(glow2_radius * 2.0 / g2_tex_size.x, glow2_radius * 2.0 / g2_tex_size.y)
-		_glow2_sprite.modulate = Color(glow2_color.r, glow2_color.g, glow2_color.b, glow2_alpha)
+		# 应用 Glow Shader（外层辉光用较低强度）
+		if _glow_shader:
+			var mat := _tex_manager.get_shared_material(
+				"res://scripts/skill_system/vfx/shaders/glow_shader.gdshader",
+				{"glow_color": glow2_color, "glow_strength": 0.8, "glow_radius": glow2_radius}
+			)
+			_glow2_sprite.material = mat
+		else:
+			_glow2_sprite.modulate = Color(glow2_color.r, glow2_color.g, glow2_color.b, glow2_alpha)
 		_glow2_sprite.visible = true
 	else:
 		_glow2_sprite.visible = false
@@ -372,7 +339,7 @@ func _apply_visual() -> void:
 	# ── 1c. 辐射射线层 ──
 	var ray_enabled: bool = glow_radius > 0.0
 	if ray_enabled:
-		_ray_sprite.texture = _get_shared_ray_texture()
+		_ray_sprite.texture = _get_ray_tex()
 		var ray_tex_size := _ray_sprite.texture.get_size() if _ray_sprite.texture else Vector2(32, 32)
 		_ray_sprite.scale = Vector2.ONE * (glow_radius * 2.2 / ray_tex_size.x)
 		var glow_color: Color = _visual_def.core_glow_color if "core_glow_color" in _visual_def else Color.WHITE
@@ -430,7 +397,7 @@ func _apply_visual() -> void:
 		var nose_length: float = _visual_def.core_nose_length if "core_nose_length" in _visual_def else 0.0
 		var nose_width: float = _visual_def.core_nose_width if "core_nose_width" in _visual_def else 0.0
 		if nose_length > 0.0 and nose_width > 0.0:
-			var nose_tex: Texture2D = _nose_texture if _nose_texture else _get_shared_nose_texture()
+			var nose_tex: Texture2D = _nose_texture if _nose_texture else _get_nose_tex()
 			_nose_sprite.texture = nose_tex
 			var nose_tex_size := nose_tex.get_size() if nose_tex else Vector2(16, 16)
 			_nose_sprite.scale = Vector2(nose_length / nose_tex_size.x, nose_width / nose_tex_size.y)
@@ -460,6 +427,15 @@ func _apply_visual() -> void:
 			comet_on = true
 	if comet_on:
 		_configure_comet_trail()
+
+	# ── 9. 路径粒子 ──
+	_path_particles_enabled = _visual_def.path_particles_enabled if "path_particles_enabled" in _visual_def else false
+	if _path_particles_enabled:
+		_path_particle_interval = _visual_def.path_particle_interval if "path_particle_interval" in _visual_def else 0.04
+		_path_particle_lifetime = _visual_def.path_particle_lifetime if "path_particle_lifetime" in _visual_def else 0.3
+		_path_particle_color = _visual_def.path_particle_color if "path_particle_color" in _visual_def else Color(1, 0.8, 0.4, 0.6)
+		_path_particle_size = _visual_def.path_particle_size if "path_particle_size" in _visual_def else 0.25
+		_path_particle_timer = 0.0
 
 	# ── 投射物整体缩放 ──
 	var proj_scale: float = _visual_def.projectile_scale if "projectile_scale" in _visual_def else 1.0
@@ -522,7 +498,7 @@ func _configure_front_flame() -> void:
 	if flame_tex:
 		_front_flame_particles.texture = flame_tex
 	else:
-		_front_flame_particles.texture = _get_shared_circle_texture()
+		_front_flame_particles.texture = _get_circle_tex()
 
 	var count: int = _visual_def.front_flame_count if "front_flame_count" in _visual_def else 12
 	var inner_min: float = _visual_def.front_flame_inner_min if "front_flame_inner_min" in _visual_def else 1.2
@@ -645,6 +621,9 @@ func _process(dt: float) -> void:
 		_:
 			_update_linear(dt)
 
+	# 更新膨胀（ExpansionModifier 驱动，每帧计算）
+	_update_expansion()
+
 	# 更新核心抖动
 	_update_jitter(dt)
 
@@ -663,6 +642,10 @@ func _process(dt: float) -> void:
 			_comet_active = true
 	if _comet_line_outer != null and _comet_active:
 		_update_comet_trail()
+
+	# 更新路径粒子
+	if _path_particles_enabled and _spawned:
+		_update_path_particles(dt)
 
 	# 检查命中目标
 	_check_hit()
@@ -753,7 +736,7 @@ func _update_bezier_quad(dt: float) -> void:
 func _update_sine_wave(dt: float) -> void:
 	_update_linear(dt)
 	var perpendicular := _chain.direction.rotated(PI / 2.0)
-	var wave_offset: float = sin(_distance * 0.05 * (_chain.wave_frequency if "wave_frequency" in _chain else 2.0)) * _chain.wave_amplitude
+	var wave_offset: float = sin(_distance * 0.05 * _chain.wave_frequency) * _chain.wave_amplitude
 	global_position += perpendicular * wave_offset * dt * 10.0
 
 
@@ -802,6 +785,41 @@ func _update_comet_trail() -> void:
 	_comet_line_inner.points = PackedVector2Array(swayed)
 
 
+## ── 膨胀更新（每帧） ──
+
+func _update_expansion() -> void:
+	if _chain.expansion_growth_rate <= 0.0:
+		return
+	var new_scale: float = _chain.base_scale + _chain.distance_traveled * _chain.expansion_growth_rate
+	_chain.scale = minf(new_scale, _chain.expansion_max_scale)
+	_chain.current_radius = _chain.base_radius * _chain.scale
+	scale = Vector2.ONE * _chain.scale
+
+
+## ── 路径粒子 ──
+
+func _update_path_particles(dt: float) -> void:
+	_path_particle_timer += dt
+	if _path_particle_timer < _path_particle_interval:
+		return
+	_path_particle_timer -= _path_particle_interval
+
+	var tex := _get_circle_tex()
+	var tex_size := tex.get_size() if tex else Vector2(16, 16)
+	var scale_val := Vector2.ONE * _path_particle_size / (tex_size.x / 16.0)
+
+	var dot := Sprite2D.new()
+	dot.texture = tex
+	dot.scale = scale_val
+	dot.modulate = _path_particle_color
+	dot.global_position = global_position
+	get_tree().root.add_child(dot)
+
+	var tween := create_tween()
+	tween.tween_property(dot, "modulate:a", 0.0, _path_particle_lifetime)
+	tween.tween_callback(dot.queue_free).set_delay(_path_particle_lifetime + 0.05)
+
+
 ## ── 命中检测 ──
 
 func _check_hit() -> void:
@@ -816,8 +834,19 @@ func _check_hit() -> void:
 ## ── 信号处理 ──
 
 func _on_chain_hit(chain: ExecutionChain, target: Node2D) -> void:
+	# 先决定弹射/销毁，再发信号（防止信号处理器报错导致 destroy 不执行）
+	if chain.bounce_remaining > 0:
+		var next: Node2D = chain._find_nearest_enemy_excluding(target)
+		if next:
+			chain.bounce_remaining -= 1
+			chain.direction = global_position.direction_to(next.global_position)
+			chain.target = next
+			return
+	# 无论 bounce 与否，最终都走 destroy
+	_chain.destroy()
+	# VFX 信号放在 destroy 之后（同步触发，不影响销毁流程）
 	if _signal_bus:
-		var info := {
+		var info: Dictionary = {
 			"caster": chain.caster,
 			"target": target,
 			"damage": chain.damage,
@@ -825,17 +854,6 @@ func _on_chain_hit(chain: ExecutionChain, target: Node2D) -> void:
 			"skill_id": chain.skill_id,
 		}
 		_signal_bus.skill_hit.emit(chain.caster, [target], info)
-
-	if chain.bounce_remaining > 0:
-		var next := chain._find_nearest_enemy_excluding(target)
-		if next:
-			chain.bounce_remaining -= 1
-			chain.direction = global_position.direction_to(next.global_position)
-			chain.target = next
-		else:
-			_chain.destroy()
-	else:
-		_chain.destroy()
 
 
 func _on_chain_destroyed(_destroyed_chain: ExecutionChain) -> void:
@@ -858,9 +876,9 @@ func _on_chain_destroyed(_destroyed_chain: ExecutionChain) -> void:
 	_trail_offsets.clear()
 
 	# 火球体快速淡出（300ms）
-	var fade_tween := create_tween()
+	var fade_tween: Tween = create_tween()
 	fade_tween.set_parallel(true)
-	var all_sprites := [_glow_sprite, _glow2_sprite, _ray_sprite, _core_sprite, _inner_sprite, _hotspot_sprite, _nose_sprite]
+	var all_sprites: Array = [_glow_sprite, _glow2_sprite, _ray_sprite, _core_sprite, _inner_sprite, _hotspot_sprite, _nose_sprite]
 	for s in all_sprites:
 		if s and is_instance_valid(s) and s.visible:
 			fade_tween.tween_property(s, "modulate:a", 0.0, 0.3)
@@ -892,11 +910,10 @@ func _spawn_explosion() -> void:
 		var angle := float(i) / float(spark_count) * TAU
 		angle += randf_range(-0.15, 0.15)  # 每颗粒子小幅度随机偏移
 		var dir := Vector2(cos(angle), sin(angle))
-		var speed := randf_range(100.0, 200.0)
 
 		var spark := Sprite2D.new()
-		spark.texture = _core_texture if _core_texture else _get_shared_circle_texture()
-		var tex_size := spark.texture.get_size() if spark.texture else Vector2(16, 16)
+		spark.texture = _core_texture if _core_texture else _get_circle_tex()
+		var tex_size: Vector2 = spark.texture.get_size() if spark.texture else Vector2(16, 16)
 		spark.scale = Vector2.ONE * randf_range(0.3, 0.8) / (tex_size.x / 16.0)
 		spark.modulate = impact_color
 		spark.global_position = global_position

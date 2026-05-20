@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="VFXOverride" format=3 uid="uid://bian7x5n6c8jl"]
+
+[ext_resource type="Script" uid="uid://cjn2ajcluxega" path="res://scripts/skill_system/registry/vfx_override.gd" id="1_snng7"]
+
+[resource]
+script = ExtResource("1_snng7")
+tier_B = "spark_fire"
+tier_C = "burst_fire"

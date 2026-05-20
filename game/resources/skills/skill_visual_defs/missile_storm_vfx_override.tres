@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="VFXOverride" format=3 uid="uid://dlvs176vawtme"]
+
+[ext_resource type="Script" uid="uid://cjn2ajcluxega" path="res://scripts/skill_system/registry/vfx_override.gd" id="1_xjgae"]
+
+[resource]
+script = ExtResource("1_xjgae")

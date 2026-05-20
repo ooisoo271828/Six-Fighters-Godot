@@ -1,8 +1,8 @@
 # VFX System Overhaul Proposal (v2.0)
 
 **Status:** Proposed  
-**Version:** 0.1  
-**Date:** 2026-05-17  
+**Version:** 0.2  
+**Date:** 2026-05-20  
 **Owner:** Engineering + Art  
 **Related:** `godot-skill-system-node-architecture.md` · `skill-system-architecture-2026-04-15.md` · `hit-feedback-juice-spec.md` · `pixel-art-visual-bible.md`  
 **Scope:** Godot 4.6.2 技能视觉特效系统的全面升级——从"代码驱动 Sprite2D 层叠"进化为"Shader + 数据驱动的分层特效架构"。
@@ -75,6 +75,7 @@ game/scripts/skill_system/
 │   ├── vfx_layer_def.gd              ← [KEEP] 原子特效定义
 │   ├── vfx_tier_def.gd               ← [KEEP] 层级池定义
 │   ├── vfx_global_config.gd          ← [KEEP] 全局配置
+│   ├── texture_manager.gd            ← [NEW] 纹理 + ShaderMaterial 统一缓存管理
 │   ├── executors/                     ← [NEW] 策略模式执行器
 │   │   ├── vfx_executor_base.gd      ← 执行器基类
 │   │   ├── exec_particle_burst.gd    ← 粒子爆发（现有逻辑迁移）
@@ -113,7 +114,20 @@ game/scripts/skill_system/
 3. **渐进引入** — Phase 1 只做 3 个基础 Shader，验证管线后再扩展
 4. **移动优先** — 所有 Shader 必须兼容 Godot 移动渲染器（避免全屏后处理）
 
-### 3.3 Executor Strategy Pattern
+### 3.3 ShaderMaterial 共享策略
+
+引入 Shader 后，100 个弹体各持有独立 `ShaderMaterial` 实例会有显著性能开销。必须区分**静态参数**和**运行时动画参数**：
+
+| 类型 | 示例 | 策略 |
+|------|------|------|
+| 静态参数（颜色、强度、半径） | `glow_color`, `glow_radius` | 相同配置的弹体**共享同一个 `ShaderMaterial` 实例**，通过 `VFXTextureManager` 级别的 material 缓存实现 |
+| 运行时动画参数 | `dissolve_amount`, `pulse_speed`, `progress` | 每个弹体在动画启动时调用 `material.duplicate()` 获取独立副本，通过 `set_shader_parameter()` per-node 修改 |
+
+**缓存键设计：** `ShaderMaterial` 缓存键 = shader 路径 + 所有静态参数的哈希值。`VFXTextureManager` 扩展为同时管理纹理和材质缓存。
+
+**动画启动时机：** 弹体创建时使用共享 material；当需要播放 dissolve/flash 等动画时，才 duplicate 一份独立 material。无动画需求的弹体始终共享，最大化合批。
+
+### 3.4 Executor Strategy Pattern
 
 替代当前的 `match layer.kind` 硬编码分发：
 
@@ -142,7 +156,7 @@ VFXExecutorRegistry (Node)
 **目标：** 建立 Shader 基础设施，让弹体和命中特效可以使用 GPU 加速的视觉效果。
 
 **前置条件：** 无  
-**预计工作量：** 2–3 天  
+**预计工作量：** 3–4 天（首次引入 Shader，需建立管线 + 移动端验证 + 调参）  
 **视觉提升：** ★★★★★（质变级）
 
 ### 4.1 Task 1.1: Create Glow Shader
@@ -175,6 +189,8 @@ void fragment() {
 **集成点：**
 - `ProjectileNode._setup_visuals()` — 对 `_glow_sprite` 和 `_glow2_sprite` 应用此 Shader
 - `SkillVFXManager._exec_flash()` — 命中闪光使用此 Shader 替代纯色 Sprite2D
+
+**前置依赖：** Glow Shader 的效果高度依赖纹理分辨率。当前 16×16 程序化圆形纹理的 alpha 梯度过于粗糙，发光会显得很"硬"。**必须先完成 Task 1.4（纹理升级到 32×32+）再验证 Glow 效果。**
 
 **验收标准：**
 - 弹体边缘可见柔和发光，颜色可从 `SkillVisualDef` 配置
@@ -260,7 +276,7 @@ void fragment() {
 
 **文件：** `game/scripts/skill_system/vfx/texture_manager.gd`
 
-**功能：** 统一管理所有 VFX 纹理资产，替代当前各类各自 `_get_shared_circle_texture()` 的做法。
+**功能：** 统一管理所有 VFX 纹理资产和 ShaderMaterial 缓存，替代当前各类各自 `_get_shared_circle_texture()` 的做法。同时作为 ShaderMaterial 共享缓存的持有者（见 §3.3）。
 
 **设计：**
 ```gdscript
@@ -276,6 +292,9 @@ static func get_instance() -> VFXTextureManager:
 
 # 纹理缓存
 var _cache: Dictionary = {}  # StringName -> Texture2D
+
+# ShaderMaterial 缓存（相同静态参数的弹体共享同一实例）
+var _material_cache: Dictionary = {}  # String -> ShaderMaterial
 
 # 预定义纹理键
 const CIRCLE := &"circle"
@@ -311,6 +330,21 @@ func _load_or_generate(key: StringName) -> Texture2D:
                 return load(path)
             push_warning("VFXTextureManager: unknown texture key '%s'" % key)
             return _generate_circle(32)
+
+# ShaderMaterial 共享（详见 §3.3）
+func get_shared_material(shader_path: String, params: Dictionary) -> ShaderMaterial:
+    var key := shader_path + "|" + str(params.hash())
+    if key in _material_cache:
+        return _material_cache[key]
+    var mat := ShaderMaterial.new()
+    mat.shader = load(shader_path)
+    for p_name in params:
+        mat.set_shader_parameter(p_name, params[p_name])
+    _material_cache[key] = mat
+    return mat
+
+func duplicate_material(shared: ShaderMaterial) -> ShaderMaterial:
+    return shared.duplicate()
 ```
 
 **迁移步骤：**
@@ -330,7 +364,7 @@ func _load_or_generate(key: StringName) -> Texture2D:
 
 **目标：** 命中特效池化、补全执行器、引入策略模式。
 
-**前置条件：** Phase 1 完成（Shader 基础设施就绪）  
+**前置条件：** Phase 1（Shader 基础设施）+ Phase 3（子 Resource 类型定义）均已完成  
 **预计工作量：** 3–4 天  
 **视觉提升：** ★★★★☆
 
@@ -364,6 +398,28 @@ HitVFXNode (Node2D)
 - 命中特效节点必须挂在场景树的专用 VFX 层下（`ArenaScene/VFXLayer`），而非 `scene.root`
 - 池节点在场景切换时必须可被批量清理（`VFXLayer.queue_free()` 或遍历归还）
 - 溢出策略：池满时创建新节点（同 `ProjectilePool`）
+
+**VFXLayer 注册机制：**
+
+当前 `SkillVFXManager` 是单例/AutoLoad，需要获取场景树中 `VFXLayer` 节点的引用。采用**信号通知 + 弱引用**模式：
+
+```
+ArenaScene._ready()
+  → 创建 VFXLayer (Node2D)
+  → SkillVFXManager.register_vfx_layer(vfx_layer)  ← 传递引用
+
+ArenaScene._exit_tree()
+  → SkillVFXManager.unregister_vfx_layer()          ← 清除引用
+
+SkillVFXManager._execute_layers()
+  → if _vfx_layer == null or not is_instance_valid(_vfx_layer):
+  →     push_warning("VFXLayer not registered, falling back to scene root")
+  →     target_parent = get_tree().root
+  → else:
+  →     target_parent = _vfx_layer
+```
+
+**fallback 策略：** 如果 `VFXLayer` 未注册（如在 SkillDemo 场景中），降级到 `get_tree().current_scene`，而非硬编码 `scene.root`。这样 SkillDemo 无需额外配置即可使用命中特效。
 
 **集成点：**
 - `SkillVFXManager._execute_layers()` — 从池获取节点，而非 `new Sprite2D()`
@@ -421,7 +477,7 @@ func dispatch(kind: StringName, layer: VFXLayerDef, world_pos: Vector2, pool: Hi
 **验收标准：**
 - `SkillVFXManager` 不再包含任何 `match layer.kind` 分发逻辑
 - 新增特效只需新建 Executor 文件 + 注册一行代码
-- `VFXLayerDef.kind` 从 `int` 改为 `StringName`（向下兼容：旧 int 值自动转换）
+- `VFXLayerDef.kind` 从 `int` 改为 `StringName`，现有 7 个 layer `.tres` 文件由迁移脚本一次性转换（不维护 int/StringName 双格式兼容）
 
 ### 5.3 Task 2.3: Implement `ring` Executor
 
@@ -471,17 +527,23 @@ func dispatch(kind: StringName, layer: VFXLayerDef, world_pos: Vector2, pool: Hi
 
 **文件：** `game/scripts/skill_system/vfx/executors/exec_shockwave.gd`
 
-**功能：** 强力命中时的全屏冲击波效果——屏幕短暂扭曲 + 扩散环。
+**功能：** 强力命中时的冲击波效果——扩散环 + 可选屏幕扭曲。
 
-**实现方案：**
+**实现方案（分两阶段）：**
+
+**MVP（本 Phase）：** 仅扩散环
 1. 使用 `RingWave Shader` 生成大半径扩散环
-2. 叠加一个短暂的屏幕扭曲效果（可选：通过 `CanvasLayer` + `ColorRect` + `distortion shader`）
-3. 配合 `screen_shake` 使用
-4. 参数：
+2. 配合 `screen_shake` 使用
+3. 参数：
    - `ring_color: Color`
    - `ring_radius: float`
    - `duration: float`
-   - `distortion_strength: float` — 扭曲强度（0 = 无扭曲，仅环）
+
+**增强（Phase 5 性能验证后可选）：** 屏幕扭曲
+4. 叠加 `CanvasLayer` + `ColorRect` + distortion shader
+5. 新增参数 `distortion_strength: float`（0 = 无扭曲，仅环）
+
+**不做全屏扭曲的理由：** 移动端全屏后处理性能风险大。扩散环 + 震屏已能提供足够冲击感，屏幕扭曲作为高端设备的锦上添花。
 
 **VFXLayerDef 新增 kind：**
 - `&"shockwave"` — 注册到 executor registry
@@ -521,7 +583,7 @@ func dispatch(kind: StringName, layer: VFXLayerDef, world_pos: Vector2, pool: Hi
 
 **目标：** 将 285 行的 God Object 拆分为组合式子 Resource。
 
-**前置条件：** 无（可与 Phase 1/2 并行）  
+**前置条件：** 无（与 Phase 1 同步启动，Phase 2 等待两者都完成）  
 **预计工作量：** 2 天  
 **可维护性提升：** ★★★★★
 
@@ -713,10 +775,19 @@ var trajectory_type: String = "LINEAR"
 var telegraph_shape: String = "CIRCLE"
 ```
 
-**向后兼容策略：**
-- 保留旧字段作为 `@export`（标记为 `@deprecated`）
-- 在 `_get()` 方法中，如果新子 Resource 为空但旧字段有值，自动创建临时子 Resource
-- 提供一次性迁移脚本（Python 或 GDScript），将现有 `.tres` 文件的旧字段提取到新子 Resource 文件中
+**迁移策略（一次性硬迁移）：**
+
+当前仅有 `fireball_basic` 和 `missile_storm` 两个 `.tres` 技能文件，数量极少。不维护双格式兼容层，直接一次性硬迁移：
+
+1. 写迁移脚本（Python），读取现有 `.tres`，将旧字段提取到新的子 Resource `.tres` 文件中
+2. 原 `.tres` 删除旧字段，替换为子 Resource 引用
+3. `SkillVisualDef.gd` 直接删除所有旧字段，只保留子 Resource 引用 + Timing/Trajectory 字段
+4. 逐技能验证视觉效果不变
+
+**不做向后兼容的理由：**
+- `.tres` 文件数量少（仅 2 个），硬迁移成本低于维护兼容层
+- 旧字段 + 新子 Resource 同时存在会导致 Inspector 显示混乱、数据冗余
+- 兼容层（`_get()` 自动创建临时子 Resource）会在序列化时产生不可预期的行为
 
 ### 6.3 Task 3.3: Migration Script
 
@@ -842,10 +913,12 @@ void fragment() {
 - 验证 100 个使用 Shader 的弹体同时在场的帧率
 - 如有性能问题：考虑减少 Shader 层数、降低纹理分辨率、或使用 `CanvasGroup` 合批
 
-### 8.3 Task 5.3: VFXLayerDef Kind Migration
+### 8.3 Task 5.3: Shockwave Screen Distortion (可选增强)
 
-- 将所有现有 `.tres` 中的 `kind: int` 迁移为 `kind: StringName`
-- 提供向下兼容：代码中同时接受 int 和 StringName，int 自动转换
+- 在移动端性能验证通过后，为 `exec_shockwave.gd` 添加可选的屏幕扭曲效果
+- 实现：`CanvasLayer` + `ColorRect` + distortion shader
+- 新增参数 `distortion_strength: float`（0 = 无扭曲，仅环）
+- 如移动端性能不达标，此 Task 跳过
 
 ### 8.4 Task 5.4: Documentation Update
 
@@ -865,6 +938,12 @@ Phase 1: Shader Infrastructure ─────────┐
   Task 1.4: Texture Manager ────────────┘
          │
          ▼
+Phase 3: SkillVisualDef Refactoring ────┐  ← 与 Phase 1 同步启动
+  Task 3.1: Define Sub-Resources        │
+  Task 3.2: Modify SkillVisualDef       ├─ Phase 1 + Phase 3 全部完成后
+  Task 3.3: Migration Script ───────────┘  才进入 Phase 2
+         │
+         ▼
 Phase 2: Hit VFX System Upgrade ────────┐
   Task 2.1: Hit VFX Pool               │
   Task 2.2: Executor Strategy Pattern   ├─ 2.1 → 2.2 → 2.3/2.4/2.5/2.6
@@ -872,12 +951,6 @@ Phase 2: Hit VFX System Upgrade ────────┐
   Task 2.4: Sprite Burst Executor       │
   Task 2.5: Shockwave Executor          │
   Task 2.6: Afterimage Executor         │
-         │
-         ▼
-Phase 3: SkillVisualDef Refactoring ────┐
-  Task 3.1: Define Sub-Resources        ├─ 可与 Phase 1/2 并行
-  Task 3.2: Modify SkillVisualDef       │
-  Task 3.3: Migration Script            │
          │
          ▼
 Phase 4: New Effect Types ──────────────┐
@@ -890,10 +963,14 @@ Phase 5: Performance & Polish
   Task 5.1–5.4
 ```
 
+**Phase 顺序调整理由：**
+- Phase 3（Resource 拆分）是其他 Phase 的数据基础：Phase 2 的执行器和 Phase 4 的新特效应直接引用 `ProjectileVisual`、`TrailVisual`、`ImpactVisual` 子 Resource，而不是继续从 116 字段的 God Object 读取
+- Phase 1 和 Phase 3 无互相依赖，同步启动最大化并行效率
+- Phase 2 依赖 Phase 1（Shader 基础设施）和 Phase 3（子 Resource 类型定义），必须等两者都完成
+
 **AI 执行建议：**
-- Phase 3（Resource 拆分）可以独立于 Phase 1/2 执行，由一个 AI agent 负责
-- Phase 1（Shader）可以独立执行，由一个 AI agent 负责
-- Phase 2（命中特效升级）依赖 Phase 1，由一个 AI agent 负责
+- Phase 1（Shader）+ Phase 3（Resource 拆分）同步启动，各由一个 AI agent 负责
+- Phase 2（命中特效升级）依赖 Phase 1+3，由一个 AI agent 负责
 - Phase 4（新特效类型）依赖 Phase 1+2，由一个 AI agent 负责
 - Phase 5（收尾）由主 AI 协调
 
@@ -904,7 +981,7 @@ Phase 5: Performance & Polish
 | 风险 | 影响 | 缓解措施 |
 |------|------|---------|
 | Godot 移动渲染器对 Shader 支持有限 | 部分 Shader 效果不可用 | 所有 Shader 必须在移动渲染器下测试；提供 fallback（无 Shader 的纯 Sprite2D 模式） |
-| SkillVisualDef 重构可能破坏现有 .tres | 迁移期间技能视觉异常 | 提供迁移脚本 + 向后兼容层 + 逐技能验证 |
+| SkillVisualDef 重构可能破坏现有 .tres | 迁移期间技能视觉异常 | 一次性硬迁移（仅 2 个 .tres 文件）+ 迁移脚本 + 逐技能验证 |
 | 命中特效池大小不足 | 溢出时频繁创建销毁 | 默认池大小 80 + 动态扩容 + 压力测试确定合理值 |
 | Shader 参数过多导致调试困难 | 视觉效果难以调优 | 所有 Shader 参数通过 Inspector 可调 + SkillDemo 场景实时预览 |
 | GPUParticles2D 零方向 bug 仍存在 | 命中粒子方向错误 | 在 `_exec_particle_burst` 中显式设置非零方向向量 |
@@ -944,3 +1021,5 @@ Phase 完成后的验收标准：
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 0.1 | 2026-05-17 | 初稿：5 Phase 方案，覆盖 Shader 基础设施、命中特效池化、SkillVisualDef 重构、新特效类型、性能优化 |
+| 0.2 | 2026-05-20 | Phase 顺序调整（Phase 1+3 并行 → Phase 2）；SkillVisualDef 改为一次性硬迁移；新增 ShaderMaterial 共享策略；VFXLayer 注册机制；shockwave 屏幕扭曲降级为可选；Phase 1 工时调整为 3-4 天；Glow Shader 增加纹理分辨率前置依赖 |
+| 0.3 | 2026-05-20 | **全部 Phase 实施完成**。Phase 1: glow/dissolve/ring/telegraph/rim_glow 5 个 Shader + TextureManager；Phase 2: HitVFXPool(80) + 8 种执行器策略模式；Phase 3: SkillVisualDef 拆分为 ProjectileVisual/TrailVisual/ImpactVisual/VFXOverride 4 个子 Resource + 迁移脚本；Phase 4: 路径粒子 + telegraph Shader 可视化 + rim_glow 执行器；Phase 5: 池大小 80、ShaderMaterial 共享、文档更新。shockwave 屏幕扭曲延后到移动端性能验证。 |

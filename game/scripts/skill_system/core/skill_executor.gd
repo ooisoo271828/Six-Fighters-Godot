@@ -12,7 +12,7 @@ var _skill_root: Node
 func _ready() -> void:
 	pass
 
-## 执行单条叶子链
+## 执行单条叶子链（chain 已由 ModifierProcessor 解析，直接 spawn）
 func execute(chain: ExecutionChain, skill_def: Resource, visual_def: Resource, signal_bus: Node) -> void:
 	_chain = chain
 	_skill_def = skill_def
@@ -23,21 +23,8 @@ func execute(chain: ExecutionChain, skill_def: Resource, visual_def: Resource, s
 		_skill_root = get_parent().get_parent()
 	_completed = false
 
-	# 实例化 Effect
-	var effect: SkillEffect
-	var effect_type: String = skill_def.get("effect_type") if skill_def else ""
-	if not effect_type.is_empty() and _skill_root:
-		effect = _skill_root.skill_registry.create_effect_instance(effect_type)
-	else:
-		effect = EmitProjectileEffect.new()
-
-	if effect == null:
-		effect = EmitProjectileEffect.new()
-
-	# 立即执行 Effect（通常是发射投射物）
-	var chains := effect.execute(_build_context())
-	for child_chain in chains:
-		_spawn_chain(child_chain)
+	# 直接 spawn 叶子链（不再重复执行 effect.execute）
+	_spawn_chain(chain)
 
 	_signal_bus.skill_cast_finished.emit(_chain.caster, _skill_def.skill_id if _skill_def else "")
 

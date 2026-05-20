@@ -25,5 +25,8 @@ func apply(chain: ExecutionChain) -> Array[ExecutionChain]:
 	chain.trajectory_type = curve_type
 	chain.control_point_offset = control_point_offset
 	chain.travel_time_multiplier = travel_time_multiplier
+	# 传递正弦波参数到 chain（ProjectileNode 读取）
+	chain.wave_amplitude = wave_amplitude
+	chain.wave_frequency = wave_frequency
 	# 不产生新链，只修改母链的运动算法
 	return []

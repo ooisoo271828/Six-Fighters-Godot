@@ -13,12 +13,7 @@ func _init():
 	max_scale = 3.0
 
 func apply(chain: ExecutionChain) -> Array[ExecutionChain]:
-	# 注册每1像素触发一次检查
-	chain.add_distance_trigger(1.0, _on_expand)
+	# 设置膨胀参数，由 ProjectileNode 每帧计算（不用 one-shot trigger）
+	chain.expansion_growth_rate = size_growth_per_distance
+	chain.expansion_max_scale = max_scale
 	return []
-
-func _on_expand(chain: ExecutionChain) -> void:
-	if chain.distance_traveled > 0.0:
-		var new_scale := chain.base_scale + chain.distance_traveled * size_growth_per_distance
-		chain.scale = minf(new_scale, max_scale)
-		chain.current_radius = chain.base_radius * chain.scale

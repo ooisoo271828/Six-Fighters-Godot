@@ -1,12 +1,21 @@
 [gd_resource type="Resource" script_class="SkillVisualDef" format=3 uid="uid://csup35wtg42vh"]
 
 [ext_resource type="Script" uid="uid://ge330whaolln" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_4huj3"]
+[ext_resource type="Resource" uid="uid://b16yu50nc0u6j" path="res://resources/skills/skill_visual_defs/fireball_basic_impact.tres" id="1_aje5r"]
+[ext_resource type="Resource" uid="uid://dkodt0xhy4fh" path="res://resources/skills/skill_visual_defs/fireball_basic_projectile.tres" id="2_iika7"]
+[ext_resource type="Resource" uid="uid://c47qkvo276v5h" path="res://resources/skills/skill_visual_defs/fireball_basic_trail.tres" id="4_6rqsj"]
+[ext_resource type="Resource" uid="uid://bian7x5n6c8jl" path="res://resources/skills/skill_visual_defs/fireball_basic_vfx_override.tres" id="5_me0ab"]
 
 [resource]
 script = ExtResource("1_4huj3")
 skill_id = "fireball_basic"
+projectile_visual = ExtResource("2_iika7")
+trail_visual = ExtResource("4_6rqsj")
+impact_visual = ExtResource("1_aje5r")
+vfx_override = ExtResource("5_me0ab")
 projectile_kind = 1
 telegraph_shape = 1
+speed = 225.0
 core_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
 core_width = 36.0
 core_height = 36.0
@@ -28,7 +37,6 @@ core_nose_width = 5.0
 core_glow_radius = 21.0
 core_glow_color = Color(1, 0.43529412, 0.37254903, 1)
 jitter_enabled = true
-speed = 225.0
 tex_core_path = "res://assets/textures/vfx/fire_core_64.png"
 tex_glow_path = "res://assets/textures/vfx/soft_circle_64.png"
 tex_trail_path = "res://assets/textures/vfx/fire_particle_32.png"
@@ -40,10 +48,10 @@ front_flame_color_2 = Color(0.8352941, 0.21176471, 0.17254902, 1)
 trail_particle_enabled = true
 trail_particle_count = 20
 trail_particle_lifetime = 0.5
-trail_radius_min = 0.15
-trail_radius_max = 0.9
 trail_back_dist_min = 30.0
 trail_back_dist_max = 120.0
+trail_radius_min = 0.15
+trail_radius_max = 0.9
 trail_color_1 = Color(1, 0.8235294, 0.76862746, 1)
 trail_color_2 = Color(1, 0.7294118, 0.62352943, 1)
 trail_color_3 = Color(1, 0.9137255, 0.8901961, 1)
@@ -53,12 +61,8 @@ impact_speed_min = 350.0
 impact_speed_max = 800.0
 impact_life_min = 0.25
 impact_life_max = 0.6
+impact_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
 impact_particle_count = 200
 impact_lifetime = 0.5
-impact_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
-impact_shake_strength = 0.0
-# VFX 层级池配置
-hit_vfx_tier_A = ""
 hit_vfx_tier_B = "spark_fire"
 hit_vfx_tier_C = "burst_fire"
-custom_hit_layers = []

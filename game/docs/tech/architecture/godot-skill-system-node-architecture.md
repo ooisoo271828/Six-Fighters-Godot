@@ -56,9 +56,29 @@ res://scenes/skill_system/
 │   │   ├── skill_executor.gd             ← 施法执行器
 │   │   └── damage_resolver.gd            ← 伤害结算
 │   ├── vfx/
-│   │   ├── skill_vfx_manager.gd          ← VFX 总控
-│   │   ├── projectile_vfx.gd             ← 抛射物视觉
-│   │   └── effects_vfx.gd                ← 冲击/Buff 视觉
+│   │   ├── skill_vfx_manager.gd          ← VFX 总控（策略模式分发）
+│   │   ├── texture_manager.gd            ← 纹理 + ShaderMaterial 统一缓存
+│   │   ├── hit_vfx_pool.gd               ← 命中特效对象池（80 节点）
+│   │   ├── hit_vfx_node.gd               ← 池化命中特效节点
+│   │   ├── vfx_tier_registry.gd          ← VFX 层级数据查询
+│   │   ├── vfx_layer_def.gd              ← 原子特效定义
+│   │   ├── executors/                     ← 策略模式执行器（8 种）
+│   │   │   ├── vfx_executor_base.gd      ← 执行器基类
+│   │   │   ├── executor_registry.gd      ← kind → executor 分发器
+│   │   │   ├── exec_particle_burst.gd    ← 粒子爆发
+│   │   │   ├── exec_screen_shake.gd      ← 震屏
+│   │   │   ├── exec_flash.gd             ← 闪光
+│   │   │   ├── exec_ring.gd              ← 扩散环
+│   │   │   ├── exec_sprite_burst.gd      ← 精灵碎片
+│   │   │   ├── exec_shockwave.gd         ← 冲击波
+│   │   │   ├── exec_afterimage.gd        ← 残影
+│   │   │   └── exec_rim_glow.gd          ← 边缘发光
+│   │   └── shaders/                       ← GPU Shader 资产
+│   │       ├── glow_shader.gdshader      ← 边缘发光混合
+│   │       ├── dissolve_shader.gdshader  ← 溶解消散
+│   │       ├── ring_wave.gdshader        ← 冲击波环
+│   │       ├── telegraph_shader.gdshader ← 预警区域可视化
+│   │       └── rim_glow_shader.gdshader  ← 目标边缘发光
 │   ├── pools/
 │   │   ├── projectile_pool.gd            ← 投射物对象池
 │   │   └── executor_pool.gd              ← 执行器对象池
@@ -83,8 +103,12 @@ res://resources/
 │   │   ├── ironwall_small_a.tres
 │   │   ├── ember_basic.tres
 │   │   └── ...
-│   ├── skill_visual_defs/                ← 技能视觉参数
-│   │   ├── ironwall_basic_vfx.tres
+│   ├── skill_visual_defs/                ← 技能视觉参数（组合式子 Resource）
+│   │   ├── fireball_basic.tres           ← SkillVisualDef 主文件
+│   │   ├── fireball_basic_projectile.tres ← ProjectileVisual 子 Resource
+│   │   ├── fireball_basic_trail.tres     ← TrailVisual 子 Resource
+│   │   ├── fireball_basic_impact.tres    ← ImpactVisual 子 Resource
+│   │   ├── fireball_basic_vfx_override.tres ← VFXOverride 子 Resource
 │   │   └── ...
 │   └── modifiers/                        ← Modifier 数据配置
 │       ├── scatter.tres
@@ -148,9 +172,12 @@ res://resources/
 
 ### 4.6 SkillVFXManager (Node)
 
-- 监听 `SkillSignalBus` 的所有信号
-- 驱动粒子/动画/光效
-- 管理粒子池、光束池、冲击效果池
+- 监听 `SkillSignalBus` 的命中/行为/预警信号
+- 通过 `VFXExecutorRegistry` 按 `VFXLayerDef.kind`（StringName）策略分发到 8 种执行器
+- 管理 `HitVFXPool`（80 节点预分配，溢出动态创建，场景切换批量归还）
+- 通过 `VFXTextureManager` 统一管理纹理缓存和 `ShaderMaterial` 共享
+- `VFXLayer` 注册机制：ArenaScene 在 `_ready` 时注册，`_exit_tree` 时注销
+- 新增特效类型只需：① 新建 `VFXExecutorBase` 子类 ② 在 `_register_executors()` 注册一行
 - 完全独立于战斗逻辑
 
 ### 4.7 SkillSignalBus (Node)
@@ -533,7 +560,7 @@ ArenaScene (Node2D, 世界坐标系原点)
 |---------|------|
 | 新增一种移动模式 | 新建 `XxxModifier.gd`，继承 `SkillModifier`，在 `ModifierRegistry` 注册 |
 | 新增一种 Effect | 新建 `XxxEffect.gd`，继承 `SkillEffect` |
-| 新增一种视觉效果 | 新建 `XxxVFX.gd`，在 `SkillVFXManager` 里加分支或用策略模式 |
+| 新增一种命中特效 | 新建 `ExecXxx.gd` 继承 `VFXExecutorBase`，在 `_register_executors()` 注册一行 |
 | 新增一种伤害类型 | 在 `DamageType` 枚举加值 |
 | 新增一个技能 | 新建 `.tres` 文件，关联 Effect 类型 |
 | 变体/分支技能 | Modifier 叠加实现，或在 `SkillDef` 里加 `variant_modifiers` 字段 |
@@ -564,3 +591,4 @@ ArenaScene (Node2D, 世界坐标系原点)
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-04-22 | 初稿：整合 Web 版设计 + Godot 工程化 + Modifier 系统 |
+| 2.0 | 2026-05-20 | VFX 系统升级：Shader 基础设施（glow/dissolve/ring/telegraph/rim_glow）+ 命中特效对象池（80 节点）+ 策略模式执行器（8 种 kind）+ TextureManager 纹理/材质缓存 + SkillVisualDef 组合式子 Resource 拆分 |

@@ -1,12 +1,19 @@
-## SkillVFXManager — VFX 总控（v0.3 层级池版）
+## SkillVFXManager — VFX 总控（v0.5 策略模式版）
 ## 监听 SkillSignalBus 信号，通过 VFXTierRegistry 解析层级配置并执行
 extends Node
 
 var _initialized: bool = false
 var _tier_registry: VFXTierRegistry
 
-## 共享程序化纹理缓存
-static var _shared_circle_tex: Texture2D
+## 纹理管理器引用
+var _tex_manager: VFXTextureManager
+
+## VFXLayer 注册（场景树引用）
+var _vfx_layer: Node2D
+var _hit_vfx_pool: HitVFXPool
+
+## 执行器注册器
+var _executor_registry: VFXExecutorRegistry
 
 
 func initialize() -> void:
@@ -14,12 +21,58 @@ func initialize() -> void:
 		return
 	_initialized = true
 
+	# 初始化纹理管理器
+	_tex_manager = VFXTextureManager.get_instance()
+
 	# 初始化层级注册表
 	_tier_registry = VFXTierRegistry.new()
 	add_child(_tier_registry)
 	_tier_registry.initialize()
 
-	print("[VFXManager] Initialized (tier pool system v0.3)")
+	# 初始化执行器注册器
+	_executor_registry = VFXExecutorRegistry.new()
+	_register_executors()
+
+	print("[VFXManager] Initialized (v0.5 executor strategy, kinds: %s)" % str(_executor_registry.get_registered_kinds()))
+
+
+func _register_executors() -> void:
+	_executor_registry.register(ExecParticleBurst.new())
+	_executor_registry.register(ExecScreenShake.new())
+	_executor_registry.register(ExecFlash.new())
+	_executor_registry.register(ExecRing.new())
+	_executor_registry.register(ExecSpriteBurst.new())
+	_executor_registry.register(ExecShockwave.new())
+	_executor_registry.register(ExecAfterimage.new())
+	_executor_registry.register(ExecRimGlow.new())
+
+
+## 注册 VFXLayer（由 ArenaScene 在 _ready 时调用）
+func register_vfx_layer(vfx_layer: Node2D) -> void:
+	_vfx_layer = vfx_layer
+	# 查找或创建 HitVFXPool
+	_hit_vfx_pool = _vfx_layer.get_node_or_null("HitVFXPool") as HitVFXPool
+	if _hit_vfx_pool == null:
+		_hit_vfx_pool = HitVFXPool.new()
+		_hit_vfx_pool.name = "HitVFXPool"
+		_vfx_layer.add_child(_hit_vfx_pool)
+	print("[VFXManager] VFXLayer registered, pool size: ", _hit_vfx_pool.pool_size)
+
+
+## 注销 VFXLayer（场景切换时调用）
+func unregister_vfx_layer() -> void:
+	if _hit_vfx_pool:
+		_hit_vfx_pool.release_all()
+	_vfx_layer = null
+	_hit_vfx_pool = null
+
+
+## 获取命中特效的挂载父节点
+func _get_vfx_parent() -> Node:
+	if _vfx_layer and is_instance_valid(_vfx_layer):
+		return _vfx_layer
+	# fallback：当前场景（而非 scene.root）
+	return get_tree().current_scene if get_tree().current_scene else get_tree().root
 
 
 ## ── 信号处理 ──
@@ -101,113 +154,78 @@ func _load_visual_def(skill_id: String) -> Resource:
 
 ## ── VFX 执行器 ──
 
+## kind int → StringName 映射（兼容旧 .tres 的 int kind）
+const KIND_MAP: Dictionary = {
+	0: &"particle_burst",
+	1: &"sprite_burst",
+	2: &"screen_shake",
+	3: &"flash",
+	4: &"ring",
+	5: &"shockwave",
+	6: &"afterimage",
+	7: &"rim_glow",
+}
+
 func _execute_layers(layers: Array[VFXLayerDef], world_pos: Vector2) -> void:
 	for layer in layers:
 		if layer == null:
 			continue
-		match layer.kind:
-			0:
-				_exec_particle_burst(layer.params, world_pos)
-			1:
-				_exec_sprite_burst(layer.params, world_pos)
-			2:
-				_exec_screen_shake(layer.params)
-			3:
-				_exec_flash(layer.params, world_pos)
-			4:
-				_exec_ring(layer.params, world_pos)
-
-
-func _exec_particle_burst(params: Dictionary, pos: Vector2) -> void:
-	var count: int = params.get("count", 8)
-	var speed_min: float = params.get("speed_min", 40.0)
-	var speed_max: float = params.get("speed_max", 80.0)
-	var size_min: float = params.get("size_min", 0.3)
-	var size_max: float = params.get("size_max", 0.7)
-	var color: Color = params.get("color", Color.WHITE)
-	var lifetime: float = params.get("lifetime", 0.3)
-
-	var tex := _get_circle_texture()
-	var tex_size := tex.get_size() if tex else Vector2(16, 16)
-
-	for i in range(count):
-		var angle := float(i) / float(count) * TAU + randf_range(-0.15, 0.15)
-		var dir := Vector2(cos(angle), sin(angle))
-		var speed := randf_range(speed_min, speed_max)
-
-		var spark := Sprite2D.new()
-		spark.texture = tex
-		spark.scale = Vector2.ONE * randf_range(size_min, size_max) / (tex_size.x / 16.0)
-		spark.modulate = color
-		spark.global_position = pos
-		get_tree().root.add_child(spark)
-
-		var tween := create_tween()
-		tween.set_parallel(true)
-		var target := spark.global_position + dir * speed * 0.3
-		tween.tween_property(spark, "global_position", target, lifetime)
-		tween.tween_property(spark, "modulate:a", 0.0, lifetime).set_delay(lifetime * 0.3)
-		tween.tween_callback(spark.queue_free).set_delay(lifetime + 0.1)
-
-
-func _exec_flash(params: Dictionary, pos: Vector2) -> void:
-	var color: Color = params.get("color", Color.WHITE)
-	var duration: float = params.get("duration", 0.1)
-	var radius: float = params.get("radius", 16.0)
-
-	var flash := Sprite2D.new()
-	flash.texture = _get_circle_texture()
-	var tex_size := flash.texture.get_size() if flash.texture else Vector2(16, 16)
-	flash.scale = Vector2.ONE * radius * 2.0 / tex_size.x
-	flash.modulate = color
-	flash.global_position = pos
-	get_tree().root.add_child(flash)
-
-	var tween := create_tween()
-	tween.tween_property(flash, "modulate:a", 0.0, duration)
-	tween.tween_callback(flash.queue_free).set_delay(duration + 0.05)
-
-
-func _exec_screen_shake(params: Dictionary) -> void:
-	var cam := get_viewport().get_camera_2d()
-	if cam and cam.has_method("add_trauma"):
-		var strength: float = params.get("strength", 1.0)
-		cam.add_trauma(strength * 0.05)
-
-
-func _exec_sprite_burst(_params: Dictionary, _pos: Vector2) -> void:
-	pass
-
-
-func _exec_ring(_params: Dictionary, _pos: Vector2) -> void:
-	pass
+		# 将 int kind 转换为 StringName
+		var kind_name: StringName = KIND_MAP.get(layer.kind, &"")
+		if kind_name == &"":
+			push_warning("VFXManager: unknown kind int '%s'" % layer.kind)
+			continue
+		_executor_registry.dispatch(kind_name, layer, world_pos, _hit_vfx_pool, _tex_manager)
 
 
 ## ── 辅助 ──
 
-func _spawn_telegraph(world_pos: Vector2, _shape: String, duration: float) -> void:
-	var circle := Node2D.new()
-	circle.global_position = world_pos
-	var cs := CircleShape2D.new()
-	cs.radius = 30.0
-	var col := CollisionShape2D.new()
-	col.shape = cs
-	circle.add_child(col)
-	get_tree().root.add_child(circle)
+func _spawn_telegraph(world_pos: Vector2, shape: String, duration: float) -> void:
+	# 创建预警视觉节点
+	var telegraph := Node2D.new()
+	telegraph.global_position = world_pos
+
+	# 使用 ColorRect + telegraph_shader 渲染预警区域
+	var rect := ColorRect.new()
+	var radius := 60.0
+	rect.size = Vector2(radius * 2.0, radius * 2.0)
+	rect.position = -rect.size / 2.0
+
+	# 加载并应用 telegraph shader
+	var shader_path := "res://scripts/skill_system/vfx/shaders/telegraph_shader.gdshader"
+	if ResourceLoader.exists(shader_path):
+		var shader := load(shader_path)
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		mat.set_shader_parameter("progress", 0.0)
+		mat.set_shader_parameter("fill_color", Color(1.0, 0.2, 0.2, 0.25))
+		mat.set_shader_parameter("border_color", Color(1.0, 0.3, 0.3, 0.7))
+		mat.set_shader_parameter("pulse_speed", 3.0)
+		rect.material = mat
+
+		# 动画：progress 从 0 → 1
+		var tween := telegraph.create_tween()
+		tween.tween_method(
+			func(val: float): mat.set_shader_parameter("progress", val),
+			0.0, 0.8, duration
+		)
+	else:
+		# fallback：无 shader 时用半透明红色
+		rect.color = Color(1.0, 0.2, 0.2, 0.2)
+
+	telegraph.add_child(rect)
+
+	# 可选：添加碰撞形状用于 gameplay 检测
+	if shape == "CIRCLE":
+		var cs := CircleShape2D.new()
+		cs.radius = radius
+		var col := CollisionShape2D.new()
+		col.shape = cs
+		telegraph.add_child(col)
+
+	get_tree().root.add_child(telegraph)
+
+	# 等待持续时间后移除
 	await get_tree().create_timer(duration).timeout
-	circle.queue_free()
-
-
-func _get_circle_texture() -> Texture2D:
-	if _shared_circle_tex != null:
-		return _shared_circle_tex
-	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	for x in range(16):
-		for y in range(16):
-			var dx := float(x) - 7.5
-			var dy := float(y) - 7.5
-			if dx * dx + dy * dy <= 49.0:
-				img.set_pixel(x, y, Color.WHITE)
-	_shared_circle_tex = ImageTexture.create_from_image(img)
-	return _shared_circle_tex
+	if is_instance_valid(telegraph):
+		telegraph.queue_free()

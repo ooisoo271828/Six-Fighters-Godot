@@ -1,13 +1,22 @@
 # skill_visual_def.gd
 # 技能视觉数据定义基类
 # 包含所有视觉和表现参数，与战斗数据分离
-# v2.0：增强多层核心、抖动、前缘火焰、增强拖尾和爆炸参数
+# v3.0：组合式子 Resource 架构（ProjectileVisual, TrailVisual, ImpactVisual, VFXOverride）
 
 class_name SkillVisualDef
 extends Resource
 
 # ── 视觉标识 ──
 @export var skill_id: String = ""
+
+# ═══════════════════════════════════════════
+# ── 子 Resource 引用（v3.0 组合式架构）
+# ═══════════════════════════════════════════
+@export_group("Sub-Resources")
+@export var projectile_visual: ProjectileVisual
+@export var trail_visual: TrailVisual
+@export var impact_visual: ImpactVisual
+@export var vfx_override: VFXOverride
 
 # ── 投射物类型 ──
 @export_enum(
@@ -196,6 +205,21 @@ var impact_level: int = 1
 ## 蛇形摆动参数
 @export var comet_sway_freq: float = 0.7
 @export var comet_sway_amplitude: float = 1.1
+## 宽度渐变曲线
+@export var comet_width_fade_start: float = 0.4
+@export var comet_width_fade_mid: float = 0.25
+@export var comet_width_fade_end: float = 0.05
+
+# ═══════════════════════════════════════════
+# ── 路径粒子 ──
+# ═══════════════════════════════════════════
+@export_group("Path Particles", "path_particle_")
+
+@export var path_particles_enabled: bool = false
+@export var path_particle_interval: float = 0.04
+@export var path_particle_lifetime: float = 0.3
+@export var path_particle_color: Color = Color(1, 0.8, 0.4, 0.6)
+@export var path_particle_size: float = 0.25
 
 # ═══════════════════════════════════════════
 # ── 增强爆炸 / 命中 ──
@@ -282,3 +306,129 @@ func get_impact_level_name() -> String:
 		2: return "STRONG"
 		3: return "CLIMAX"
 	return "MEDIUM"
+
+
+## ── 子 Resource 访问器（优先读子 Resource，回退旧字段）──
+
+func get_projectile_visual() -> ProjectileVisual:
+	if projectile_visual:
+		return projectile_visual
+	# 从旧字段创建临时子 Resource
+	var pv := ProjectileVisual.new()
+	pv.core_color = core_color
+	pv.core_width = core_width
+	pv.core_height = core_height
+	pv.core_radius = core_radius
+	pv.inner_enabled = core_inner_enabled
+	pv.inner_color = core_inner_color
+	pv.inner_width = core_inner_width
+	pv.inner_height = core_inner_height
+	pv.inner_offset = core_inner_offset
+	pv.hotspot_enabled = core_hotspot_enabled
+	pv.hotspot_color = core_hotspot_color
+	pv.hotspot_width = core_hotspot_width
+	pv.hotspot_height = core_hotspot_height
+	pv.hotspot_offset = core_hotspot_offset
+	pv.nose_enabled = core_nose_enabled
+	pv.nose_color = core_nose_color
+	pv.nose_length = core_nose_length
+	pv.nose_width = core_nose_width
+	pv.glow_radius = core_glow_radius
+	pv.glow_color = core_glow_color
+	pv.glow_alpha = core_glow_alpha
+	pv.glow2_radius = core_glow2_radius
+	pv.glow2_color = core_glow2_color
+	pv.glow2_alpha = core_glow2_alpha
+	pv.jitter_enabled = jitter_enabled
+	pv.jitter_amplitude = jitter_amplitude
+	pv.jitter_freq_x = jitter_freq_x
+	pv.jitter_freq_y = jitter_freq_y
+	pv.tex_core_path = tex_core_path
+	pv.tex_glow_path = tex_glow_path
+	pv.tex_explosion_path = tex_explosion_path
+	pv.tex_nose_path = tex_nose_path
+	pv.projectile_scale = projectile_scale
+	return pv
+
+
+func get_trail_visual() -> TrailVisual:
+	if trail_visual:
+		return trail_visual
+	# 从旧字段创建临时子 Resource
+	var tv := TrailVisual.new()
+	tv.trail_enabled = trail_particle_enabled
+	tv.trail_count = trail_particle_count
+	tv.trail_lifetime = trail_particle_lifetime
+	tv.trail_back_dist_min = trail_back_dist_min
+	tv.trail_back_dist_max = trail_back_dist_max
+	tv.trail_spread_min = trail_spread_min
+	tv.trail_spread_max = trail_spread_max
+	tv.trail_radius_min = trail_radius_min
+	tv.trail_radius_max = trail_radius_max
+	tv.trail_color_1 = trail_color_1
+	tv.trail_color_2 = trail_color_2
+	tv.trail_color_3 = trail_color_3
+	tv.trail_life_min = trail_life_min
+	tv.trail_life_max = trail_life_max
+	tv.tex_trail_path = tex_trail_path if tex_trail_path != "" else trail_texture_path
+	tv.flame_enabled = front_flame_enabled
+	tv.flame_count = front_flame_count
+	tv.flame_inner_min = front_flame_inner_min
+	tv.flame_inner_max = front_flame_inner_max
+	tv.flame_outer_min = front_flame_outer_min
+	tv.flame_outer_max = front_flame_outer_max
+	tv.flame_color_1 = front_flame_color_1
+	tv.flame_color_2 = front_flame_color_2
+	tv.flame_life_min = front_flame_life_min
+	tv.flame_life_max = front_flame_life_max
+	tv.tex_flame_path = tex_front_flame_path
+	tv.comet_enabled = comet_enabled
+	tv.comet_max_samples = comet_max_samples
+	tv.comet_outer_width = comet_outer_width
+	tv.comet_outer_color = comet_outer_color
+	tv.comet_outer_alpha = comet_outer_alpha
+	tv.comet_mid_width = comet_mid_width
+	tv.comet_mid_color = comet_mid_color
+	tv.comet_mid_alpha = comet_mid_alpha
+	tv.comet_inner_width = comet_inner_width
+	tv.comet_inner_color = comet_inner_color
+	tv.comet_inner_alpha = comet_inner_alpha
+	tv.comet_sway_freq = comet_sway_freq
+	tv.comet_sway_amplitude = comet_sway_amplitude
+	tv.comet_width_fade_start = comet_width_fade_start
+	tv.comet_width_fade_mid = comet_width_fade_mid
+	tv.comet_width_fade_end = comet_width_fade_end
+	return tv
+
+
+func get_impact_visual() -> ImpactVisual:
+	if impact_visual:
+		return impact_visual
+	# 从旧字段创建临时子 Resource
+	var iv := ImpactVisual.new()
+	iv.spark_count_min = impact_spark_count_min
+	iv.spark_count_max = impact_spark_count_max
+	iv.spark_speed_min = impact_speed_min
+	iv.spark_speed_max = impact_speed_max
+	iv.spark_life_min = impact_life_min
+	iv.spark_life_max = impact_life_max
+	iv.spark_color = impact_color
+	iv.spark_particle_count = impact_particle_count
+	iv.spark_lifetime = impact_lifetime
+	iv.spark_radius_mult = impact_radius_mult
+	iv.shake_strength = impact_shake_strength
+	iv.shake_duration = impact_shake_duration
+	iv.impact_effect_kind = impact_effect_kind
+	return iv
+
+
+func get_vfx_override() -> VFXOverride:
+	if vfx_override:
+		return vfx_override
+	# 从旧字段创建临时子 Resource
+	var vo := VFXOverride.new()
+	vo.tier_A = hit_vfx_tier_A
+	vo.tier_B = hit_vfx_tier_B
+	vo.tier_C = hit_vfx_tier_C
+	vo.custom_layers = custom_hit_layers
+	return vo

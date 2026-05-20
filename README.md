@@ -2,7 +2,7 @@
 
 A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.6.2, developed via VibeCoding (AI-assisted). Features a **POE-style skill modifier system** where skills can be augmented with runtime modifiers (scatter, bounce, fission, expansion, etc.).
 
-> **Current phase**: Core combat loop + VFX tier pool system v1.0. 2 of 8 planned skills implemented.
+> **Current phase**: Core combat loop + VFX tier pool system (full implementation). 2 of 8 planned skills implemented. Modifier pipeline fixed.
 
 ---
 
@@ -51,16 +51,18 @@ Hub Scene → Hero Selection → Arena Battle (wave-based)
                  │                    ├── Line2D comet trail (3-layer, sway)
                  │                    └── Sprite2D burst explosion (Tween-driven)
                  │
-          VFXManager
+          SkillVFXManager
                  ├── VFXTierRegistry (A/B/C tier pools)
-                 └── VFXExecutor (particle_burst / flash / screen_shake)
+                 ├── VFXExecutorRegistry → ExecParticleBurst / ExecSpriteBurst / ExecFlash / ExecShaderRing
+                 ├── HitVFXPool (object pooling)
+                 └── VFXTextureManager
                  │
-          Modifier Pipeline: scatter → bounce → fission → expansion → ...
+          Modifier Pipeline: ModifierProcessor → effect.execute() → scatter → bounce → fission → expansion
 ```
 
-### VFX Tier Pool System (v1.0)
+### VFX Tier Pool System (Full Implementation)
 
-Hit effects are organized into composable **tier pools**. Each skill independently picks one effect per tier (or uses global defaults):
+Hit effects are organized into composable **tier pools** with a **strategy-pattern executor system**. Each skill picks one effect per tier (or uses global defaults):
 
 ```
 A Layer (Small)   → spark_tiny, glint
@@ -68,7 +70,13 @@ B Layer (Medium)  → spark_phys, spark_magic, spark_fire
 C Layer (Large)   → burst_fire, shake_strong
 ```
 
-Skills either opt into the tier system (like fireball → spark_fire + burst_fire) or handle their own effects independently (like missile_storm via `_spawn_explosion`).
+**Executor System** — Each layer is dispatched to a specialized executor:
+- `ExecParticleBurst` — GPUParticles2D burst effects
+- `ExecSpriteBurst` — Sprite2D fragment explosion (Tween-driven)
+- `ExecFlash` — Screen flash effects
+- `ExecShaderRing` — Shader-based ring/shockwave effects
+
+All executors use `HitVFXNode` + `HitVFXPool` for object pooling (acquire → setup → play → release lifecycle).
 
 ---
 
@@ -88,11 +96,13 @@ Six-Fighters-Godot/
 │   │   ├── core/                       # EventBus, GameManager
 │   │   ├── combat/                     # CombatResolver, CombatParams, EntityStatus
 │   │   ├── skill_system/
-│   │   │   ├── registry/               # SkillDef, SkillVisualDef, SkillRegistry
+│   │   │   ├── registry/               # SkillDef, SkillVisualDef, SkillRegistry, ProjectileVisual, TrailVisual, ImpactVisual, VFXOverride
 │   │   │   ├── core/                   # ExecutionChain, ModifierProcessor, SkillEffect
 │   │   │   │   └── effects/            # EmitProjectile, AreaDamage, ApplyStatus
 │   │   │   ├── pools/                  # ProjectilePool, ProjectileNode (v2.2)
 │   │   │   └── vfx/                    # SkillVFXManager, VFXTierRegistry, VFXLayerDef
+│   │   │       ├── executors/          # VFXExecutorBase, ExecParticleBurst, ExecSpriteBurst, ExecFlash, ExecShaderRing
+│   │   │       └── shaders/            # GLSL shaders for ring/flash effects
 │   │   ├── units/                      # Hero, Enemy, Unit base class
 │   │   ├── data/                       # HeroDef, HeroRegistry, CombatantStats
 │   │   ├── hub/                        # Hub scene logic
@@ -101,7 +111,8 @@ Six-Fighters-Godot/
 │   ├── resources/
 │   │   ├── skills/
 │   │   │   ├── skill_defs/             # .tres skill definitions (CSV-driven)
-│   │   │   └── skill_visual_defs/      # .tres visual parameter definitions
+│   │   │   ├── skill_visual_defs/      # .tres visual parameter definitions + sub-resources
+│   │   │   └── modifiers/             # .tres modifier definitions (bounce, scatter, fission, expansion)
 │   │   └── vfx/                        # VFX tier pools & layer definitions
 │   │       ├── tiers/                  # tier_A.tres, tier_B.tres, tier_C.tres
 │   │       └── layers/                 # Individual VFXLayerDef .tres files
@@ -127,8 +138,17 @@ The hit VFX system uses a **tier pool architecture** (v1.0, see [design doc](gam
 - **3 tiers**: A (Small), B (Medium), C (Large) — skills pick one effect per tier
 - **Global defaults**: Each tier has a configurable default effect
 - **Data-driven**: Effects defined as `VFXLayerDef` resources, registered in `VFXTierDef` pools
-- **Runtime**: `VFXManager` receives `skill_hit` signal → resolves tier config via `VFXTierRegistry` → executes all layers via `VFXExecutor`
+- **Runtime**: `SkillVFXManager` receives `skill_hit` signal → resolves tier config via `VFXTierRegistry` → dispatches layers to specialized executors via `VFXExecutorRegistry`
 - **Sprite2D+Tween**: Particle effects use programmatic Sprite2D with Tween animation (not GPUParticles2D/CPUParticles2D), avoiding GPU direction normalization bugs
+
+### Modifier Pipeline
+
+The modifier system follows a **Effect → Modifier** two-phase architecture:
+
+1. **Effect phase**: `effect.execute(context)` creates base `ExecutionChain`(s) — e.g., `EmitProjectileEffect` creates 1-12 chains depending on `projectile_count_min/max`
+2. **Modifier phase**: Each chain passes through sorted modifiers (scatter, bounce, fission, expansion) which can split, redirect, or augment chains
+
+Skills opt into modifiers via `base_modifier_ids` in their SkillDef. Multi-projectile skills (like missile_storm) get their count from the visual def's `projectile_count_min/max` fields.
 
 ### Skill Visual System (Per-Projectile)
 

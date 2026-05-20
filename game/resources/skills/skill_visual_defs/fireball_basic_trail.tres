@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="TrailVisual" format=3 uid="uid://c47qkvo276v5h"]
+
+[ext_resource type="Script" uid="uid://wqeeoeimtktb" path="res://scripts/skill_system/registry/trail_visual.gd" id="1_nfwrx"]
+
+[resource]
+script = ExtResource("1_nfwrx")
+trail_enabled = true
+trail_count = 20
+trail_lifetime = 0.5
+trail_back_dist_min = 30.0
+trail_back_dist_max = 120.0
+trail_radius_min = 0.15
+trail_radius_max = 0.9
+trail_color_1 = Color(1, 0.8235294, 0.76862746, 1)
+trail_color_2 = Color(1, 0.7294118, 0.62352943, 1)
+trail_color_3 = Color(1, 0.9137255, 0.8901961, 1)
+tex_trail_path = "res://assets/textures/vfx/fire_particle_32.png"
+flame_enabled = true
+flame_color_1 = Color(1, 0.48235294, 0.4117647, 1)
+flame_color_2 = Color(0.8352941, 0.21176471, 0.17254902, 1)
+tex_flame_path = "res://assets/textures/vfx/fire_particle_16.png"

@@ -42,6 +42,14 @@ var color_override: Color = Color.WHITE
 var projectile_hp: float = 0.0  # 0 = 不可破坏
 var can_be_targeted: bool = false
 
+## ── 膨胀参数（ExpansionModifier 设置，ProjectileNode 每帧读取） ──
+var expansion_growth_rate: float = 0.0  # 0 = 无膨胀
+var expansion_max_scale: float = 3.0
+
+## ── 正弦波参数（CurvedPathModifier 设置） ──
+var wave_amplitude: float = 0.0
+var wave_frequency: float = 2.0
+
 ## ── Modifier 栈 ──
 var modifier_stack: Array[SkillModifier]
 var modifier_index: int = 0  # 已处理到第几个 Modifier
@@ -133,6 +141,10 @@ func duplicate() -> ExecutionChain:
 	c.color_override = color_override
 	c.projectile_hp = projectile_hp
 	c.can_be_targeted = can_be_targeted
+	c.expansion_growth_rate = expansion_growth_rate
+	c.expansion_max_scale = expansion_max_scale
+	c.wave_amplitude = wave_amplitude
+	c.wave_frequency = wave_frequency
 	c.modifier_stack = modifier_stack.duplicate()
 	c.modifier_index = modifier_index
 	c.parent_chain = self

@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="ProjectileVisual" format=3 uid="uid://dkodt0xhy4fh"]
+
+[ext_resource type="Script" uid="uid://bq38lxdyr2324" path="res://scripts/skill_system/registry/projectile_visual.gd" id="1_3jiim"]
+
+[resource]
+script = ExtResource("1_3jiim")
+core_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
+core_width = 36.0
+core_height = 36.0
+core_radius = 18.0
+inner_enabled = true
+inner_color = Color(0.9098039, 0.38431373, 0.30588236, 1)
+inner_width = 21.0
+inner_height = 17.0
+inner_offset = Vector2(2, -2)
+hotspot_enabled = true
+hotspot_color = Color(1, 0.6431373, 0.5294118, 1)
+hotspot_width = 11.0
+hotspot_height = 9.0
+hotspot_offset = Vector2(-4, 3)
+nose_enabled = true
+nose_color = Color(0.8509804, 0.26666668, 0.20784314, 1)
+nose_length = 18.0
+nose_width = 5.0
+glow_radius = 21.0
+glow_color = Color(1, 0.43529412, 0.37254903, 1)
+jitter_enabled = true
+tex_core_path = "res://assets/textures/vfx/fire_core_64.png"
+tex_glow_path = "res://assets/textures/vfx/soft_circle_64.png"
+tex_explosion_path = "res://assets/textures/vfx/spark_16.png"
