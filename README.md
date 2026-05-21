@@ -1,6 +1,6 @@
 # Six Fighters — Godot
 
-A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.6.2, developed via VibeCoding (AI-assisted). Features a **POE-style skill modifier system** where skills can be augmented with runtime modifiers (scatter, bounce, fission, expansion, etc.).
+A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.x, developed via VibeCoding (AI-assisted). Features a **POE-style skill modifier system** where skills can be augmented with runtime modifiers (scatter, bounce, fission, expansion, etc.).
 
 > **Current phase**: Core combat loop + VFX tier pool system (full implementation). 2 of 8 planned skills implemented. Modifier pipeline fixed.
 
@@ -10,14 +10,14 @@ A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.
 
 | Skill | Status | Type | Description |
 |-------|--------|------|-------------|
-| **Fireball** `fireball_basic` | ✅ v2.1 | Projectile | 225px/s, dual-layer explosion, 300ms fade-out, scale-ramp trail. VFX tier pool: spark_fire + burst_fire |
-| **Missile Storm** `missile_storm` | ✅ v2.2 | Multi-projectile | 9-12 missiles, BEZIER_QUAD arc, 3-layer Line2D comet trail, staggered launch (0.05-0.8s window), randomized trajectory per missile, Sprite2D-based impact explosion |
-| Chain Lightning | 📋 Designed | Chain-jump | 4-state machine (FLYING→INCOMING→DWELL→OUTGOING) |
-| Ice Cyclone | 📋 Designed | AOE moving | Area damage + slow |
-| Burning Hands | 📋 Designed | AOE fan | Cone-shaped flame spread |
-| Ice Ring | 📋 Designed | AOE ring | Radial ice burst |
-| Plasma Beam | 📋 Designed | Beam | 3-layer beam renderer |
-| Ghost Fire Skull | 📋 Designed | Homing | Spiral homing projectile |
+| **Fireball** `fireball_basic` | v2.1 | Projectile | 225px/s, dual-layer explosion, 300ms fade-out, scale-ramp trail. VFX tier pool: spark_fire + burst_fire |
+| **Missile Storm** `missile_storm` | v2.2 | Multi-projectile | 9-12 missiles, BEZIER_QUAD arc, 3-layer Line2D comet trail, staggered launch (0.05-0.8s window), randomized trajectory per missile, Sprite2D-based impact explosion |
+| Chain Lightning | Designed | Chain-jump | 4-state machine (FLYING→INCOMING→DWELL→OUTGOING) |
+| Ice Cyclone | Designed | AOE moving | Area damage + slow |
+| Burning Hands | Designed | AOE fan | Cone-shaped flame spread |
+| Ice Ring | Designed | AOE ring | Radial ice burst |
+| Plasma Beam | Designed | Beam | 3-layer beam renderer |
+| Ghost Fire Skull | Designed | Homing | Spiral homing projectile |
 
 ---
 
@@ -60,7 +60,7 @@ Hub Scene → Hero Selection → Arena Battle (wave-based)
           Modifier Pipeline: ModifierProcessor → effect.execute() → scatter → bounce → fission → expansion
 ```
 
-### VFX Tier Pool System (Full Implementation)
+### VFX Tier Pool System
 
 Hit effects are organized into composable **tier pools** with a **strategy-pattern executor system**. Each skill picks one effect per tier (or uses global defaults):
 
@@ -121,10 +121,16 @@ Six-Fighters-Godot/
 │   ├── tools/                          # Python dev tools
 │   │   ├── editor_call.py              # Inline GDScript executor
 │   │   └── hastur.py                   # Full CLI for broker-server management
-│   └── docs/                           # Design docs, handoff, architecture, bluebooks
+│   └── docs/                           # Design docs, handoff, references
+│       ├── claude-ref-hastur.md        # HasturOperationGD full reference
+│       ├── claude-ref-camera.md        # Camera system reference
+│       ├── claude-ref-skill-demo.md    # SkillDemo scene reference
+│       ├── camera_system_design.md     # Camera system design doc
+│       ├── PROJECT-RULES.md            # Project rules
+│       └── handoff-*.md                # Session handoff documents
 ├── broker/hastur-operation-plugin-main/
 │   └── broker-server/                  # Node.js broker (TCP 5301 / HTTP 5302)
-└── docs/                               # Plugin whitepaper, pitfall guide, etc.
+└── docs/                               # Plugin whitepaper, pitfall guide
 ```
 
 ---
@@ -133,7 +139,7 @@ Six-Fighters-Godot/
 
 ### VFX Tier Pool System
 
-The hit VFX system uses a **tier pool architecture** (v1.0, see [design doc](game/docs/design/visual-rules/vfx-architecture-overview.md)):
+The hit VFX system uses a **tier pool architecture**:
 
 - **3 tiers**: A (Small), B (Medium), C (Large) — skills pick one effect per tier
 - **Global defaults**: Each tier has a configurable default effect
@@ -164,7 +170,7 @@ Each projectile is rendered by `ProjectileNode` with up to **11 visual layers**:
 | Radial rays | Sprite2D | Procedural texture, auto-rotates |
 | Jitter | Sin offset | `jitter_*` params |
 | Trail particles | GPUParticles2D | `trail_*` params (scale_curve) |
-| Comet trail | Line2D ×3 | `comet_*` params (sway, width_curve taper) |
+| Comet trail | Line2D x3 | `comet_*` params (sway, width_curve taper) |
 | Impact explosion | Sprite2D + Tween | Custom per-skill (or via VFX tier pools) |
 
 ---
@@ -183,7 +189,7 @@ Each projectile is rendered by `ProjectileNode` with up to **11 visual layers**:
 
 ### Prerequisites
 
-- Godot 4.6.2 Editor
+- Godot 4.x Editor
 - Node.js 18+ (for broker server)
 - Python 3.12+ (for CLI tools)
 
@@ -225,13 +231,13 @@ Skills in `skill_defs/` are auto-discovered by `SkillRegistry._load_all_skills()
 
 ---
 
-## Known Gotchas (Godot 4.6)
+## Known Gotchas (Godot 4.x)
 
 See full [Godot AI Programming Pitfall Guide](docs/godot-ai-pitfall-guide.md) for detailed analysis and prevention.
 
 | Issue | Root Cause | Workaround |
 |-------|-----------|------------|
-| Particles spray right | GPUParticles2D `direction=Vector3(0,0,0)` → GPU defaults to (1,0,0) | Use non-zero direction + spread=360°, or Sprite2D+Tween |
+| Particles spray right | GPUParticles2D `direction=Vector3(0,0,0)` → GPU defaults to (1,0,0) | Use non-zero direction + spread=360, or Sprite2D+Tween |
 | CPUParticles2D bias | Default direction=(1,0), gravity=(0,10) | Always set direction/spread/gravity explicitly |
 | `.tres` values not loading | Resource cache stale | Delete `.godot/*.cfg` or restart editor |
 | Error: "Could not find type" | Missing `class_name` declaration | Add `class_name` + trigger filesystem scan |
@@ -247,4 +253,4 @@ This project is developed under open-source license. See the [LICENSE](LICENSE) 
 
 ---
 
-*Built with [Godot 4.6.2](https://godotengine.org/) · Developed via VibeCoding · Plugin: [HasturOperationGD](docs/HasturOperationGD-Technical-Whitepaper.md)*
+*Built with [Godot 4.x](https://godotengine.org/) · Developed via VibeCoding · Plugin: [HasturOperationGD](docs/HasturOperationGD-Technical-Whitepaper.md)*
