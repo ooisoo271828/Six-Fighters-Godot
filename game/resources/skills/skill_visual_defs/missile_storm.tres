@@ -16,6 +16,7 @@ vfx_override = ExtResource("5_1eok5")
 projectile_kind = 3
 trajectory_type = 2
 speed = 450.0
+projectile_scale = 0.8
 projectile_count_min = 9
 projectile_count_max = 12
 core_width = 16.0

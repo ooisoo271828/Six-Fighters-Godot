@@ -1,33 +1,36 @@
-[gd_scene load_steps=2 format=3 uid="uid://arena_battle"]
+[gd_scene load_steps=3 format=3 uid="uid://arena_battle"]
 
 [ext_resource type="Script" path="res://scripts/arena/arena_scene.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/dev/camera_anchor.gd" id="2_anchor"]
+[ext_resource type="Script" path="res://scripts/core/camera_with_trauma.gd" id="3_cam"]
 
 [node name="Arena" type="Node2D"]
 script = ExtResource("1_arena")
 
-[node name="WaveLabel" type="Label" parent="."]
-offset_left = 200.0
-offset_top = 20.0
-offset_right = 340.0
-offset_bottom = 50.0
-theme_override_font_sizes/font_size = 20
-text = "Wave 1 / 3"
+[node name="CameraAnchor" type="Node2D" parent="."]
+script = ExtResource("2_anchor")
+anchor_speed = 250.0
+input_enabled = true
+joystick_enabled = true
 
-[node name="ResultLabel" type="Label" parent="."]
-offset_left = 170.0
-offset_top = 400.0
-offset_right = 370.0
-offset_bottom = 460.0
-theme_override_font_sizes/font_size = 48
-horizontal_alignment = 1
-visible = false
+[node name="Camera2D" type="Camera2D" parent="CameraAnchor"]
+current = true
+position_smoothing_enabled = true
+position_smoothing_speed = 5.0
+script = ExtResource("3_cam")
 
-[node name="JoystickUI" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -260.0
-grow_horizontal = 2
-grow_vertical = 0
+[node name="YSortContainer" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Projectiles" type="Node2D" parent="."]
+
+[node name="VFX" type="Node2D" parent="."]
+
+[node name="DamageTextLayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="FullscreenVFXLayer" type="CanvasLayer" parent="."]
+layer = 30

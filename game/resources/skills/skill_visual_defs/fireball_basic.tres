@@ -16,6 +16,7 @@ vfx_override = ExtResource("5_me0ab")
 projectile_kind = 1
 telegraph_shape = 1
 speed = 225.0
+projectile_scale = 0.5
 core_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
 core_width = 36.0
 core_height = 36.0

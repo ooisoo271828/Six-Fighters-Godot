@@ -11,6 +11,7 @@ Related: docs/PROJECT-RULES.md; docs/tech/adr/2026-03-21-flexible-squad-1-to-6.m
 - Mobile portrait-first experience.
 - First delivery as a browser-openable quick app, but visual experience remains portrait.
 - 2D pixel art with fine-grain pixel detail (8-like granularity, slightly higher where possible).
+- **视角**: 斜45°俯视角（Isometric-ish Top-Down），纯美术视角（引擎不做投影变换）。详见 `camera-viewport-rules-v1.md`。
 
 ## 2. Combat & Control Global Vocabulary
 These tokens are treated as stable vocabulary across design levels.

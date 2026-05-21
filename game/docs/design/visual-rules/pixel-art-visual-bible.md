@@ -15,8 +15,9 @@ Related: docs/design/other/game-foundation-baseline.md; docs/design/combat-rules
 
 ## 2. Logical Resolution & Pixel Grid
 
-- **Design resolution (reference)**: **360×640** logical pixels (matches current web demo canvas); art may be authored at **1×** or **2×** export then downscaled with **nearest** filtering only.
-- **Grid**: integer pixel alignment for key outlines; avoid sub-pixel blur on character edges (enforced in tech via `pixelArt` / nearest scaling — see `client-rendering-and-assets.md`).
+- **Design resolution (reference)**: **540×960** logical pixels (9:16 竖屏，Godot 4.6 视口基准); art may be authored at **1×** or **2×** export then downscaled with **nearest** filtering only.
+- **Grid**: integer pixel alignment for key outlines; avoid sub-pixel blur on character edges (enforced in Godot via nearest-neighbor texture filtering).
+- **视角**: 斜45°俯视角（纯美术视角，引擎不做投影变换）。详见 `camera-viewport-rules-v1.md`。
 
 ## 3. Palette & Neutrals
 
@@ -52,7 +53,9 @@ Aligned with `combat-core-l3-readability-guardrails.md` layer priority (lethal >
 
 ### 6.2 Z-Order (conceptual)
 
-From back to front: background parallax → ground decals → enemy shadow → **hazard telegraph** → units → ally VFX → **critical hazard overlay** (if any) → UI.
+From back to front: ground texture → ground decoration → ground traces → **hazard telegraph** → character shadows → **Y-Sort container (units)** → building tops → projectiles → ally VFX → damage numbers (CanvasLayer) → HUD (CanvasLayer) → **critical hazard overlay** (CanvasLayer) → fullscreen VFX (CanvasLayer).
+
+> 完整分层定义见 [`camera-viewport-rules-v1.md`](../../camera-viewport-rules-v1.md) 第四章。
 
 ## 7. Non-Goals (Phase 1)
 

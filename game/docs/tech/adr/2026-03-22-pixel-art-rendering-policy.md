@@ -1,4 +1,6 @@
-# ADR: Pixel-art rendering policy for Web (Phaser)
+# [DEPRECATED] ADR: Pixel-art rendering policy for Web (Phaser)
+
+> **本文档已废弃。** 项目已从 Phaser 3 (Web) 迁移至 Godot 4.6。Godot 的像素渲染策略由 `project.godot` 中的 `default_texture_filter=0`（Nearest Neighbor）覆盖。
 
 Status: Accepted  
 Version: v1.0  

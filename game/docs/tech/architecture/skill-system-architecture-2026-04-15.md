@@ -1,4 +1,6 @@
-# Skill System Architecture
+# [DEPRECATED] Skill System Architecture
+
+> **本文档已废弃。** 项目已从 Phaser 3 (Web) 迁移至 Godot 4.6。本文档保留作为旧 Web 客户端架构的历史参考。
 **Status:** Implemented
 **Version:** 1.0
 **Date:** 2026-04-15

@@ -590,6 +590,11 @@ func _process(dt: float) -> void:
 	_elapsed += dt
 	_chain.elapsed_time = _elapsed
 
+	# 安全网：超过最大生命周期强制销毁，防止投射物悬空
+	if _elapsed > 5.0:
+		_chain.destroy()
+		return
+
 	# 检查触发器
 	_chain.check_triggers(dt)
 
@@ -823,7 +828,9 @@ func _update_path_particles(dt: float) -> void:
 ## ── 命中检测 ──
 
 func _check_hit() -> void:
+	# 目标已失效（死亡/被释放）→ 强制销毁，防止投射物悬空
 	if _chain.target == null or not is_instance_valid(_chain.target):
+		_chain.destroy()
 		return
 
 	var dist := global_position.distance_to(_chain.target.global_position)
@@ -842,6 +849,7 @@ func _on_chain_hit(chain: ExecutionChain, target: Node2D) -> void:
 			chain.direction = global_position.direction_to(next.global_position)
 			chain.target = next
 			return
+		# 没有可弹射目标 → 走销毁流程
 	# 无论 bounce 与否，最终都走 destroy
 	_chain.destroy()
 	# VFX 信号放在 destroy 之后（同步触发，不影响销毁流程）
@@ -890,6 +898,8 @@ func _on_chain_destroyed(_destroyed_chain: ExecutionChain) -> void:
 	var pool = get_parent()
 	if pool.has_method("despawn"):
 		await get_tree().create_timer(0.6).timeout
+		if not is_instance_valid(self):
+			return
 		for s in all_sprites:
 			if s and is_instance_valid(s):
 				s.visible = false

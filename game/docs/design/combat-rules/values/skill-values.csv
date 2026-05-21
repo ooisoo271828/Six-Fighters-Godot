@@ -1,6 +1,6 @@
 id,domain,category,parameter,key,value,min,max,step,unit,notes
 1,skill,fireball_basic,damage,base_damage,42,0,500,1,,
-2,skill,fireball_basic,cooldown,cooldown,2.8,0,60,0.1,s,
+2,skill,fireball_basic,cooldown,cooldown,4.0,0,60,0.1,s,
 3,skill,fireball_basic,range,cast_range,400,0,1000,1,px,
 4,skill,fireball_basic,timing,cast_time,0,0,10,0.1,s,
 5,skill,fireball_basic,timing,telegraph_ms,420,0,2000,1,ms,
@@ -10,7 +10,7 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 9,skill,fireball_basic,behavior,effect_type,emit_projectile,,,str,,
 10,skill,fireball_basic,damage,damage_type,elemental_fire,,,enum,,
 11,skill,missile_storm,damage,base_damage,30,0,500,1,,
-12,skill,missile_storm,cooldown,cooldown,3.0,0,60,0.1,s,
+12,skill,missile_storm,cooldown,cooldown,5.0,0,60,0.1,s,
 13,skill,missile_storm,range,cast_range,350,0,1000,1,px,
 14,skill,missile_storm,timing,cast_time,0,0,10,0.1,s,
 15,skill,missile_storm,timing,telegraph_ms,220,0,2000,1,ms,

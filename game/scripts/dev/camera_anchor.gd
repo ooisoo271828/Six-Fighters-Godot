@@ -8,20 +8,34 @@ extends Node2D
 @export var anchor_speed: float = 250.0
 ## 是否启用键盘输入控制（Demo 中可关闭以固定镜头）
 @export var input_enabled: bool = false
+## 是否接受摇杆输入
+@export var joystick_enabled: bool = false
+
+var _joystick_vector: Vector2 = Vector2.ZERO
+
+func set_joystick_input(dx: float, dy: float) -> void:
+	_joystick_vector = Vector2(dx, dy)
+
+func clear_joystick_input() -> void:
+	_joystick_vector = Vector2.ZERO
 
 func _process(dt: float) -> void:
-	if not input_enabled:
-		return
-
 	var dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		dir.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		dir.x += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		dir.y -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		dir.y += 1.0
+
+	# 键盘输入
+	if input_enabled:
+		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+			dir.x -= 1.0
+		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+			dir.x += 1.0
+		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+			dir.y -= 1.0
+		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+			dir.y += 1.0
+
+	# 摇杆输入（优先级高于键盘）
+	if joystick_enabled and _joystick_vector != Vector2.ZERO:
+		dir = _joystick_vector
 
 	if dir != Vector2.ZERO:
 		dir = dir.normalized()

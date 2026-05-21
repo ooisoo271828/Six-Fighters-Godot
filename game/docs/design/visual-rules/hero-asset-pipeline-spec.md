@@ -1,9 +1,11 @@
-# Hero Asset Pipeline (Aseprite → Phaser)
+# [DEPRECATED] Hero Asset Pipeline (Aseprite → Phaser)
+
+> **本文档已废弃。** 项目已从 Phaser 3 (Web) 迁移至 Godot 4.6。本文档保留作为旧 Web 客户端管线的历史参考。Godot 版本的美术管线规范将在后续文档中定义。
 
 Status: Draft  
 Version: v0.1  
 Owner: Art + Engineering  
-Last Updated: 2026-03-22  
+Last Updated: 2026-03-22 | 废弃日期：2026-05-21
 Scope: Directory layout, naming, export rules, and **V1 single-hero vertical slice** acceptance criteria.  
 Related: docs/design/feature-systems/hero-skill-template-v1.md; docs/design/visual-rules/pixel-art-visual-bible.md; docs/tech/architecture/client-rendering-and-assets.md; docs/tech/adr/2026-03-22-pixel-art-rendering-policy.md
 

@@ -54,17 +54,19 @@ Related: `docs/design/visual-rules/hero-asset-pipeline-spec.md`; `docs/tech/arch
 
 ## 4. 当前实现映射
 
+> 旧 Web 版（Phaser）映射已归档。以下为 Godot 4.6 版本的实现位置。
+
 | 代号 | 已实现技能 | 所在位置 |
 |------|----------|---------|
-| A | `basic` | SkillDemoScene.ts |
-| B | `reg01` fireball | SkillDemoScene.ts |
-| C | `reg03` ghost_fire_skull | SkillDemoScene.ts |
-| D | `reg04` missile_storm | SkillDemoScene.ts |
-| F | `reg06` chain_lightning | SkillDemoScene.ts |
-| G | `reg07` burning_hands | SkillDemoScene.ts |
-| H | `reg08` ice_ring | SkillDemoScene.ts |
-| J | `reg09` plasma_beam | SkillDemoScene.ts |
-| L | `reg05` ice_cyclone | SkillDemoScene.ts |
+| A | `basic` | `game/scripts/skill_system/` |
+| B | `reg01` fireball | `game/scripts/skill_system/` + `game/resources/skills/fireball_basic.tres` |
+| C | `reg03` ghost_fire_skull | 待迁移 |
+| D | `reg04` missile_storm | `game/scripts/skill_system/` + `game/resources/skills/missile_storm.tres` |
+| F | `reg06` chain_lightning | 待迁移 |
+| G | `reg07` burning_hands | 待迁移 |
+| H | `reg08` ice_ring | 待迁移 |
+| J | `reg09` plasma_beam | 待迁移 |
+| L | `reg05` ice_cyclone | 待迁移 |
 
 ## 4a. C型（弱追踪）Ghost Fire Skull 技能规格
 

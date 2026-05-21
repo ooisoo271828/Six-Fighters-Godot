@@ -24,7 +24,7 @@ Related: `docs/design/visual-rules/values/visual-presentation-values.csv`; `docs
 ## 3. 通道策略：`subset_light`
 
 - **轻档** 少通道；**standard** 起叠加震屏、屏闪等；**更高档** 在 **同一套通道** 上通过 **CSV 调强** 时长与幅度。  
-- 具体数值（秒、强度、粒子上限等）进 `visual-presentation-values.csv`（及 `six-fighter-web/public/design-values/` 镜像），代码只认档 + 读表。
+- 具体数值（秒、强度、粒子上限等）进 `visual-presentation-values.csv`，代码只认档 + 读表。
 
 ## 4. 通道矩阵（逻辑开关）
 

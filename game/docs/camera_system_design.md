@@ -1,7 +1,9 @@
-# Six Fighter GD — 镜头系统设计文档
+# [DEPRECATED] Six Fighter GD — 镜头系统设计文档
 
+> **本文档已废弃。** 权威镜头视窗规则请参见 [`camera-viewport-rules-v1.md`](camera-viewport-rules-v1.md)。
+>
 > 本文档定义游戏的镜头架构和空间坐标系，是所有后续开发（战斗、技能、关卡、UI）的基石。
-> 最后更新：2026-04-26
+> 最后更新：2026-04-26 | 废弃日期：2026-05-21
 
 ---
 

@@ -1,4 +1,6 @@
-# LPC 角色精灵显示问题技术报告
+# [DEPRECATED] LPC 角色精灵显示问题技术报告
+
+> **本文档已废弃。** 项目已从 Phaser 3 (Web) 迁移至 Godot 4.6。本文档保留作为旧 Web 客户端调试记录的历史参考。
 
 **日期**: 2026/04/16
 **问题**: LPC 角色在 SpriteViewerScene 中出现左右半片交替闪烁；Ironwall 在所有场景显示半片角色

@@ -1,4 +1,7 @@
 # 会话交接文档：镜头系统方案 + 技能演示器改造
+
+> **过时声明**：本文档引用的 `camera_system_design.md` 已废弃。权威镜头视窗规则请参见 [`camera-viewport-rules-v1.md`](camera-viewport-rules-v1.md)（2026-05-21 发布）。本文档保留作为历史会话记录。
+
 **Date:** 2026-04-26
 **Participants:** Engineering + Design
 **Scope:** 游戏镜头系统方案设计 + 基于新镜头方案的技能演示器（SkillDemo）场景实现

@@ -14,22 +14,26 @@ Related: docs/design/visual-rules/pixel-art-visual-bible.md; docs/design/combat-
 
 ## 2. View / Perspective
 
-- **Default**: **three-quarter top-down** or **slightly angled top-down** so squad and enemies share a readable floor plane (final angle locked with first playable art pass).
+- **Default**: **斜45°俯视角（Isometric-ish Top-Down）**，纯美术视角（引擎不做投影变换）。详见 [`camera-viewport-rules-v1.md`](../../camera-viewport-rules-v1.md)。
 - **Joystick** remains `move_only`; camera does not reframe per hero — all heroes share one **squad anchor** for presentation (offsets around anchor per hero slot).
 
 ## 3. Layer Order (Implementation Contract)
 
-Back to front:
+Back to front（详见 [`camera-viewport-rules-v1.md`](../../camera-viewport-rules-v1.md) 第四章）：
 
-1. Background / parallax (optional)
-2. Ground / arena base
-3. **Hazard telegraphs** (persistent shapes: circles, cones, lines)
-4. Enemy shadows → **Enemy bodies**
-5. Ally shadows → **Hero bodies**
-6. Mid VFX (projectiles, swings)
-7. Front VFX (impacts, sparks)
-8. **Critical hazard overlays** — *Node validation / current phase*: **not used** for monster skill windup or “lethal read”; high threat is expressed **only** via `skill_warn_extreme` windup assets (`docs/design/combat-rules/skill-warning-zone-spec.md`). This layer stays **reserved** for future non-windup emphasis (e.g. other modes), to avoid duplicating the windup-only scheme.
-9. UI (HP, debug)
+1. Ground texture (TileMap base layer) — z_index 0
+2. Ground decoration (碎石、水洼) — z_index 5
+3. Ground traces (血迹、脚印、技能残留) — z_index 10
+4. **Hazard telegraphs** (persistent shapes: circles, cones, lines)
+5. Character shadows — z_index 20
+6. **Y-Sort container** (Hero bodies + Enemy bodies + Building bases, 按 Y 坐标自动排序) — z_index 30
+7. Building tops (高于角色时遮挡角色) — z_index 40
+8. Mid VFX: projectiles / swings / beams — z_index 50
+9. Front VFX: impacts, sparks, explosions — z_index 60
+10. **Critical hazard overlays** — *Node validation / current phase*: **not used** for monster skill windup or “lethal read”; high threat is expressed **only** via `skill_warn_extreme` windup assets (`docs/design/combat-rules/skill-warning-zone-spec.md`). This layer stays **reserved** for future non-windup emphasis (e.g. other modes), to avoid duplicating the windup-only scheme.
+11. Damage numbers / floating text — **独立 CanvasLayer** (layer=10)
+12. HUD / overhead UI — **独立 CanvasLayer** (layer=20)
+13. Fullscreen VFX (暗角、震动) — **独立 CanvasLayer** (layer=30)
 
 This aligns with guardrail **layer priority** semantics: telegraphs and silhouettes beat **decorative** VFX. **Mid VFX** (projectiles, swings, beams per `projectile-v1-taxonomy.md`) is **gameplay presentation**, not decoration — see §3.3 for ordering vs hazard telegraphs.
 

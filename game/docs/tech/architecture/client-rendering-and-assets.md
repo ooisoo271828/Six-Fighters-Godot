@@ -1,9 +1,11 @@
-# Client Rendering & Assets (Web / Phaser)
+# [DEPRECATED] Client Rendering & Assets (Web / Phaser)
+
+> **本文档已废弃。** 项目已从 Phaser 3 (Web) 迁移至 Godot 4.6。本文档保留作为旧 Web 客户端的历史参考。
 
 Status: Draft  
 Version: v0.1  
 Owner: Engineering  
-Last Updated: 2026-03-22  
+Last Updated: 2026-03-22 | 废弃日期：2026-05-21
 Scope: Pixel rendering policy, texture pipeline, loading strategy, audio placeholders, and performance budgets for `six-fighter-web`.  
 Related: docs/tech/architecture/web-client-architecture.md; docs/tech/adr/2026-03-22-pixel-art-rendering-policy.md; docs/design/visual-rules/pixel-art-visual-bible.md; docs/design/visual-rules/hero-asset-pipeline-spec.md
 
