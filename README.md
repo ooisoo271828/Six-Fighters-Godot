@@ -2,7 +2,7 @@
 
 A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.x, developed via VibeCoding (AI-assisted). Features a **POE-style skill modifier system** where skills can be augmented with runtime modifiers (scatter, bounce, fission, expansion, etc.).
 
-> **Current phase**: Core combat loop + VFX tier pool system (full implementation). 2 of 8 planned skills implemented. Modifier pipeline fixed.
+> **Current phase**: Core combat loop + VFX tier pool system (full implementation). 2 of 8 planned skills implemented. Modifier pipeline fixed. Hastur plugin enhanced with structured error capture for AI debugging (file/line/stack in execute responses).
 
 ---
 
@@ -27,13 +27,19 @@ A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.
 ┌─────────────┐   HTTP 5302   ┌─────────────────┐   TCP 5301   ┌──────────────────┐
 │ AI Agent    │ ◄───────────► │ broker-server   │ ◄──────────► │ Godot Editor     │
 │ (Claude Code)│               │ (Node.js/TS)    │              │ + HasturPlugin   │
-└─────────────┘               └─────────────────┘              └──────────────────┘
-                                           │
-                              ┌────────────▼────────────┐
-                              │   Python CLI tools       │
-                              │   (editor_call.py,       │
-                              │    hastur.py)            │
-                              └─────────────────────────┘
+└──────┬──────┘               └─────────────────┘              └────────┬─────────┘
+       │                                                               │
+       │  Structured error response                                    │ Structured error
+       │  (file/line/stack via _details fields)                        │  capture via
+       │                                                               │  OS.add_logger()
+       │                                                               │  + ScriptBacktrace
+       │                                                               ▼
+       │                                                     ┌──────────────────┐
+       │                                                     │  Game Runtime     │
+       └─────────────────────────────────────────────────────┤  (error log       │
+                                                             │   streaming via   │
+                                                             │   TCP logs chan)  │
+                                                             └──────────────────┘
 ```
 
 ### Game Systems
@@ -215,6 +221,24 @@ python tools/editor_call.py --health       # Check broker + editor status
 python tools/editor_call.py --executors    # List connected Godot editor
 python tools/editor_call.py 'print("Hello from Godot!")'  # Execute GDScript remotely
 ```
+
+### Structured Error Capture (v0.3.1+)
+
+When executing GDScript via Hastur, runtime errors now return structured location details alongside the error message:
+
+```json
+{
+  "run_error": "索引超出范围",
+  "run_error_details": [{
+    "file": "res://scripts/arena/arena_scene.gd",
+    "line": 142,
+    "function": "_process_enemy_spawning",
+    "frames": [{"file": "...", "function": "...", "line": N}, ...]
+  }]
+}
+```
+
+This applies to both the synchronous `POST /api/execute` response (`compile_error_details` / `run_error_details`) and the asynchronous `GET /api/executors/:id/logs/errors` log channel. See [the whitepaper](docs/HasturOperationGD-Technical-Whitepaper.md#318-%E7%BB%93%E6%9E%84%E5%8C%96%E9%94%99%E8%AF%AF%E6%8D%95%E8%8E%B7v031) for details.
 
 ---
 

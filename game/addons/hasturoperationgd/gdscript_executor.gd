@@ -32,8 +32,10 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 	var result = {
 		"compile_success": false,
 		"compile_error": "",
+		"compile_error_details": [],
 		"run_success": false,
 		"run_error": "",
+		"run_error_details": [],
 		"outputs": []
 	}
 
@@ -56,10 +58,12 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 	_error_capturer.start_capture(script_path)
 	var compile_err = script.reload()
 	var captured_errors = _error_capturer.stop_capture()
+	var compile_details = _error_capturer.get_captured_details()
 
 	if compile_err != OK:
 		if captured_errors.size() > 0:
 			result.compile_error = "\n".join(captured_errors)
+			result.compile_error_details = compile_details
 		else:
 			result.compile_error = _error_code_to_string(compile_err)
 		script = null
@@ -76,11 +80,13 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 	_error_capturer.start_capture(script_path)
 	var instance = script.new()
 	captured_errors = _error_capturer.stop_capture()
+	var instantiate_details = _error_capturer.get_captured_details()
 	script = null
 
 	if instance == null:
 		if captured_errors.size() > 0:
 			result.run_error = "\n".join(captured_errors)
+			result.run_error_details = instantiate_details
 		else:
 			result.run_error = "Failed to instantiate script"
 		return result
@@ -93,12 +99,14 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 	else:
 		_execute_snippet(instance, ctx, result)
 	captured_errors = _error_capturer.stop_capture()
+	var run_details = _error_capturer.get_captured_details()
 
 	result.outputs = ctx.get_outputs()
 
 	if captured_errors.size() > 0:
 		result.run_success = false
 		result.run_error = "\n".join(captured_errors)
+		result.run_error_details = run_details
 
 	instance = null
 	return result
@@ -258,11 +266,13 @@ class _CompileErrorCapturer extends Logger:
 	var _capturing: bool = false
 	var _filter_path: String = ""
 	var _captured: PackedStringArray = PackedStringArray()
+	var _captured_details: Array = []
 	var _mutex: Mutex = Mutex.new()
 
 	func start_capture(script_path: String) -> void:
 		_mutex.lock()
 		_captured.clear()
+		_captured_details.clear()
 		_filter_path = script_path
 		_capturing = true
 		_mutex.unlock()
@@ -273,6 +283,12 @@ class _CompileErrorCapturer extends Logger:
 		_filter_path = ""
 		var result = _captured.duplicate()
 		_captured.clear()
+		_mutex.unlock()
+		return result
+
+	func get_captured_details() -> Array:
+		_mutex.lock()
+		var result = _captured_details.duplicate()
 		_mutex.unlock()
 		return result
 
@@ -289,7 +305,51 @@ class _CompileErrorCapturer extends Logger:
 			var msg = rationale if rationale != "" else code
 			if msg != "":
 				_captured.append(msg)
+				# 立即提取帧数据（ScriptBacktrace 对象持有 GC 引用，不能长期存储）
+				var frames := _extract_frames(script_backtraces)
+				_captured_details.append({
+					"message": msg,
+					"function": function,
+					"file": file,
+					"line": line,
+					"code": code,
+					"error_type": error_type,
+					"frames": frames,
+				})
 		_mutex.unlock()
 
 	func _log_message(message: String, error: bool) -> void:
-		pass
+		_mutex.lock()
+		if not _capturing or not error:
+			_mutex.unlock()
+			return
+		_captured.append(message)
+		_captured_details.append({
+			"message": message,
+			"function": "",
+			"file": "",
+			"line": 0,
+			"code": "",
+			"error_type": _ERROR_TYPE_ERROR,
+			"frames": [],
+		})
+		_mutex.unlock()
+
+	func _extract_frames(script_backtraces: Array) -> Array:
+		var frames := []
+		for bt in script_backtraces:
+			if bt != null and bt.has_method("get_frame_count"):
+				var fc = bt.get_frame_count()
+				for fi in range(fc):
+					frames.append({
+						"function": bt.get_frame_function(fi),
+						"file": bt.get_frame_file(fi),
+						"line": bt.get_frame_line(fi),
+					})
+			elif bt is Dictionary:
+				frames.append({
+					"function": bt.get("function", ""),
+					"file": bt.get("file", ""),
+					"line": bt.get("line", 0),
+				})
+		return frames

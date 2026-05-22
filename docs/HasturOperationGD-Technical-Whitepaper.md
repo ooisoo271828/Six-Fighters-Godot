@@ -1,7 +1,7 @@
 # HasturOperationGD 插件技术蓝皮书
 
 > **版本**: v0.3.1（插件） / v0.1.0（broker-server）
-> **最后更新**: 2026-04-26
+> **最后更新**: 2026-05-22
 > **适用对象**: 人类开发团队成员、AI 助理（Claude Code 等）
 > **状态**: 正式记录
 >
@@ -287,6 +287,97 @@ func _ready() -> void:
 | `hastur_operation/broker_port` | `5301` | Broker TCP 端口 |
 | `hastur_operation/output_max_char_length` | `800` | Output 单值最大字符数 |
 
+#### 3.1.8 结构化错误捕获（v0.3.1+）
+
+> **新增于 2026-05-22**。解决 AI 在调试过程中"盲猜"的根本问题：错误信息从平字符串升级为带文件名、行号、函数名、完整栈帧的结构化数据。
+
+**问题背景**：
+
+Hastur v0.3.1 之前，`execute_result` 返回的错误只有平字符串：
+
+```json
+{"run_error": "索引超出范围"}
+```
+
+AI 不知道出错位置，只能盲猜代码、反复试错。根本原因在于 4 个断裂点：
+
+| 断裂点 | 文件 | 问题 |
+|--------|------|------|
+| `_log_message` 空操作 | `gdscript_executor.gd:294` | 某些运行时错误走 `_log_message` 路径，被静默丢弃 |
+| `script_backtraces` 未提取 | `gdscript_executor.gd:289` | `_log_error` 收到完整 `ScriptBacktrace` 对象，但只提取了消息字符串 |
+| 原始对象无法序列化 | `hastur_logger.gd:55` | `ScriptBacktrace` 对象持有 GC 引用，传入 context 后无法被 JSON 序列化 |
+| `log_script_error` 没传帧 | `editor_log_catcher.gd:83` | 脚本运行时错误调用 `log_script_error`，该函数不接受栈帧参数 |
+
+**修复方案**：
+
+在 `_CompileErrorCapturer` 和 `HasturLogger` 的 `_log_error` 回调中，**立即提取** `ScriptBacktrace` 对象的帧数据为普通字典（`{file, line, function}`），而非存储原始对象。提取后的帧数据天然可 JSON 序列化，通过 `execute_result` 同步返回。
+
+**修复后的返回格式**：
+
+```json
+{
+  "compile_success": true,
+  "run_success": false,
+  "run_error": "索引超出范围",
+  "run_error_details": [
+    {
+      "message": "索引超出范围",
+      "file": "gdscript://-9223370014612971483.gd",
+      "line": 9,
+      "function": "run",
+      "code": "索引超出范围",
+      "error_type": 2,
+      "frames": [
+        {"function": "run", "file": "gdscript://-9223370014612971483.gd", "line": 9},
+        {"function": "_execute_snippet", "file": "res://addons/hasturoperationgd/gdscript_executor.gd", "line": 236},
+        {"function": "execute_code", "file": "res://addons/hasturoperationgd/gdscript_executor.gd", "line": 100},
+        {"function": "_handle_execute", "file": "res://addons/hasturoperationgd/broker_client.gd", "line": 271},
+        {"function": "_handle_message", "file": "res://addons/hasturoperationgd/broker_client.gd", "line": 241},
+        {"function": "_read_data", "file": "res://addons/hasturoperationgd/broker_client.gd", "line": 221},
+        {"function": "poll", "file": "res://addons/hasturoperationgd/broker_client.gd", "line": 141},
+        {"function": "_process", "file": "res://addons/hasturoperationgd/executor_backend.gd", "line": 36}
+      ]
+    }
+  ]
+}
+```
+
+**关键设计约束**：
+
+- **向后兼容**：新字段 `compile_error_details` / `run_error_details` 是追加而非替换，旧字段 `compile_error` / `run_error` 保持不变。现有解析代码无需修改。
+- **立即提取**：`ScriptBacktrace` 对象持有 GC 引用，不能在回调之外存储，必须在 `_log_error` 回调中立即提取为普通字典。
+- **类型安全**：帧数据只包含 `String` 和 `int`，天然可 JSON 序列化，适合 TCP NDJSON 传输。
+- **零外部依赖**：所有修改都在已有 Godot 插件代码内部，不新增 package / npm 模块。
+
+**涉及文件（修改量 +96/-4 行）**：
+
+| 文件 | 改动 |
+|------|------|
+| `gdscript_executor.gd` | 修复 `_log_message` 空操作；新增 `_captured_details` + `get_captured_details()`；`_log_error` 中提取帧数据；`execute_code` 在各阶段收集结构化错误 |
+| `broker_client.gd` | `execute_result` 增加 `compile_error_details` / `run_error_details`；`_on_logs_ready` 从 context 提取 frames 填入日志条目 |
+| `hastur_logger.gd` | `_log_error` 中立即提取 frames 而非传递原始对象（绕过 JSON 序列化限制）；新增 `_extract_frames()` 辅助方法 |
+| `editor_log_catcher.gd` | `log_script_error` 接受可选 `frames` 参数，条目包含 `stack` 字段 |
+
+**异步日志通道**：
+
+除了同步的 `execute_result` 路径（`POST /api/execute` 返回值），`GET /api/executors/:id/logs/errors` 异步日志通道也同样包含栈帧信息。游戏进程运行时（GameExecutor）发生的脚本错误，会通过 `HasturLogger` → `EditorLogCatcher` → TCP 日志通道 → broker 的链路，携带完整的 file/line/function 信息。
+
+**验证方法**：
+
+```bash
+# 执行一段会报错的代码
+curl -s -X POST "http://localhost:5302/api/execute" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"var arr = []\nprint(arr[0])","project_name":"Six Fighter"}'
+
+# 检查返回值中的 run_error_details 是否包含 file/line/frames
+
+# 检查日志通道是否也包含栈帧
+curl -s "http://localhost:5302/api/executors/<id>/logs/errors" \
+  -H "Authorization: Bearer <token>"
+```
+
 ---
 
 ### 3.2 broker-server 端（TypeScript/Node.js）
@@ -331,8 +422,21 @@ Content-Type: application/json
     "data": {
         "compile_success": true,
         "compile_error": "",
-        "run_success": true,
-        "run_error": "",
+        "compile_error_details": [],
+        "run_success": false,
+        "run_error": "Invalid access of index '0' on a base object of type: 'Array'.",
+        "run_error_details": [
+            {
+                "message": "索引超出范围",
+                "file": "res://scripts/arena/arena_scene.gd",
+                "line": 142,
+                "function": "_process_enemy_spawning",
+                "frames": [
+                    {"function": "_process_enemy_spawning", "file": "res://scripts/arena/arena_scene.gd", "line": 142},
+                    {"function": "_process", "file": "res://scripts/arena/arena_scene.gd", "line": 85}
+                ]
+            }
+        ],
         "outputs": [
             ["scene", "SkillTestScene"]
         ],
@@ -340,6 +444,8 @@ Content-Type: application/json
     }
 }
 ```
+
+> **v0.3.1 新增**: `compile_error_details` 和 `run_error_details` 字段。当代码执行出错时，这两个字段包含 `file`、`line`、`function`、`frames`（完整栈帧）的结构化数据，取代之前仅有平字符串的 `compile_error` / `run_error`。旧字段保持不变以确保向后兼容。
 
 #### 3.2.3 executor_id 生成机制
 
@@ -523,6 +629,10 @@ python tools/hastur.py logs 20
 | Timer.is_instance_valid | ❌ | ✅ | 已修复 |
 | Logger 内存泄漏 | ❌ | ✅ | 已修复 |
 | CLI Python 工具链 | ❌ | ✅ | 新增 |
+| 结构化错误捕获（file/line/stack） | ❌ | ✅ | 2026-05-22 新增 |
+| `_log_message` 空操作（丢错误） | ❌ | ✅ | 2026-05-22 修复 |
+| `ScriptBacktrace` 帧数据未提取 | ❌ | ✅ | 2026-05-22 修复 |
+| 日志通道栈帧丢失 | ❌ | ✅ | 2026-05-22 修复 |
 
 ---
 
@@ -549,4 +659,4 @@ python tools/hastur.py logs 20
 
 ---
 
-*本蓝皮书于 2026-04-26 更新，反映插件 v0.3.1 和 Python 工具链的完整状态。*
+*本蓝皮书于 2026-05-22 更新，反映插件 v0.3.1 和 Python 工具链的完整状态。*

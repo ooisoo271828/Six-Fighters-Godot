@@ -47,12 +47,15 @@ func _log_error(
 	if msg == "":
 		msg = "[error_type:%d]" % error_type
 
+	# 立即提取帧数据（ScriptBacktrace 对象持有 GC 引用，不能长期存储）
+	var extracted_frames := _extract_frames(script_backtraces)
+
 	var ctx := {
 		"function": function,
 		"file": file,
 		"line": line,
 		"code": code,
-		"backtrace": script_backtraces,
+		"frames": extracted_frames,
 		"error_type": error_type,
 	}
 
@@ -63,12 +66,32 @@ func _log_error(
 		_ERROR_TYPE_ERROR:
 			catcher.log_error(msg, ctx, "runtime")
 		_ERROR_TYPE_WARNING:
-			catcher.capture_warning(msg, script_backtraces, file)
+			catcher.capture_warning(msg, extracted_frames, file)
 		_ERROR_TYPE_SCRIPT:
-			catcher.log_script_error(function, file, line, code, rationale)
+			catcher.log_script_error(function, file, line, code, rationale, extracted_frames)
 		_:
 			# 未知类型，统一作为运行时错误处理
-			catcher.capture_runtime_error(msg, script_backtraces, file)
+			catcher.capture_runtime_error(msg, extracted_frames, file)
+
+
+func _extract_frames(script_backtraces: Array) -> Array:
+	var frames := []
+	for bt in script_backtraces:
+		if bt != null and bt.has_method("get_frame_count"):
+			var fc = bt.get_frame_count()
+			for fi in range(fc):
+				frames.append({
+					"function": bt.get_frame_function(fi),
+					"file": bt.get_frame_file(fi),
+					"line": bt.get_frame_line(fi),
+				})
+		elif bt is Dictionary:
+			frames.append({
+				"function": bt.get("function", ""),
+				"file": bt.get("file", ""),
+				"line": bt.get("line", 0),
+			})
+	return frames
 
 
 func _log(level: String, message: String) -> void:

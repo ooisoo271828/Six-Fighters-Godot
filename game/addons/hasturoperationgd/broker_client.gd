@@ -286,8 +286,10 @@ func _handle_execute(data: Dictionary) -> void:
 			"request_id": request_id,
 			"compile_success": result.get("compile_success", false),
 			"compile_error": result.get("compile_error", ""),
+			"compile_error_details": result.get("compile_error_details", []),
 			"run_success": result.get("run_success", false),
 			"run_error": result.get("run_error", ""),
+			"run_error_details": result.get("run_error_details", []),
 			"outputs": result.get("outputs", [])
 		}
 	}
@@ -557,6 +559,8 @@ func _on_logs_ready(logs: Array) -> Dictionary:
 				entry["script_path"] = ctx["file"]
 			if ctx.has("line"):
 				entry["line_number"] = ctx["line"]
+			if ctx.has("frames") and ctx["frames"].size() > 0:
+				entry["stack"] = ctx["frames"]
 		# 如果有 script_path 字段
 		if log.has("script_path") and log["script_path"]:
 			entry["script_path"] = log["script_path"]

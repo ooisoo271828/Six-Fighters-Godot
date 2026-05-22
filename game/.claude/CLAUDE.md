@@ -54,7 +54,7 @@ Transform tasks into verifiable goals:
 
 No fixes without root cause investigation first. When encountering any bug or error:
 
-1. **Read error messages completely** — stack traces, line numbers, error codes.
+1. **Read error messages completely** — check `run_error_details` / `compile_error_details` for `file`, `line`, `function`, and `frames`. The old flat `run_error` string alone is insufficient — the structured `_details` fields contain the exact location and call stack.
 2. **Reproduce consistently** — exact steps, every time. Not reproducible? Gather data, don't guess.
 3. **Check recent changes** — git diff, recent commits, new dependencies.
 4. **Trace data flow** — where does the bad value originate? Trace backward to the source, fix there.
@@ -110,6 +110,23 @@ python tools/editor_call.py --file script.gd
 - GDScript indentation must use **Tab** (`\t`), never spaces
 - Plugin source: `game/addons/hasturoperationgd/` (modify here, not broker source)
 - Full reference: `docs/claude-ref-hastur.md`
+
+**Structured error details (v0.3.1+)**:
+When executing GDScript via Hastur, runtime errors now include full location info:
+
+```json
+{
+  "run_error": "索引超出范围",
+  "run_error_details": [{
+    "file": "res://scripts/arena/arena_scene.gd",
+    "line": 142,
+    "function": "_process_enemy_spawning",
+    "frames": [{"file": "...", "function": "...", "line": N}, ...]
+  }]
+}
+```
+
+**Always check `run_error_details` / `compile_error_details` first** when debugging — they contain the exact file, line number, and call stack. The old flat `run_error` string alone is no longer the primary error signal.
 
 ---
 

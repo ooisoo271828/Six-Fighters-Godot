@@ -80,7 +80,7 @@ func log_error(message: String, context: Dictionary = {}, output_type: String = 
 	_add_entry(entry)
 
 
-func log_script_error(function: String, file: String, line: int, code: String, rationale: String) -> void:
+func log_script_error(function: String, file: String, line: int, code: String, rationale: String, frames: Array = []) -> void:
 	var entry = {
 		"type": "script_error",
 		"timestamp": Time.get_datetime_string_from_system(),
@@ -90,6 +90,7 @@ func log_script_error(function: String, file: String, line: int, code: String, r
 		"line": line,
 		"function": function,
 		"output_type": "script",
+		"stack": frames,
 	}
 	_add_entry(entry)
 
