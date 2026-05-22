@@ -390,3 +390,11 @@ func _setup_ui() -> void:
 	_status_label.add_theme_font_size_override("font_size", 13)
 	_status_label.text = "初始化中..."
 	row2.add_child(_status_label)
+
+	# 返回按钮
+	var back_btn := Button.new()
+	back_btn.text = "返回小镇"
+	back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	back_btn.add_theme_font_size_override("font_size", 13)
+	back_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/hub/main.tscn"))
+	row2.add_child(back_btn)

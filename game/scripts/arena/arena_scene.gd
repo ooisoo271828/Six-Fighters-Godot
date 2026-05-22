@@ -15,12 +15,7 @@ const HARD_FOLLOW_RADIUS := 480.0     # 超出则强制传送
 const FOLLOW_LERP_NORMAL := 3.0       # 正常跟随速度
 const FOLLOW_LERP_URGENT := 8.0       # 紧急追赶速度
 
-# ── 斜向阵型偏移（前1后2三角） ──
-const FORMATION_OFFSETS: Array[Vector2] = [
-	Vector2(-40, -40),   # 英雄B — 前排
-	Vector2(-40, +40),   # 英雄A — 后排左
-	Vector2(+40, +40),   # 英雄C — 后排右
-]
+# 阵型偏移由 GameManager.FORMATION_OFFSETS 统一管理
 
 # ── 引用（.tscn 声明式节点） ──
 @onready var camera_anchor: Node2D = $CameraAnchor
@@ -38,6 +33,7 @@ var rng_seed: int = 0
 var rng_func: Callable
 
 var heroes: Array[Hero] = []
+var hero_slot_indices: Array[int] = []  # 每个英雄对应的阵型槽位索引
 var enemies: Array[Enemy] = []
 
 var wave_index: int = 0
@@ -53,6 +49,7 @@ var joystick: VirtualJoystick
 
 var wave_label: Label
 var result_label: Label
+var _exit_dialog: PanelContainer
 
 # ── 初始化 ──
 
@@ -111,6 +108,22 @@ func _create_hud() -> void:
 	result_label.visible = false
 	hud_layer.add_child(result_label)
 
+	# 退出副本按钮 — 右上角
+	var exit_btn := Button.new()
+	exit_btn.text = "退出副本"
+	exit_btn.custom_minimum_size = Vector2(80, 32)
+	exit_btn.add_theme_font_size_override("font_size", 12)
+	exit_btn.anchor_left = 1.0
+	exit_btn.anchor_right = 1.0
+	exit_btn.offset_left = -90
+	exit_btn.offset_right = -10
+	exit_btn.offset_top = 10
+	exit_btn.offset_bottom = 42
+	exit_btn.pressed.connect(_on_exit_pressed)
+	hud_layer.add_child(exit_btn)
+
+	_setup_exit_dialog()
+
 func _setup_joystick() -> void:
 	joystick = VirtualJoystick.new()
 	hud_layer.add_child(joystick)
@@ -127,11 +140,14 @@ func _on_joystick_stopped() -> void:
 # ── 战斗启动 ──
 
 func _start_combat() -> void:
-	var roster: Array[String] = GameManager.get_roster()
-	if roster.is_empty():
-		roster = ["ironwall", "ember", "moss"]
-
-	_spawn_heroes(roster)
+	var result := GameManager.spawn_squad(y_sort_container, _get_spawn_center(), {
+		"hero_registry": hero_registry,
+		"skill_registry": skill_registry,
+		"max_hp": 420.0,
+		"add_shadow": true,
+	})
+	heroes = result["heroes"]
+	hero_slot_indices = result["slot_indices"]
 
 	wave_index = 0
 	spawn_queue = arena_config.wave_enemy_counts[0] if wave_index < arena_config.wave_enemy_counts.size() else 4
@@ -141,38 +157,8 @@ func _start_combat() -> void:
 	EventBus.emit_combat_started()
 	EventBus.emit_wave_started(wave_index)
 
-func _spawn_heroes(roster: Array[String]) -> void:
-	var i := 0
-	for hero_id in roster:
-		var hero_def: HeroDef = hero_registry.get_hero(hero_id)
-		if not hero_def:
-			continue
-
-		var hero := Hero.new()
-		hero.name = "Hero_%s" % hero_id
-
-		# 初始位置 = 锚点 + 阵型偏移 + Y偏移
-		var target := _get_formation_target(i)
-		hero.position = target
-
-		y_sort_container.add_child(hero)
-
-		var max_hp := 420.0
-		hero.setup_hero(hero_def, max_hp, skill_registry)
-
-		# 添加脚下阴影
-		_add_unit_shadow(hero)
-
-		heroes.append(hero)
-		i += 1
-
-func _add_unit_shadow(unit: CharacterBody2D) -> void:
-	var shadow := ColorRect.new()
-	shadow.name = "Shadow"
-	shadow.size = Vector2(20, 8)
-	shadow.position = Vector2(-10, 14)  # 脚底偏下
-	shadow.color = Color(0, 0, 0, 0.3)
-	unit.add_child(shadow)
+func _get_spawn_center() -> Vector2:
+	return camera_anchor.position + Vector2(0, FORMATION_Y_BIAS)
 
 # ── 主循环 ──
 
@@ -190,10 +176,8 @@ func _process(delta: float) -> void:
 
 # ── 英雄跟随系统 ──
 
-func _get_formation_target(hero_index: int) -> Vector2:
-	var anchor_pos := camera_anchor.position
-	var offset := FORMATION_OFFSETS[hero_index % FORMATION_OFFSETS.size()]
-	return anchor_pos + Vector2(0, FORMATION_Y_BIAS) + offset
+func _get_formation_target(slot_index: int) -> Vector2:
+	return _get_spawn_center() + GameManager.get_formation_offset(slot_index)
 
 func _update_hero_follow(dt: float) -> void:
 	for i in range(heroes.size()):
@@ -201,7 +185,7 @@ func _update_hero_follow(dt: float) -> void:
 		if not (hero and is_instance_valid(hero) and hero.is_alive):
 			continue
 
-		var target := _get_formation_target(i)
+		var target := _get_formation_target(hero_slot_indices[i])
 		var dist := hero.position.distance_to(target)
 
 		if dist > HARD_FOLLOW_RADIUS:
@@ -390,6 +374,14 @@ func _update_break(dt: float) -> void:
 
 # ── 敌人生成（基于锚点的世界坐标） ──
 
+func _add_unit_shadow(unit: CharacterBody2D) -> void:
+	var shadow := ColorRect.new()
+	shadow.name = "Shadow"
+	shadow.size = Vector2(20, 8)
+	shadow.position = Vector2(-10, 14)
+	shadow.color = Color(0, 0, 0, 0.3)
+	unit.add_child(shadow)
+
 func _spawn_minion() -> void:
 	# 敌人在锚点上方区域生成
 	var anchor_pos := camera_anchor.position
@@ -467,6 +459,91 @@ func _trigger_defeat() -> void:
 
 	await get_tree().create_timer(3.0).timeout
 	get_tree().change_scene_to_file("res://scenes/hub/main.tscn")
+
+# ── 退出副本确认 ──
+
+func _setup_exit_dialog() -> void:
+	_exit_dialog = PanelContainer.new()
+	_exit_dialog.visible = false
+	_exit_dialog.anchor_left = 0.5
+	_exit_dialog.anchor_top = 0.5
+	_exit_dialog.anchor_right = 0.5
+	_exit_dialog.anchor_bottom = 0.5
+	_exit_dialog.offset_left = -140
+	_exit_dialog.offset_right = 140
+	_exit_dialog.offset_top = -70
+	_exit_dialog.offset_bottom = 90
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
+	style.border_color = Color(0.6, 0.3, 0.3)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(16)
+	_exit_dialog.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+
+	var title := Label.new()
+	title.text = "确认退出副本？"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(title)
+
+	var info := Label.new()
+	info.text = "退出后关卡进度将不保留"
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info.add_theme_font_size_override("font_size", 12)
+	info.modulate = Color(0.7, 0.7, 0.7)
+	vbox.add_child(info)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 16)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var confirm_btn := Button.new()
+	confirm_btn.text = "确认退出"
+	confirm_btn.custom_minimum_size = Vector2(90, 36)
+	confirm_btn.pressed.connect(_on_exit_confirmed)
+	btn_row.add_child(confirm_btn)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "继续战斗"
+	cancel_btn.custom_minimum_size = Vector2(90, 36)
+	cancel_btn.pressed.connect(_on_exit_cancelled)
+	btn_row.add_child(cancel_btn)
+
+	vbox.add_child(btn_row)
+	_exit_dialog.add_child(vbox)
+
+	# 全屏背景遮罩
+	var backdrop := ColorRect.new()
+	backdrop.color = Color(0, 0, 0, 0.5)
+	backdrop.anchors_preset = Control.PRESET_FULL_RECT
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud_layer.add_child(backdrop)
+	backdrop.visible = false
+	_exit_dialog.set_meta("backdrop", backdrop)
+
+	hud_layer.add_child(_exit_dialog)
+
+func _on_exit_pressed() -> void:
+	if wave_phase == "win" or wave_phase == "lose":
+		return
+	_exit_dialog.visible = true
+	var backdrop: ColorRect = _exit_dialog.get_meta("backdrop")
+	if backdrop:
+		backdrop.visible = true
+
+func _on_exit_confirmed() -> void:
+	get_tree().change_scene_to_file("res://scenes/hub/main.tscn")
+
+func _on_exit_cancelled() -> void:
+	_exit_dialog.visible = false
+	var backdrop: ColorRect = _exit_dialog.get_meta("backdrop")
+	if backdrop:
+		backdrop.visible = false
 
 func _update_ui() -> void:
 	if wave_label:

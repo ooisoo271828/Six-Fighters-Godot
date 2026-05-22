@@ -98,9 +98,109 @@ func _create_default_combat_params() -> Resource:
 	
 	return params
 
+## 编队容量（固定6人）
+const SQUAD_SIZE := 6
+
+## 锥形阵型偏移（箭头指向敌人方向）
+## 索引: 0=前中, 1=中左, 2=中右, 3=后左, 4=后中, 5=后右
+const FORMATION_OFFSETS: Array[Vector2] = [
+	Vector2(0, -60),     # 0 前中
+	Vector2(-45, 0),     # 1 中左
+	Vector2(+45, 0),     # 2 中右
+	Vector2(-70, +60),   # 3 后左
+	Vector2(0, +60),     # 4 后中
+	Vector2(+70, +60),   # 5 后右
+]
+
+# ── 阵容读写 ──
+
 func set_roster(roster: Array[String]) -> void:
-	selected_roster = roster
-	EventBus.emit_roster_changed(roster)
+	selected_roster.resize(SQUAD_SIZE)
+	for i in range(SQUAD_SIZE):
+		selected_roster[i] = roster[i] if i < roster.size() else ""
+	EventBus.emit_roster_changed(selected_roster)
 
 func get_roster() -> Array[String]:
+	if selected_roster.size() < SQUAD_SIZE:
+		selected_roster.resize(SQUAD_SIZE)
 	return selected_roster
+
+## 返回非空英雄ID列表（仅用于需要纯列表的场景，如UI显示）
+func get_active_roster() -> Array[String]:
+	var result: Array[String] = []
+	for hero_id in get_roster():
+		if hero_id != "":
+			result.append(hero_id)
+	return result
+
+## 获取指定槽位的阵型偏移
+func get_formation_offset(slot_index: int) -> Vector2:
+	return FORMATION_OFFSETS[slot_index % FORMATION_OFFSETS.size()]
+
+# ── 英雄生成（唯一标准接口） ──
+
+## 在指定位置按布阵生成英雄。返回 { "heroes": Array[Hero], "slot_indices": Array[int] }
+## config 可选键:
+##   hero_registry: HeroRegistry（必填）
+##   skill_registry: SkillRegistry（可选，小镇传 null）
+##   max_hp: float（默认 420）
+##   add_collision_to_first: bool（默认 false，领队加碰撞体）
+##   add_shadow: bool（默认 true）
+##   hide_hp_bar: bool（默认 false）
+func spawn_squad(parent: Node, center_pos: Vector2, config: Dictionary = {}) -> Dictionary:
+	var hero_registry: HeroRegistry = config.get("hero_registry")
+	var skill_registry = config.get("skill_registry", null)
+	var max_hp: float = config.get("max_hp", 420.0)
+	var add_collision: bool = config.get("add_collision_to_first", false)
+	var add_shadow: bool = config.get("add_shadow", true)
+	var hide_hp_bar: bool = config.get("hide_hp_bar", false)
+
+	var roster := get_roster()
+	var result_heroes: Array[Hero] = []
+	var result_indices: Array[int] = []
+	var first := true
+
+	for slot_index in range(roster.size()):
+		var hero_id: String = roster[slot_index]
+		if hero_id == "":
+			continue
+		if not hero_registry:
+			continue
+
+		var hero_def: HeroDef = hero_registry.get_hero(hero_id)
+		if not hero_def:
+			continue
+
+		var hero := Hero.new()
+		hero.name = "Hero_%s" % hero_id
+		hero.position = center_pos + get_formation_offset(slot_index)
+		parent.add_child(hero)
+
+		hero.setup_hero(hero_def, max_hp, skill_registry)
+
+		if hide_hp_bar:
+			if hero._hp_bar:
+				hero._hp_bar.visible = false
+			if hero._hp_bar_bg:
+				hero._hp_bar_bg.visible = false
+
+		if add_shadow:
+			var shadow := ColorRect.new()
+			shadow.name = "Shadow"
+			shadow.size = Vector2(20, 8)
+			shadow.position = Vector2(-10, 14)
+			shadow.color = Color(0, 0, 0, 0.3)
+			hero.add_child(shadow)
+
+		if add_collision and first:
+			var col := CollisionShape2D.new()
+			var circle := CircleShape2D.new()
+			circle.radius = 14.0
+			col.shape = circle
+			hero.add_child(col)
+			first = false
+
+		result_heroes.append(hero)
+		result_indices.append(slot_index)
+
+	return { "heroes": result_heroes, "slot_indices": result_indices }
