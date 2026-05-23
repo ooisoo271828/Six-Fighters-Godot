@@ -33,6 +33,7 @@ var _is_near_portal := false
 var _squad_editor_open := false
 
 func _ready() -> void:
+	_restore_camera_position()
 	_init_tileset()
 	_init_map()
 	_init_building_colliders()
@@ -171,11 +172,18 @@ func _get_spawn_center() -> Vector2:
 
 # ── 相机设置 ──
 
+func _restore_camera_position() -> void:
+	camera_anchor.position = GameManager.hub_camera_position
+	camera_2d.reset_smoothing()
+
+func _save_state() -> void:
+	GameManager.hub_camera_position = camera_anchor.position
+
 func _setup_camera() -> void:
 	camera_anchor.set("input_enabled", true)
 	camera_anchor.set("joystick_enabled", true)
-	if not _heroes.is_empty():
-		camera_anchor.position = _heroes[0].position - Vector2(0, FORMATION_Y_BIAS)
+	# 注意：camera_anchor.position 已在 _ready() 开头由 _restore_camera_position() 恢复
+	# 不要在这里覆盖它，否则会产生不必要的镜头偏移抖动
 	# 设置相机边界
 	camera_2d.limit_left = 0
 	camera_2d.limit_right = TownMapData.MAP_WIDTH * TownTileset.TILE_SIZE
@@ -385,6 +393,7 @@ func _hide_portal_dialog() -> void:
 		backdrop.visible = false
 
 func _on_dialog_yes() -> void:
+	_save_state()
 	GameManager.set_roster(GameManager.get_roster())
 	get_tree().change_scene_to_file("res://scenes/arena/battle.tscn")
 
@@ -412,7 +421,9 @@ func _on_squad_editor_pressed() -> void:
 	)
 
 func _on_skill_demo_pressed() -> void:
+	_save_state()
 	get_tree().change_scene_to_file("res://scenes/dev/skill_demo.tscn")
 
 func _on_hero_viewer_pressed() -> void:
+	_save_state()
 	get_tree().change_scene_to_file("res://scenes/viewer/hero_viewer.tscn")

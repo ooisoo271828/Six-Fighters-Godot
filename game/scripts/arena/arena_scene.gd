@@ -1,6 +1,7 @@
 extends Node2D
 
-## Arena 战斗场景 — 基于锚点-跟随镜头系统
+## Arena 战斗场景 — 熔岩洞穴竞技场
+## 走廊阶段：位置触发刷怪 → Boss阶段：5秒倒计时 → 5波推怪
 
 # ── 战斗常量 ──
 const ATTACK_RANGE := 155.0
@@ -9,15 +10,31 @@ const ENEMY_RANGED_RANGE := 280.0
 const ENEMY_MELEE_RANGE := 80.0
 
 # ── 镜头/跟随参数 ──
-const FORMATION_Y_BIAS := 120.0      # 阵型中心向下偏移（英雄在画面偏下）
-const SOFT_FOLLOW_RADIUS := 350.0     # 英雄自由活动半径
-const HARD_FOLLOW_RADIUS := 480.0     # 超出则强制传送
-const FOLLOW_LERP_NORMAL := 3.0       # 正常跟随速度
-const FOLLOW_LERP_URGENT := 8.0       # 紧急追赶速度
+const FORMATION_Y_BIAS := 120.0
+const SOFT_FOLLOW_RADIUS := 350.0
+const HARD_FOLLOW_RADIUS := 480.0
+const FOLLOW_LERP_NORMAL := 3.0
+const FOLLOW_LERP_URGENT := 8.0
 
-# 阵型偏移由 GameManager.FORMATION_OFFSETS 统一管理
+# ── Boss 战参数 ──
+const BOSS_WAVE_COUNTS: Array[int] = [8, 9, 10, 15, 23]
+const BOSS_WAVE_TIMEOUT := 30.0
+const BOSS_WAVE_DEATH_RATIO := 0.9
+const BOSS_SPAWN_INTERVAL := 1.5
+const COUNTDOWN_SEC := 5.0
+const ELITE_HP_MULTIPLIER := 2.5
+const ELITE_ATTACK_MULTIPLIER := 1.8
 
-# ── 引用（.tscn 声明式节点） ──
+# ── 阶段枚举 ──
+enum Phase {
+	CORRIDOR,
+	BOSS_COUNTDOWN,
+	BOSS_ACTIVE,
+	VICTORY,
+	DEFEAT,
+}
+
+# ── 引用 ──
 @onready var camera_anchor: Node2D = $CameraAnchor
 @onready var camera_2d: Camera2D = $CameraAnchor/Camera2D
 @onready var y_sort_container: Node2D = $YSortContainer
@@ -26,36 +43,52 @@ const FOLLOW_LERP_URGENT := 8.0       # 紧急追赶速度
 @onready var damage_text_layer: CanvasLayer = $DamageTextLayer
 @onready var hud_layer: CanvasLayer = $HUDLayer
 
-# ── 运行时状态 ──
+# ── 地图系统 ──
+var _arena_map: ArenaMapData
+var _ground_tilemap: TileMapLayer
+
+# ── 运行时状态（战斗） ──
 var combat_params: CombatParams
 var arena_config: ArenaConfig
 var rng_seed: int = 0
 var rng_func: Callable
-
 var heroes: Array[Hero] = []
-var hero_slot_indices: Array[int] = []  # 每个英雄对应的阵型槽位索引
+var hero_slot_indices: Array[int] = []
 var enemies: Array[Enemy] = []
-
-var wave_index: int = 0
-var spawn_queue: int = 0
-var spawn_timer: float = 0.0
-var wave_break_timer: float = 0.0
-var wave_phase: String = "spawning"
-
 var hero_registry: HeroRegistry
 var skill_registry: SkillRegistry
 var skill_system: Node
 var joystick: VirtualJoystick
 
+# ── 运行时状态（阶段） ──
+var phase: int = Phase.CORRIDOR
 var wave_label: Label
 var result_label: Label
+var countdown_label: Label
 var _exit_dialog: PanelContainer
 
-# ── 初始化 ──
+# 走廊阶段
+var _corridor_wave_idx := 0
+var _corridor_wave_config: Array[Dictionary] = []
+
+# Boss 倒计时阶段
+var _countdown_timer := 0.0
+
+# Boss 战阶段
+var _wave_spawner: WaveSpawner
+
+# Boss æé¶æ®µ
+var _boss_wave_index := 0
+var _boss_wave_time := 0.0
+var _boss_wave_initial_count := 0
+
+# ══════════════════════════════════════════
+#  初始化
+# ══════════════════════════════════════════
 
 func _ready() -> void:
 	_initialize()
-	_create_ground()
+	_create_tilemap()
 	_create_hud()
 	_setup_joystick()
 	_start_combat()
@@ -66,49 +99,84 @@ func _initialize() -> void:
 		rng_seed = (rng_seed * 1103515245 + 12345) & 0x7FFFFFFF
 		return float(rng_seed % 1000000) / 1000000.0
 
-	arena_config = ArenaConfig.create_default()
 	combat_params = GameManager.combat_params
+	arena_config = ArenaConfig.create_default()
 
-	# SkillSystem — 加载完整的技能系统（投射物池、特效、信号总线）
+	# 地图数据
+	_arena_map = ArenaMapData.new()
+	_corridor_wave_config = _arena_map.get_corridor_waves()
+
+	# SkillSystem
 	var skill_system_scene: PackedScene = load("res://scenes/skill_system/skill_system.tscn")
 	skill_system = skill_system_scene.instantiate()
 	add_child(skill_system)
 	skill_registry = skill_system.skill_registry
 	GameManager.skill_registry = skill_registry
 
-	# HeroRegistry — 在 SkillSystem 之后加载，确保技能已注册
+	# HeroRegistry
 	hero_registry = HeroRegistry.new()
 	add_child(hero_registry)
 
-	# 锚点起始位置（世界坐标原点附近）
-	camera_anchor.position = Vector2(270, 480)
+	# 初始位置：走廊入口
+	var entry := _arena_map.get_entry_world_position()
+	camera_anchor.position = Vector2(entry.x, entry.y - FORMATION_Y_BIAS)
+	camera_2d.reset_smoothing()
 
-func _create_ground() -> void:
-	# 网格地面 — 提供空间参照
-	var ground := Node2D.new()
-	ground.name = "Ground"
-	ground.set_script(preload("res://scripts/arena/battle_ground.gd"))
-	ground.z_index = 0
-	add_child(ground)
-	move_child(ground, 0)  # 确保在最底层
+	# 相机边界
+	camera_2d.limit_left = 0
+	camera_2d.limit_right = ArenaMapData.MAP_WIDTH * ArenaMapData.TILE_SIZE
+	camera_2d.limit_top = 0
+	camera_2d.limit_bottom = ArenaMapData.MAP_HEIGHT * ArenaMapData.TILE_SIZE
+
+	# å·æªç³»ç»
+	_wave_spawner = WaveSpawner.new()
+	add_child(_wave_spawner)
+
+func _create_tilemap() -> void:
+	_ground_tilemap = TileMapLayer.new()
+	_ground_tilemap.name = "GroundTileMap"
+	_ground_tilemap.tile_set = ArenaTileset.generate_tileset()
+	_ground_tilemap.z_index = -1
+	add_child(_ground_tilemap)
+	move_child(_ground_tilemap, 0)
+
+	for ty in range(ArenaMapData.MAP_HEIGHT):
+		for tx in range(ArenaMapData.MAP_WIDTH):
+			var tile_type := _arena_map.get_tile_type(tx, ty)
+			if tile_type >= 0:
+				var atlas_coords := Vector2i(tile_type % ArenaTileset.ATLAS_COLS, tile_type / ArenaTileset.ATLAS_COLS)
+				_ground_tilemap.set_cell(Vector2i(tx, ty), 0, atlas_coords)
 
 func _create_hud() -> void:
-	# 波次标签 — 在 HUD CanvasLayer 中
 	wave_label = Label.new()
-	wave_label.text = "Wave 1 / 3"
-	wave_label.position = Vector2(200, 20)
-	wave_label.add_theme_font_size_override("font_size", 20)
+	wave_label.text = ""
+	wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wave_label.position = Vector2(0, 20)
+	wave_label.size = Vector2(540, 30)
+	wave_label.add_theme_font_size_override("font_size", 18)
 	hud_layer.add_child(wave_label)
 
-	# 结果标签 — 在 HUD CanvasLayer 中
+	countdown_label = Label.new()
+	countdown_label.text = ""
+	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	countdown_label.position = Vector2(0, 380)
+	countdown_label.size = Vector2(540, 200)
+	countdown_label.add_theme_font_size_override("font_size", 96)
+	countdown_label.add_theme_color_override("font_color", Color(1.0, 0.4, 0.1))
+	countdown_label.visible = false
+	hud_layer.add_child(countdown_label)
+
 	result_label = Label.new()
 	result_label.text = ""
-	result_label.position = Vector2(170, 400)
-	result_label.add_theme_font_size_override("font_size", 48)
+	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	result_label.position = Vector2(0, 360)
+	result_label.size = Vector2(540, 240)
+	result_label.add_theme_font_size_override("font_size", 56)
 	result_label.visible = false
 	hud_layer.add_child(result_label)
 
-	# 退出副本按钮 — 右上角
 	var exit_btn := Button.new()
 	exit_btn.text = "退出副本"
 	exit_btn.custom_minimum_size = Vector2(80, 32)
@@ -127,7 +195,6 @@ func _create_hud() -> void:
 func _setup_joystick() -> void:
 	joystick = VirtualJoystick.new()
 	hud_layer.add_child(joystick)
-
 	joystick.joystick_input.connect(_on_joystick_input)
 	joystick.joystick_stopped.connect(_on_joystick_stopped)
 
@@ -137,7 +204,9 @@ func _on_joystick_input(dx: float, dy: float) -> void:
 func _on_joystick_stopped() -> void:
 	camera_anchor.clear_joystick_input()
 
-# ── 战斗启动 ──
+# ══════════════════════════════════════════
+#  战斗启动
+# ══════════════════════════════════════════
 
 func _start_combat() -> void:
 	var result := GameManager.spawn_squad(y_sort_container, _get_spawn_center(), {
@@ -149,32 +218,37 @@ func _start_combat() -> void:
 	heroes = result["heroes"]
 	hero_slot_indices = result["slot_indices"]
 
-	wave_index = 0
-	spawn_queue = arena_config.wave_enemy_counts[0] if wave_index < arena_config.wave_enemy_counts.size() else 4
-	spawn_timer = 0.5
-	wave_phase = "spawning"
-
 	EventBus.emit_combat_started()
-	EventBus.emit_wave_started(wave_index)
 
 func _get_spawn_center() -> Vector2:
 	return camera_anchor.position + Vector2(0, FORMATION_Y_BIAS)
 
-# ── 主循环 ──
+# ══════════════════════════════════════════
+#  主循环
+# ══════════════════════════════════════════
 
 func _process(delta: float) -> void:
-	if wave_phase == "win" or wave_phase == "lose":
+	if phase == Phase.VICTORY or phase == Phase.DEFEAT:
 		return
 
 	_update_hero_follow(delta)
+	_clamp_positions()
 	_update_dots(delta)
 	_update_combat(delta)
-	_update_waves(delta)
+	_update_phase_logic(delta)
 	_cleanup_dead_units()
 	_check_end_conditions()
 	_update_ui()
 
-# ── 英雄跟随系统 ──
+func _clamp_positions() -> void:
+	camera_anchor.position = _arena_map.clamp_to_walkable(camera_anchor.position)
+	for enemy in enemies:
+		if enemy and is_instance_valid(enemy):
+			enemy.position = _arena_map.clamp_to_walkable(enemy.position)
+
+# ══════════════════════════════════════════
+#  英雄跟随
+# ══════════════════════════════════════════
 
 func _get_formation_target(slot_index: int) -> Vector2:
 	return _get_spawn_center() + GameManager.get_formation_offset(slot_index)
@@ -184,34 +258,31 @@ func _update_hero_follow(dt: float) -> void:
 		var hero: Hero = heroes[i]
 		if not (hero and is_instance_valid(hero) and hero.is_alive):
 			continue
-
 		var target := _get_formation_target(hero_slot_indices[i])
 		var dist := hero.position.distance_to(target)
-
 		if dist > HARD_FOLLOW_RADIUS:
-			# 强制传送
 			hero.position = target
 		elif dist > SOFT_FOLLOW_RADIUS:
-			# 紧急追赶
 			hero.position = hero.position.lerp(target, FOLLOW_LERP_URGENT * dt)
 		else:
-			# 正常跟随
 			hero.position = hero.position.lerp(target, FOLLOW_LERP_NORMAL * dt)
 
-# ── DoT / 状态效果 ──
+# ══════════════════════════════════════════
+#  DoT / 状态效果
+# ══════════════════════════════════════════
 
 func _update_dots(dt: float) -> void:
 	var dot_interval: float = combat_params.dot_tick_interval_sec
-
 	for hero in heroes:
 		if hero and is_instance_valid(hero) and hero.is_alive:
 			hero.status_effects.tick(dt, dot_interval, func(dmg): hero.take_damage(dmg))
-
 	for enemy in enemies:
 		if enemy and is_instance_valid(enemy) and enemy.is_alive:
 			enemy.status_effects.tick(dt, dot_interval, func(dmg): enemy.take_damage(dmg))
 
-# ── 战斗逻辑 ──
+# ══════════════════════════════════════════
+#  战斗逻辑
+# ══════════════════════════════════════════
 
 func _update_combat(dt: float) -> void:
 	for hero in heroes:
@@ -219,79 +290,55 @@ func _update_combat(dt: float) -> void:
 			continue
 		if hero.status_effects.is_stunned():
 			continue
-
 		var target := _find_nearest_enemy(hero.position)
 		if not target:
 			continue
-
 		var dist := hero.position.distance_to(target.position)
 		if dist > ATTACK_RANGE + 20:
 			continue
-
 		var pick: RoleAI.AutonomyPick = hero.tick_ai(dt, target, combat_params, rng_func)
 		if not pick:
 			continue
-
-		# 触发视觉投射物
 		skill_system.cast_skill(hero, pick.skill.skill_id, target)
-
 		var result := CombatResolver.resolve_attack(
-			hero.stats,
-			target.stats,
-			pick.skill.base_damage,
-			pick.skill.damage_type,
+			hero.stats, target.stats,
+			pick.skill.base_damage, pick.skill.damage_type,
 			pick.skill.stun_chance if pick.skill.stun_chance else 0.0,
 			pick.skill.stun_duration if pick.skill.stun_duration else 0.0,
-			combat_params,
-			rng_func,
+			combat_params, rng_func,
 			target.status_effects.get_shock_stacks_for_resolution()
 		)
-
 		target.take_damage(result.instant_damage)
 		hero.timers.rage = minf(100.0, hero.timers.rage + result.instant_damage * 0.15)
-
 		for update in result.status_updates:
 			target.apply_status_updates([update], combat_params)
 
 	for enemy in enemies:
 		if not (enemy and is_instance_valid(enemy) and enemy.is_alive):
 			continue
-
 		var target := _find_nearest_hero(enemy.position)
 		if not target:
 			continue
-
 		var skill_type: String = enemy.get_meta("skill_type", "slash")
 		var is_ranged := skill_type == "shuriken"
 		var attack_range := ENEMY_RANGED_RANGE if is_ranged else ENEMY_MELEE_RANGE
-
 		var dist := enemy.position.distance_to(target.position)
 		if dist > attack_range:
 			var dir := (target.position - enemy.position).normalized()
 			enemy.position += dir * ENEMY_SPEED * dt
 			continue
-
 		if enemy.tick_ai(dt, target):
 			var result := CombatResolver.resolve_attack(
-				enemy.stats,
-				target.stats,
-				enemy.base_attack,
-				CombatResolver.DamageType.PHYSICAL,
-				0.0, 0.0,
-				combat_params,
-				rng_func,
+				enemy.stats, target.stats,
+				enemy.base_attack, CombatResolver.DamageType.PHYSICAL,
+				0.0, 0.0, combat_params, rng_func,
 				target.status_effects.get_shock_stacks_for_resolution()
 			)
-
 			if is_ranged:
 				_spawn_enemy_shuriken(enemy, target, result.instant_damage)
 			else:
 				_spawn_enemy_slash(enemy, target)
 				target.take_damage(result.instant_damage)
-
-	for enemy in enemies:
-		if enemy and enemy.is_boss and is_instance_valid(enemy):
-			enemy.update_boss_phases(dt, arena_config)
 
 func _find_nearest_enemy(pos: Vector2) -> Enemy:
 	var nearest: Enemy = null
@@ -317,62 +364,162 @@ func _find_nearest_hero(pos: Vector2) -> Hero:
 			nearest = hero
 	return nearest
 
-# ── 波次系统 ──
+# ══════════════════════════════════════════
+#  阶段逻辑（走廊 → Boss 倒计时 → Boss 战）
+# ══════════════════════════════════════════
 
-func _update_waves(dt: float) -> void:
-	match wave_phase:
-		"boss":
-			_check_boss_phase()
-		"spawning":
-			_update_spawning(dt)
-		"break":
-			_update_break(dt)
+func _update_phase_logic(dt: float) -> void:
+	match phase:
+		Phase.CORRIDOR:
+			_update_corridor(dt)
+		Phase.BOSS_COUNTDOWN:
+			_update_countdown(dt)
+		Phase.BOSS_ACTIVE:
+			_update_boss_wave(dt)
 
-func _check_boss_phase() -> void:
-	var boss_alive := false
-	for e in enemies:
-		if e and is_instance_valid(e) and e.is_alive and e.is_boss:
-			boss_alive = true
-			break
-	if not boss_alive:
-		_trigger_victory()
+# ── 走廊阶段 ──
 
-func _update_spawning(dt: float) -> void:
-	if spawn_queue > 0:
-		spawn_timer -= dt
-		if spawn_timer <= 0:
-			_spawn_minion()
-			spawn_queue -= 1
-			spawn_timer = arena_config.spawn_interval_sec
+func _update_corridor(_dt: float) -> void:
+	# 检查 Boss 触发
+	if _arena_map.is_in_boss_trigger(camera_anchor.position):
+		_start_boss_countdown()
 		return
 
-	var minions_alive := false
-	for e in enemies:
-		if e and is_instance_valid(e) and e.is_alive and not e.is_boss:
-			minions_alive = true
-			break
-	if minions_alive:
-		return
+	# 检查走廊波次触发
+	if _corridor_wave_idx < _corridor_wave_config.size():
+		var config := _corridor_wave_config[_corridor_wave_idx]
+		if camera_anchor.position.y < config["y_trigger"] * ArenaMapData.TILE_SIZE:
+			_spawn_corridor_wave(config)
+			_corridor_wave_idx += 1
 
-	wave_phase = "break"
-	wave_break_timer = arena_config.wave_break_sec
+func _spawn_corridor_wave(cfg: Dictionary) -> void:
+	var zone_center := Vector2(camera_anchor.position.x, camera_anchor.position.y - 200.0)
+	var zone_size := Vector2(500.0, 160.0)
+	var rect_zone := SpawnZone.rect(zone_center, zone_size)
+	var walkable_zone := SpawnZone.validated(rect_zone, func(p): return _arena_map.is_walkable(p.x, p.y))
 
-func _update_break(dt: float) -> void:
-	wave_break_timer -= dt
-	if wave_break_timer > 0:
-		return
+	var wave := WaveConfig.new(cfg["count"], 4.0)
+	wave.add_zone(walkable_zone)
+	wave.elite_count = 1 if cfg.get("has_elite", false) else 0
+	_wave_spawner.start_wave(wave, rng_func, _on_wave_spawn)
 
-	if wave_index < arena_config.wave_count - 1:
-		wave_index += 1
-		spawn_queue = arena_config.wave_enemy_counts[wave_index] if wave_index < arena_config.wave_enemy_counts.size() else 4
-		spawn_timer = 0.0
-		wave_phase = "spawning"
-		EventBus.emit_wave_started(wave_index)
+func _on_wave_spawn(pos: Vector2, _config: WaveConfig, is_elite: bool) -> void:
+	var enemy := Enemy.new()
+	enemy.name = "Minion_%d" % enemies.size()
+	enemy.position = _arena_map.clamp_to_walkable(pos)
+	y_sort_container.add_child(enemy)
+
+	if is_elite:
+		enemy.setup_enemy(false,
+			arena_config.minion_base_hp * ELITE_HP_MULTIPLIER * _config.hp_multiplier,
+			arena_config.minion_base_attack * ELITE_ATTACK_MULTIPLIER * _config.attack_multiplier, 1.2)
+		enemy.modulate = Color(0.9, 0.4, 0.1)
 	else:
-		_spawn_boss()
-		wave_phase = "boss"
+		enemy.setup_enemy(false,
+			arena_config.minion_base_hp * _config.hp_multiplier,
+			arena_config.minion_base_attack * _config.attack_multiplier, 0.9)
 
-# ── 敌人生成（基于锚点的世界坐标） ──
+	var skill_type := "shuriken" if rng_func.call() < 0.5 else "slash"
+	enemy.set_meta("skill_type", skill_type)
+
+	# åºç¨ WaveConfig æ©å±æ ç­¾
+	for key in _config.tags:
+		enemy.set_meta(key, _config.tags[key])
+
+	_add_unit_shadow(enemy)
+	enemies.append(enemy)
+
+func _start_boss_countdown() -> void:
+	phase = Phase.BOSS_COUNTDOWN
+	_countdown_timer = COUNTDOWN_SEC
+	countdown_label.visible = true
+	countdown_label.text = str(ceili(_countdown_timer))
+	wave_label.text = "⚔ BOSS AREA ⚔"
+	# 锁定摇杆，限制镜头移动
+	camera_anchor.clear_joystick_input()
+	camera_anchor.set("joystick_enabled", false)
+
+func _update_countdown(dt: float) -> void:
+	_countdown_timer -= dt
+	countdown_label.text = str(maxi(1, ceili(_countdown_timer)))
+
+	if _countdown_timer <= 0:
+		countdown_label.visible = false
+		camera_anchor.set("joystick_enabled", true)
+		_start_boss_wave_sequence()
+
+# ── Boss 战波次 ──
+
+func _start_boss_wave_sequence() -> void:
+	phase = Phase.BOSS_ACTIVE
+	_boss_wave_index = 0
+	_begin_boss_wave()
+
+func _begin_boss_wave() -> void:
+	var count := BOSS_WAVE_COUNTS[_boss_wave_index]
+	_boss_wave_initial_count = count
+	_boss_wave_time = 0.0
+
+	var boss_center := _arena_map.get_boss_center_world()
+	var zone := SpawnZone.validated(
+		SpawnZone.circle(boss_center, 450.0),
+		func(p): return _arena_map.is_walkable(p.x, p.y)
+	)
+
+	var wave := WaveConfig.new(count, 4.0)
+	wave.add_zone(zone)
+	wave.set_tag("boss_wave", _boss_wave_index)
+	wave_label.text = "Boss Wave %d / %d" % [_boss_wave_index + 1, BOSS_WAVE_COUNTS.size()]
+	EventBus.emit_wave_started(_boss_wave_index)
+	_wave_spawner.start_wave(wave, rng_func, _on_wave_spawn)
+
+func _update_boss_wave(dt: float) -> void:
+	_boss_wave_time += dt
+	if _wave_spawner.is_active:
+		return
+	# æåä¸æ³¢ï¼æäººå¨é¨æ­»äº¡ â èå©
+	if _boss_wave_index >= BOSS_WAVE_COUNTS.size() - 1:
+		for e in enemies:
+			if e and is_instance_valid(e) and e.is_alive:
+				return
+		_trigger_victory()
+		return
+	if _should_advance_boss_wave():
+		_advance_boss_wave()
+
+func _should_advance_boss_wave() -> bool:
+	if _boss_wave_index >= BOSS_WAVE_COUNTS.size() - 1:
+		return false
+	if _wave_spawner.is_active:
+		return false
+	if _boss_wave_time >= BOSS_WAVE_TIMEOUT:
+		return true
+
+	# ç»è®¡å½åæ³¢æ¬¡æå¤å°æäººè¿å¨å­æ´»
+	var alive_from_current := 0
+	for e in enemies:
+		if e and is_instance_valid(e) and e.is_alive:
+			if e.get_meta("boss_wave", -1) == _boss_wave_index:
+				alive_from_current += 1
+
+	var total := _boss_wave_initial_count
+	var dead := total - alive_from_current
+	if total > 0 and float(dead) / float(total) >= BOSS_WAVE_DEATH_RATIO:
+		return true
+
+	return false
+
+func _advance_boss_wave() -> void:
+	_boss_wave_index += 1
+	if _boss_wave_index >= BOSS_WAVE_COUNTS.size():
+		# 所有波次完成 → 胜利
+		_trigger_victory()
+	else:
+		_begin_boss_wave()
+
+# ══════════════════════════════════════════
+#  敌人 & 视觉
+# ══════════════════════════════════════════
 
 func _add_unit_shadow(unit: CharacterBody2D) -> void:
 	var shadow := ColorRect.new()
@@ -381,42 +528,6 @@ func _add_unit_shadow(unit: CharacterBody2D) -> void:
 	shadow.position = Vector2(-10, 14)
 	shadow.color = Color(0, 0, 0, 0.3)
 	unit.add_child(shadow)
-
-func _spawn_minion() -> void:
-	# 敌人在锚点上方区域生成
-	var anchor_pos := camera_anchor.position
-	var x := anchor_pos.x - 200.0 + (rng_func.call() as float) * 400.0
-	var y := anchor_pos.y - 300.0 + (rng_func.call() as float) * 120.0
-
-	var enemy := Enemy.new()
-	enemy.name = "Minion_%d" % enemies.size()
-	enemy.position = Vector2(x, y)
-	y_sort_container.add_child(enemy)
-
-	enemy.setup_enemy(false, arena_config.minion_base_hp, arena_config.minion_base_attack, 0.9)
-
-	# 随机分配攻击类型：飞镖 or 刀光
-	var skill_type := "shuriken" if rng_func.call() < 0.5 else "slash"
-	enemy.set_meta("skill_type", skill_type)
-
-	_add_unit_shadow(enemy)
-	enemies.append(enemy)
-
-func _spawn_boss() -> void:
-	var anchor_pos := camera_anchor.position
-	var x := anchor_pos.x
-	var y := anchor_pos.y - 280.0
-
-	var enemy := Enemy.new()
-	enemy.name = "Boss"
-	enemy.position = Vector2(x, y)
-	y_sort_container.add_child(enemy)
-
-	enemy.setup_enemy(true, arena_config.boss_base_hp, arena_config.boss_base_attack, arena_config.boss_pattern_cooldown_sec)
-	_add_unit_shadow(enemy)
-	enemies.append(enemy)
-
-# ── 敌人技能特效 ──
 
 func _spawn_enemy_shuriken(enemy: Node2D, target: Node2D, damage: float) -> void:
 	var shuriken: Node2D = Node2D.new()
@@ -432,35 +543,47 @@ func _spawn_enemy_slash(enemy: Node2D, target: Node2D) -> void:
 	add_child(slash)
 	slash.setup(target)
 
-# ── 清理 / 结算 ──
+# ══════════════════════════════════════════
+#  清理 / 结算
+# ══════════════════════════════════════════
 
 func _cleanup_dead_units() -> void:
 	heroes = heroes.filter(func(h): return h and is_instance_valid(h) and h.is_alive)
 	enemies = enemies.filter(func(e): return e and is_instance_valid(e) and e.is_alive)
 
 func _check_end_conditions() -> void:
-	if heroes.is_empty() and wave_phase != "lose":
+	if heroes.is_empty() and phase != Phase.DEFEAT:
 		_trigger_defeat()
 
+func _save_hub_return_position() -> void:
+	# 传送门下方 3 个角色身位
+	const PORTAL_POS := Vector2(15 * 32 + 16, 20 * 32 + 16)
+	const SPOT_OFFSET := Vector2(0, 3 * 60)
+	GameManager.hub_camera_position = PORTAL_POS + SPOT_OFFSET
+
 func _trigger_victory() -> void:
-	wave_phase = "win"
+	phase = Phase.VICTORY
 	result_label.text = "VICTORY"
 	result_label.visible = true
 	EventBus.emit_victory()
+	_save_hub_return_position()
 
 	await get_tree().create_timer(3.0).timeout
 	get_tree().change_scene_to_file("res://scenes/hub/main.tscn")
 
 func _trigger_defeat() -> void:
-	wave_phase = "lose"
+	phase = Phase.DEFEAT
 	result_label.text = "DEFEAT"
 	result_label.visible = true
 	EventBus.emit_defeat()
+	_save_hub_return_position()
 
 	await get_tree().create_timer(3.0).timeout
 	get_tree().change_scene_to_file("res://scenes/hub/main.tscn")
 
-# ── 退出副本确认 ──
+# ══════════════════════════════════════════
+#  退出确认
+# ══════════════════════════════════════════
 
 func _setup_exit_dialog() -> void:
 	_exit_dialog = PanelContainer.new()
@@ -517,7 +640,6 @@ func _setup_exit_dialog() -> void:
 	vbox.add_child(btn_row)
 	_exit_dialog.add_child(vbox)
 
-	# 全屏背景遮罩
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0, 0, 0, 0.5)
 	backdrop.anchors_preset = Control.PRESET_FULL_RECT
@@ -525,11 +647,10 @@ func _setup_exit_dialog() -> void:
 	hud_layer.add_child(backdrop)
 	backdrop.visible = false
 	_exit_dialog.set_meta("backdrop", backdrop)
-
 	hud_layer.add_child(_exit_dialog)
 
 func _on_exit_pressed() -> void:
-	if wave_phase == "win" or wave_phase == "lose":
+	if phase == Phase.VICTORY or phase == Phase.DEFEAT:
 		return
 	_exit_dialog.visible = true
 	var backdrop: ColorRect = _exit_dialog.get_meta("backdrop")
@@ -537,6 +658,7 @@ func _on_exit_pressed() -> void:
 		backdrop.visible = true
 
 func _on_exit_confirmed() -> void:
+	_save_hub_return_position()
 	get_tree().change_scene_to_file("res://scenes/hub/main.tscn")
 
 func _on_exit_cancelled() -> void:
@@ -546,5 +668,4 @@ func _on_exit_cancelled() -> void:
 		backdrop.visible = false
 
 func _update_ui() -> void:
-	if wave_label:
-		wave_label.text = "Wave %d / %d" % [wave_index + 1, arena_config.wave_count]
+	pass

@@ -5,6 +5,7 @@ extends Node
 var combat_params: Resource
 var skill_registry: SkillRegistry
 var selected_roster: Array[String] = []
+var hub_camera_position: Vector2 = Vector2.ZERO  # 基地场景镜头位置（离开时保存，返回时恢复）
 
 func _ready() -> void:
 	# 加载战斗参数

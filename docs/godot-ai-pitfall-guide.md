@@ -1,6 +1,6 @@
 # 🛡 Godot AI 编程避坑指南
 
-> **版本**: v2.0 | 创建: 2026-04-28 | 更新: 2026-05-23 | 状态: 持续更新
+> **版本**: v3.0 | 创建: 2026-04-28 | 更新: 2026-05-23 | 状态: 持续更新
 >
 > 本指南汇总了 Six-Fighters-Godot 项目开发过程中反复出现的错误、隐蔽陷阱和系统性教训。
 > 目标：避免团队在同一个坑里跌倒两次。
@@ -20,6 +20,8 @@
 9. [数据流设计陷阱](#九数据流设计陷阱)
 10. [GDScript 类型系统陷阱](#十gdscript-类型系统陷阱)
 11. [AI 幻觉与上下文污染](#十一ai-幻觉与上下文污染)
+12. [坐标与单位换算陷阱（重点）](#十二坐标与单位换算陷阱重点)
+13. [架构设计陷阱](#十三架构设计陷阱)
 
 ---
 
@@ -164,6 +166,56 @@ line.width_curve = curve  # curve 已经是 Curve 对象
 
 ---
 
+### 2.6 同文件声明多个 `class_name` 只有第一个生效
+
+**症状**：一个 `.gd` 文件中写了两个 `class_name`，第二个类在场景或其他脚本中提示 `Identifier not declared`。
+
+```gdscript
+# ❌ 错误：wave_spawner.gd 中声明了两个 class_name
+class_name WaveConfig
+extends RefCounted
+# ... 中间代码 ...
+class_name WaveSpawner  # ← 此声明被 Godot 静默忽略！
+extends Node
+```
+
+**根因**：Godot 4 规定**每个 `.gd` 文件只能有一个 `class_name`**。第二个 `class_name` 会被解析器忽略，不报错、不警告，但该类型无法在任何地方使用。
+
+**排查思路**：
+- 文件定义了多个类？搜索文件中的 `class_name` 出现次数
+- 报 `Identifier not declared` 但文件看起来有声明？检查是否是该文件中**第二个** `class_name`
+
+**修复**：每个类独立一个文件，文件按类名命名：
+```
+wave_config.gd   → class_name WaveConfig
+wave_spawner.gd  → class_name WaveSpawner
+```
+
+**规则**：**在 GDScript 中，永远一个文件一个类**。当一次 PR 需要新增多个类时，容易为了"减少文件数量"把多个类塞进一个文件，这是必须抵制的诱惑。
+
+---
+
+### 2.7 函数参数名遮蔽类成员变量
+
+**症状**：编译通过但报 `SHADOWED_VARIABLE` 警告。参数名和成员变量同名，函数体内无法通过变量名访问成员变量。
+
+```gdscript
+# ❌ 错误：参数 center 遮蔽了成员变量 center
+var center: Vector2
+
+static func circle(center: Vector2, radius: float) -> SpawnZone:
+    return SpawnZone.new(Type.CIRCLE, center, Vector2(radius, 0))
+    # 此处的 center 是参数（static 函数中也不是问题），但 IDE 警告
+
+# ✅ 正确：参数加 p_ 前缀区分
+static func circle(p_center: Vector2, radius: float) -> SpawnZone:
+    return SpawnZone.new(Type.CIRCLE, p_center, Vector2(radius, 0))
+```
+
+**规范**：所有可能和成员变量冲突的参数加 `p_` 前缀（`p_center`、`p_count`、`p_name`）。特别在静态工厂方法中，这是高频错误。
+
+---
+
 ## 三、Godot 引擎特性陷阱
 
 ### 3.1 资源缓存不刷新
@@ -200,7 +252,57 @@ print("Has new code: " + str("new_function" in script.source_code))
 
 ---
 
-### 3.3 从现有代码推断行为不可靠——可能有旧版缓存
+### 3.3 Camera2D 平滑跟随导致场景切换时镜头漂移
+
+**症状**：离开基地场景再返回时，镜头从左上角平滑漂移到玩家上次所在位置，即使已经正确恢复了 `camera_anchor.position`。
+
+**根因**：Camera2D 的 `position_smoothing_enabled`（启用平滑跟随）与 Godot 节点的初始化顺序共同导致。
+
+```
+场景加载时序:
+  1. Camera2D._ready() 执行
+     → 此时父节点 CameraAnchor.position = (0,0)（场景文件默认值）
+     → Camera2D 内部 smoothed_position = (0,0)  ← 问题起源
+  2. 父节点 hub_scene._ready() 执行
+     → _restore_camera_position() 设置 CameraAnchor.position = saved_pos
+     → Camera2D 检测到父节点位置变化
+     → 从 smoothed_position (0,0) 向 saved_pos 平滑插值 ← 可见漂移！
+```
+
+这就是为什么明明位置设对了，镜头仍然从左上往右下移动——Camera2D 的平滑系统在第一步就锚定了初始位置，后续父节点跳变被它当作"需要平滑跟随的运动"来处理。
+
+**修复**：在恢复位置后立即调用 `reset_smoothing()`，告知 Camera2D 立刻对齐目标位置，跳过平滑过渡：
+
+```gdscript
+func _restore_camera_position() -> void:
+	camera_anchor.position = GameManager.hub_camera_position
+	camera_2d.reset_smoothing()  # ← 关键：清除平滑缓存，瞬间对齐
+```
+
+**`reset_smoothing()` 的作用**：重置 Camera2D 内部缓存的 `smoothed_x` / `smoothed_y` 值为当前目标位置。调用后下一帧直接渲染最终位置，没有任何插值过渡。
+
+**教学要点**：
+1. Godot `_ready()` 调用顺序是**自底向上**（子节点先于父节点）。这意味着子节点的 `_ready()` 执行时，父节点的属性尚未被自定义逻辑修改
+2. `position_smoothing_enabled` 不仅控制游戏中的平滑跟随，也会在**场景初始化和节点位置跳变时生效**——这是它最容易被忽略的副作用
+3. 任何需要在场景切换后"瞬间就位"的 Camera2D，都应该在位置恢复后调用 `reset_smoothing()`
+4. 同一原理也适用于 `RemoteTransform2D`、`PathFollow2D` 等有插值/跟随行为的节点——场景切换时可能需要重置内部状态
+
+**排查思路**：
+```
+镜头位置正确但仍有漂移动画 → 检查 Camera2D 是否启用 smoothing
+                             → 检查是否有节点在 _ready() 之后改变父节点位置
+                             → 在位置恢复处添加 reset_smoothing()
+```
+
+**适用场景**：
+- 基地/城镇场景切换回主场景时
+- 传送门/关卡切换后镜头归位
+- 任何通过 `change_scene_to_file()` 返回的场景
+- 打开/关闭 UI 面板后恢复镜头位置
+
+---
+
+### 3.4 从现有代码推断行为不可靠——可能有旧版缓存
 
 **症状**：修改了函数逻辑后，运行时行为与代码内容不匹配。
 **根因**：编辑器可能运行的是旧版编译后的脚本，而非磁盘上当前文件的内容。
@@ -518,6 +620,55 @@ grep -rn "_add_unit_shadow" scripts/ scenes/
 
 ---
 
+### 8.4 状态机的"终点"检查：最后一个状态的退出条件
+
+**症状**：写完波次系统后，前 4 波敌人推进正常，但第 5 波打完永远不会触发胜利——玩家清完怪后卡在场景中。
+
+**根因**：状态机设计时只关注了"正常路径"的推进逻辑（第 0→1→2→3 波），忽略了**最后一个状态没有"下一步"** 的问题。`_should_advance_boss_wave()` 对最后一波返回 `false`（因为后面没有波次了），导致 `_trigger_victory()` 永远不会被调用。
+
+```
+波次推进:
+  波0 → 满足条件 → advance → 波1 → advance → 波2 → advance → 波3 → advance → 波4
+  波4 → _should_advance 返回 false（因为 index >= 4）→ 永远卡在这里！
+```
+
+**规律**：状态机末尾状态的退出条件被忽略是一个系统性陷阱。不仅限于波次系统，也常见于：
+- 动画状态机的最后一个动画播放完没有过渡
+- 关卡设计的最后一波怪物
+- 新手引导的最后一个步骤
+- 场景过渡动画的最后一个阶段
+
+**预防检查清单**（写完任何状态机后检查）：
+```
+☐ 每个状态的"进入"逻辑是什么？
+☐ 每个状态的"运行"逻辑是什么？
+☐ 每个状态的"退出"条件是什么？
+☐ 最后一个状态退出后会发生什么？ ← 最容易被忽略
+```
+
+### 8.5 删除/重命名符号后必须 grep 全项目
+
+**症状**：删除了一个变量/函数后，另一个文件报错 "Identifier not declared"。或运行时崩溃。
+
+**根因**：全局搜索只搜了当前文件，没搜其他文件。在 GDScript 项目中，一个函数可能被 `@onready` 引用、被 `.tscn` 连接、被 Callable 绑定——这些不在同一个文件中。
+
+**案例**：熔岩洞穴竞技场重构时，删除了 `_boss_wave_spawning` 变量，替换为 `_wave_spawner.is_active`。但 `_should_advance_boss_wave()` 中残留了 `if _boss_wave_spawning:` 的引用——编译报错。
+
+**修复规范**：
+```bash
+# 删除/重命名 任何符号后的标准流程：
+# 1. grep 全项目
+grep -rn "_boss_wave_spawning" scripts/ scenes/
+
+# 2. 确认引用分布：哪些是定义，哪些是使用，哪些是信号绑定
+# 3. 所有使用处全部更新
+# 4. 最后删除定义
+```
+
+**核心原则**：**先 grep 再删除，先 grep 再重命名**。这是防止"修好一个地方漏了三个地方"的最简单有效的习惯。
+
+---
+
 ## 九、数据流设计陷阱
 
 ### 9.1 "保存"与"关闭"的数据生命周期
@@ -629,10 +780,58 @@ for i in range(heroes.size()):
 
 ## 十、GDScript 类型系统陷阱
 
-### 10.1 `:=` 推断失败于未类型化的容器
+### 10.1 `:=` 推断失败于未类型化的容器和函数返回值
 
 **症状**：`Cannot infer the type of "xxx" variable because the value doesn't have a set type.`
-**根因**：GDScript 的 `const Array`（不带类型标注）的元素类型是 `Variant`，`:=` 无法从 Variant 推断类型。
+
+**根因**：GDScript 的 `:=` 要求右侧表达式有明确的静态类型。当右侧涉及以下情况时，类型系统无法推导：
+
+1. **未类型化数组的元素是 Variant**
+2. **`Callable.call()` 返回值是 Variant**
+3. **未类型化数组迭代中的循环变量是 Variant**
+
+```gdscript
+# ❌ 错误 1：const Array 的元素是 Variant
+const NAMES := ["前中", "中左", "中右"]
+var name := NAMES[0]  # 编译错误
+
+# ✅ 正确方案一：显式标注类型
+var name: String = NAMES[0]
+
+# ✅ 正确方案二：声明时加类型
+const NAMES: Array[String] = ["前中", "中左", "中右"]
+var name := NAMES[0]  # 现在可以推断为 String
+```
+
+```gdscript
+# ❌ 错误 2：Callable.call() 返回 Variant
+var rng := func() -> float: return 0.5
+var x := rng.call() * 100.0  # Cannot infer type
+
+# ✅ 正确：显式标注
+var x: float = rng.call() * 100.0
+```
+
+```gdscript
+# ❌ 错误 3：未类型化数组的迭代变量是 Variant
+for dx in [-1, 0, 1]:
+    var nx := tx + dx  # Cannot infer type — dx is Variant
+    var ny := ty + dy
+
+# ✅ 正确：显式标注
+for dx in [-1, 0, 1]:
+    var nx: int = tx + dx
+
+# ✅ 也正确：类型化数组
+for dx in [-1, 0, 1] as Array[int]:
+    var nx := tx + dx  # 现在可以推导
+```
+
+**排查思路**：
+- 遇到 `Cannot infer type`，**追溯上游**——是数组没标注类型？是 Callable 返回值？是循环变量？
+- 不要绕路（如用 `= 0` 占位），要找到类型丢失的源头
+
+**规律**：这个陷阱在熔岩洞穴竞技场一章中出现超过10次——几乎所有的 `:=` 在涉及 `rng.call()` 或 `[-1,0,1]` 循环时都会触发。**在 GDScript 中使用回调函数、未标注类型数组、或内联数组时，优先用显式声明**。
 
 ```gdscript
 # ❌ 错误：const Array 的元素是 Variant
@@ -732,6 +931,87 @@ var width := TownMapData.MAP_WIDTH * TownTileset.TILE_SIZE
 
 ---
 
+## 十二、坐标与单位换算陷阱（重点）
+
+### 12.1 瓦片坐标 vs 世界坐标混淆
+
+**症状**：波次触发的 y 阈值明明设对了，但怪物刷不出来或者刷错位置。
+
+**根因**：设计数据使用**瓦片坐标**（如 `y_trigger = 205` 表示第 205 行瓦片），但运行时的比较逻辑直接使用 `camera_anchor.position.y`（**世界坐标**，205 × 32 = 6560），相差一个 `TILE_SIZE` 因子。
+
+**教训**：坐标系是 2D 游戏开发中最高频的 Bug 来源之一。一个简单的规范可以避免绝大多数此类问题：**在变量名或注释中标注其坐标空间**。
+
+```gdscript
+# ❌ 容易混淆：y_trigger 是瓦片还是世界单位？
+const SPAWN_TRIGGER_Y: Array[int] = [205, 125, 60]
+
+# ✅ 明确标注
+const SPAWN_TRIGGER_TILE_Y: Array[int] = [205, 125, 60]
+# 使用时
+if camera_anchor.position.y < trigger_tile_y * TILE_SIZE:
+```
+
+**编码规范**：
+- 瓦片坐标的变量/常量 → 加 `_tile` 后缀：`spawn_tile_y`、`trigger_tile_x`
+- 世界坐标的变量/常量 → 无特殊后缀（默认是世界坐标）
+- 转换 → 始终在引用处做乘法/除法，不要中间存储
+
+**常见陷阱场景**：
+- 地图设计时用瓦片坐标（方便设计），运行时用世界坐标（方便引擎）——二者混淆
+- `TileMap.set_cell()` 用瓦片坐标，`Node2D.position` 用世界坐标——混用时不加注释
+- 路径点定义用瓦片坐标，碰撞体生成用世界坐标——转换因子的缺失
+
+### 12.2 不同的"单位"在同一表达式中的静默混用
+
+**症状**：计算看起来没问题，但结果是错误的。比如"30 秒步行"的走廊长度算出来对不上。
+
+**根因**：计算中混用了不同来源的数据——玩家的移动速度是 `px/s`，走廊长度是 `tiles`，时间要求是 `seconds`。三者之间缺乏显式的单位标注和换算检查。
+
+```gdscript
+# ✅ 显式标注：
+const ANCHOR_SPEED := 250.0       # px/s
+const WALK_SECONDS := 30.0         # s
+const TILE_SIZE := 32              # px/tile
+var corridor_length_px := ANCHOR_SPEED * WALK_SECONDS     # 7500 px
+var corridor_length_tiles := corridor_length_px / TILE_SIZE  # ~234 tiles
+```
+
+**规范**：在常量命名中包含单位：
+
+```gdscript
+const SPEED_PX_PER_SEC := 250.0
+const CORRIDOR_LENGTH_TILES := 234
+const CORRIDOR_LENGTH_PX := CORRIDOR_LENGTH_TILES * TILE_SIZE
+```
+
+---
+
+## 十三、架构设计陷阱
+
+### 13.1 重构时只跟踪新路径，忽略边界状态
+
+**症状**：重构后主要功能跑通了，但在边界条件下（最后一波、空列表、最小配置）崩溃或卡死。
+
+**根因**：重构时的思维模式是"新代码能不能跑通"，而不是"所有路径是否都有出口"。人脑天然倾向于关注高频路径，低频路径（边界状态、错误处理、最后一轮）容易被忽略。
+
+**案例**：熔岩洞穴竞技场整合 WaveSpawner 时，前三波 Boss 战推进正常，但最后一波完成后 `_trigger_victory()` 没有被调用——因为 `_should_advance_boss_wave()` 对最后一波返回 `false`。详细分析见 [8.4 状态机的"终点"检查](#84-状态机的终点检查最后一个状态的退出条件)。
+
+**预防办法 —— 重构完成后的状态机审计**：
+```
+对每个状态问三个问题：
+  1. 进入条件是什么？
+  2. 运行时逻辑是什么？
+  3. 退出条件是什么？
+特别注意最后一个状态的退出条件 ← 最容易忽略
+```
+
+**通用原则**：
+- 重构不只是在替换代码逻辑——你也在替换对代码的**心理模型**
+- 旧代码可能有隐藏的边界处理，重构时无意中丢弃了
+- 每次重构完成后，**除了测试主路径，更要测试边界条件**：0 元素、最后一轮、空状态
+
+---
+
 ## 附录：检查清单
 
 在提交代码或声称修复完成前，逐项检查：
@@ -766,9 +1046,33 @@ var width := TownMapData.MAP_WIDTH * TownTileset.TILE_SIZE
 - [ ] 确认修改的是真正执行的代码路径，而非同名/同类文件
 - [ ] 用 Python 而非 sed 处理需要精确缩进的多行替换
 
+**坐标系与单位**：
+- [ ] 涉及坐标的常量和变量是否标注了坐标空间（`_tile` 后缀、`_px` 后缀）
+- [ ] 跨系统换算（tile → px、tile → 秒）是否有显式乘除法
+- [ ] 设计文档中的坐标和代码中的坐标使用同一套单位体系
+
+**状态机与边界**：
+- [ ] 状态机中的所有状态是否都有"进入→运行→退出"的完整定义
+- [ ] **最后一个状态的退出条件**被正确处理
+- [ ] 重构后测了边界条件：最后一轮、0 元素、空列表、最小配置
+
+**重构安全**：
+- [ ] 删除/重命名函数或变量前，**grep 了全项目**的所有引用
+- [ ] 检查了 `.tscn` 文件中的信号连接和节点引用
+- [ ] 重构完成后，除主路径外测试了所有边界状态
+
+**class_name 规范**：
+- [ ] 每个 `.gd` 文件只有一个 `class_name`
+- [ ] 文件名和类名一致（`WaveConfig` → `wave_config.gd`）
+
+**相机与场景切换**：
+- [ ] 场景切换后镜头位置是否正确，有无平滑漂移
+- [ ] 如果恢复了节点位置，调用 `reset_smoothing()` 清除 Camera2D 平滑缓存
+- [ ] 子节点 `_ready()` 在先、父节点 `_ready()` 在后的时序影响初始化逻辑
+
 **AI 协作**：
-- [ ] AI 引用的文件是否确实存在于项目中
-- [ ] AI 的建议是否与当前技术栈匹配（Godot/Python，非 UE/Unity）
+- [ ] AI 引用的文件确实存在于项目中
+- [ ] AI 的建议与当前技术栈匹配（Godot/Python，非 UE/Unity）
 
 ---
 
