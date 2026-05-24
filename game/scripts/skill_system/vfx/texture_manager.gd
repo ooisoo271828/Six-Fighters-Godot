@@ -33,6 +33,9 @@ const SOFT_CIRCLE := &"soft_circle"
 const RAY_STARBURST := &"ray_starburst"
 const NOISE_PERLIN := &"noise_perlin"
 const RING_SPIKY := &"ring_spiky"
+const ROCK_IRREGULAR := &"rock_irregular"
+const MUSHROOM_CLOUD := &"mushroom_cloud"
+const FLAME_AURA := &"flame_aura"
 
 # ── 程序化纹理分辨率 ──
 
@@ -40,6 +43,8 @@ const CIRCLE_SIZE := 32
 const NOSE_SIZE := 32
 const RAY_SIZE := 64
 const RING_SPIKY_SIZE := 128
+const ROCK_IRREGULAR_SIZE := 64
+const MUSHROOM_FRAME_SIZE := 96
 
 
 ## 获取纹理（带缓存）
@@ -128,6 +133,10 @@ func _load_or_generate(key: StringName) -> Texture2D:
 			return _generate_ray(RAY_SIZE)
 		RING_SPIKY:
 			return _generate_ring_spiky(RING_SPIKY_SIZE)
+		ROCK_IRREGULAR:
+			return _generate_rock_irregular(ROCK_IRREGULAR_SIZE)
+		FLAME_AURA:
+			return _generate_flame_aura(64)
 		NOISE_PERLIN:
 			var noise := NoiseTexture2D.new()
 			noise.noise = FastNoiseLite.new()
@@ -135,8 +144,16 @@ func _load_or_generate(key: StringName) -> Texture2D:
 			noise.height = 128
 			return noise
 		_:
-			# 尝试从 assets/textures/vfx/ 加载
-			var path := "res://assets/textures/vfx/%s.png" % key
+			# 检查蘑菇云帧
+			var key_str: String = String(key)
+			if key_str.begins_with("mushroom_cloud_frame_"):
+				var parts: PackedStringArray = key_str.split("_")
+				if parts.size() == 4:
+					var frame_idx: int = int(parts[3])
+					if frame_idx >= 0 and frame_idx < 8:
+						return _generate_mushroom_frame(MUSHROOM_FRAME_SIZE, frame_idx)
+			# ���Դ� assets/textures/vfx/ ����
+			var path: String = "res://assets/textures/vfx/%s.png" % key
 			if ResourceLoader.exists(path):
 				return load(path)
 			push_warning("VFXTextureManager: unknown texture key '%s'" % key)
@@ -146,7 +163,7 @@ func _load_or_generate(key: StringName) -> Texture2D:
 # ── 程序化纹理生成 ──
 
 func _generate_circle(size: int) -> Texture2D:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var center := float(size) * 0.5 - 0.5
 	var radius_sq := pow(float(size) * 0.5 - 1.0, 2.0)
@@ -161,7 +178,7 @@ func _generate_circle(size: int) -> Texture2D:
 
 
 func _generate_soft_circle(size: int) -> Texture2D:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var center := float(size) * 0.5 - 0.5
 	var radius := float(size) * 0.5 - 1.0
@@ -179,7 +196,7 @@ func _generate_soft_circle(size: int) -> Texture2D:
 
 
 func _generate_nose(size: int) -> Texture2D:
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	var half := float(size) * 0.5
 	for y in range(size):
@@ -198,8 +215,8 @@ func _generate_nose(size: int) -> Texture2D:
 func _generate_ray(size: int) -> Texture2D:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
-	var cx := float(size) * 0.5 - 0.5
-	var cy := float(size) * 0.5 - 0.5
+	var cx: float = float(size) * 0.5 - 0.5
+	var cy: float = float(size) * 0.5 - 0.5
 	var core_radius := float(size) * 0.14
 	var glow_radius := float(size) * 0.36
 	# 核心光晕
@@ -240,7 +257,7 @@ func _generate_ray(size: int) -> Texture2D:
 func _generate_ring_spiky(size: int) -> Texture2D:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
-	var cx := float(size) * 0.5 - 0.5
+	var cx: float = float(size) * 0.5 - 0.5
 	var cy := float(size) * 0.5 - 0.5
 	var base_radius := float(size) * 0.35
 	var spike_count := 24
@@ -291,5 +308,163 @@ func _generate_ring_spiky(size: int) -> Texture2D:
 				if spike_a > disk_a:
 					brightness = randf_range(0.7, 0.95)
 				img.set_pixel(x, y, Color(brightness, brightness, brightness, final_a))
+
+	return ImageTexture.create_from_image(img)
+
+# ── 陨石纹理（不规则深褐色岩石） ──
+
+func _generate_rock_irregular(size: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx: float = float(size) * 0.5 - 0.5
+	var cy := float(size) * 0.5 - 0.5
+	var base_radius: float = float(size) * 0.38
+
+	# 深褐色调
+	var rock_dark: Color = Color(0.27, 0.16, 0.08, 1)
+	var rock_light: Color = Color(0.40, 0.25, 0.12, 1)
+
+	# 随机顶点生成不规则多边形（固定种子保证每次加载一致）
+	var seed_val: int = 42
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = seed_val
+
+	var vertices: Array[Vector2] = []
+	var vertex_count: int = 12
+	for i in range(vertex_count):
+		var angle: float = float(i) / float(vertex_count) * TAU + rng.randf_range(-0.08, 0.08)
+		var radius_offset: float = base_radius * rng.randf_range(0.65, 1.2)
+		var vx: float = cx + cos(angle) * radius_offset
+		var vy: float = cy + sin(angle) * radius_offset
+		vertices.append(Vector2(vx, vy))
+
+	# 扫描填充
+	for x in range(size):
+		for y in range(size):
+			var point: Vector2 = Vector2(float(x), float(y))
+			if _point_in_polygon(point, vertices):
+				var noise_val: float = rng.randf_range(0.0, 1.0)
+				var col: Color = rock_dark.lerp(rock_light, noise_val * 0.35)
+				var dist_center: float = point.distance_to(Vector2(cx, cy))
+				var edge_factor: float = clampf((dist_center - base_radius * 0.3) / (base_radius * 0.7), 0.0, 1.0)
+				col = col.darkened(edge_factor * 0.12)
+				img.set_pixel(x, y, col)
+
+	return ImageTexture.create_from_image(img)
+
+
+static func _point_in_polygon(point: Vector2, polygon: Array[Vector2]) -> bool:
+	var inside: bool = false
+	var j: int = polygon.size() - 1
+	for i in range(polygon.size()):
+		if (polygon[i].y > point.y) != (polygon[j].y > point.y) and 			point.x < (polygon[j].x - polygon[i].x) * (point.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x:
+			inside = not inside
+		j = i
+	return inside
+
+
+# ── 蘑菇云帧动画（8 帧） ──
+
+func _generate_mushroom_frame(size: int, frame: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx := float(size) * 0.5
+	var cy: float = float(size) * 0.75
+	var progress: float = float(frame) / 7.0
+
+	var base_color: Color = Color(0.35, 0.22, 0.12, 0.85)
+	var top_color: Color = Color(0.55, 0.32, 0.15, 0.7)
+	var fade_color: Color = Color(0.5, 0.4, 0.3, 0.0)
+
+	var stem_height: float = size * (0.15 + progress * 0.25)
+	var stem_width: float = size * (0.10 - progress * 0.03)
+	var cap_radius: float = size * (0.15 + progress * 0.20)
+	var cap_center_y: float = cy - stem_height - size * (0.05 + progress * 0.08)
+	var dissipation: float = maxf(0.0, (progress - 0.6) / 0.4)
+	var top_fade: float = clampf((progress - 0.5) * 3.0, 0.0, 1.0)
+
+	for x in range(size):
+		for y in range(size):
+			var px: float = float(x)
+			var py: float = float(y)
+			var alpha: float = 0.0
+
+			# 茎部
+			var dist_stem_center: float = abs(px - cx)
+			if py >= cy - stem_height and py <= cy:
+				var stem_alpha: float = 1.0 - dist_stem_center / maxf(stem_width, 1.0)
+				stem_alpha = clampf(stem_alpha, 0.0, 0.7)
+				var bottom_factor: float = (py - (cy - stem_height)) / stem_height
+				stem_alpha *= (0.5 + bottom_factor * 0.5)
+				alpha = maxf(alpha, stem_alpha)
+
+			# 冠部
+			var dy: float = py - cap_center_y
+			var dx: float = px - cx
+			var dist_cap: float = sqrt(dx * dx + dy * dy)
+			if dist_cap <= cap_radius:
+				var radial_factor: float = 1.0 - dist_cap / cap_radius
+				var cap_alpha: float = clampf(radial_factor * 1.2, 0.0, 0.9)
+				if dy < 0:
+					cap_alpha *= 1.1
+				else:
+					cap_alpha *= 0.6
+				if dissipation > 0.0:
+					var diss_edge: float = 1.0 - radial_factor
+					cap_alpha *= 1.0 - diss_edge * dissipation * 1.5
+				cap_alpha = clampf(cap_alpha, 0.0, 1.0)
+				alpha = maxf(alpha, cap_alpha)
+
+			if alpha > 0.01:
+				var col: Color = base_color.lerp(top_color, progress)
+				if dissipation > 0.0:
+					col = col.lerp(fade_color, dissipation * 0.6)
+				col.a = alpha * (1.0 - top_fade * 0.5)
+				img.set_pixel(x, y, col)
+
+	return ImageTexture.create_from_image(img)
+
+# ── 火焰气团纹理（水滴形：前圆后尖，用于陨石火焰拖拽变形） ──
+
+func _generate_flame_aura(size: int) -> Texture2D:
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cy: float = float(size) * 0.5
+	var center_x: float = float(size) * 0.4
+	var round_r: float = float(size) * 0.38
+	var tail_min_r: float = 1.5
+
+	for x in range(size):
+		var px: float = float(x)
+		for y in range(size):
+			var py: float = float(y)
+			var dy: float = py - cy
+			
+			var local_r: float
+			var alpha_scale: float = 1.0
+			
+			if px >= center_x:
+				var t: float = (px - center_x) / (float(size) - center_x)
+				local_r = round_r * (1.0 - pow(t, 2.5))
+				local_r *= 1.0 + sin(px * 0.6 + py * 0.4) * 0.06
+			else:
+				var t: float = (center_x - px) / center_x
+				local_r = tail_min_r + (round_r - tail_min_r) * pow(1.0 - t, 2.0)
+				local_r *= 1.0 + sin(px * 0.7 + py * 0.5) * 0.12
+				local_r *= 1.0 + cos(py * 0.3 - px * 0.4) * 0.08
+				local_r *= 1.0 - t * 0.2
+			
+			local_r = maxf(local_r, tail_min_r)
+			
+			if abs(dy) <= local_r:
+				var ratio: float = abs(dy) / local_r
+				var edge_noise: float = sin(px * 0.9 + py * 1.3) * 0.08 + cos(py * 0.7 - px * 0.5) * 0.06
+				var threshold: float = 1.0 + edge_noise * 0.25
+				if ratio <= threshold:
+					var alpha: float = 1.0 - pow(ratio / threshold, 1.8)
+					if px < center_x:
+						var tail_depth: float = (center_x - px) / center_x
+						alpha *= 1.0 - tail_depth * 0.35
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
 
 	return ImageTexture.create_from_image(img)

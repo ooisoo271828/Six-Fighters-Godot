@@ -113,6 +113,7 @@ func _setup_effect_factory() -> void:
 		"area_damage": "res://scripts/skill_system/core/effects/area_damage.gd",
 		"apply_status": "res://scripts/skill_system/core/effects/apply_status.gd",
 		"emit_burst": "res://scripts/skill_system/core/effects/emit_burst.gd",
+		"emit_meteor": "res://scripts/skill_system/core/effects/emit_meteor.gd",
 	}
 
 func _load_all_skills() -> void:

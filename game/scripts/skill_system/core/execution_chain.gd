@@ -29,6 +29,11 @@ var control_point_offset: float = 100.0
 var damage: float = 0.0
 var damage_type: String = "physical"
 var base_damage: float = 0.0  # 用于计算分裂后伤害比例
+
+## ── 混合伤害参数 ──
+var secondary_damage_type: int = -1   # -1 = 无混合伤害
+var secondary_damage: float = 0.0    # 副伤害实际数值
+var secondary_damage_ratio: float = 0.0  # 副伤害占总量比例
 var skill_id: String = ""
 
 ## ── 外观参数 ──
@@ -154,6 +159,9 @@ func duplicate() -> ExecutionChain:
 	c.damage = damage
 	c.damage_type = damage_type
 	c.base_damage = base_damage
+	c.secondary_damage_type = secondary_damage_type
+	c.secondary_damage = secondary_damage
+	c.secondary_damage_ratio = secondary_damage_ratio
 	c.skill_id = skill_id
 	c.scale = scale
 	c.base_scale = base_scale

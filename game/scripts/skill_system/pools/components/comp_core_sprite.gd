@@ -32,13 +32,17 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 	# 加载纹理
 	_core_texture = null
 	_nose_texture = null
-	if _body.tex_core_path != "" and ResourceLoader.exists(_body.tex_core_path):
-		_core_texture = load(_body.tex_core_path)
+	if _body.tex_core_path != "":
+		if _body.tex_core_path.begins_with("vfx://"):
+			var key: StringName = StringName(_body.tex_core_path.trim_prefix("vfx://"))
+			_core_texture = tex_manager.get_texture(key)
+		elif ResourceLoader.exists(_body.tex_core_path):
+			_core_texture = load(_body.tex_core_path)
 	if _body.tex_nose_path != "" and ResourceLoader.exists(_body.tex_nose_path):
 		_nose_texture = load(_body.tex_nose_path)
 
 	var base_tex: Texture2D = _core_texture if _core_texture else tex_manager.get_texture(VFXTextureManager.CIRCLE)
-	var tex_size := base_tex.get_size() if base_tex else Vector2(16, 16)
+	var tex_size: Vector2 = base_tex.get_size() if base_tex else Vector2(16, 16)
 
 	var core_w: float = _body.core_width if _body.core_width > 0 else _body.core_radius * 2.0
 	var core_h: float = _body.core_height if _body.core_height > 0 else _body.core_radius * 2.0
@@ -83,7 +87,7 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 	if _body.nose_enabled and _body.nose_length > 0 and _body.nose_width > 0:
 		var nose_tex: Texture2D = _nose_texture if _nose_texture else tex_manager.get_texture(VFXTextureManager.NOSE_TRIANGLE)
 		_nose_sprite.texture = nose_tex
-		var nose_tex_size := nose_tex.get_size() if nose_tex else Vector2(16, 16)
+		var nose_tex_size: Vector2 = nose_tex.get_size() if nose_tex else Vector2(16, 16)
 		_nose_sprite.scale = Vector2(_body.nose_length / nose_tex_size.x, _body.nose_width / nose_tex_size.y)
 		_nose_sprite.modulate = _body.nose_color
 		_nose_sprite.visible = true
@@ -101,7 +105,7 @@ func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
 		var amp: float = _body.jitter_amplitude
 		var freq_x: float = _body.jitter_freq_x
 		var freq_y: float = _body.jitter_freq_y
-		var offset := Vector2(
+		var offset: Vector2 = Vector2(
 			sin(_jitter_time * freq_x * TAU) * amp,
 			sin(_jitter_time * freq_y * TAU) * amp
 		)
@@ -111,6 +115,10 @@ func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
 			_inner_sprite.position = _body.inner_offset + offset
 		if _hotspot_sprite and _hotspot_sprite.visible:
 			_hotspot_sprite.position = _body.hotspot_offset + offset
+
+	# 岩石自转（陨石类技能缓慢旋转）
+	if _core_sprite and _body.core_rotation_speed != 0.0:
+		_core_sprite.rotation += _body.core_rotation_speed * dt
 
 	# 弹尖朝向
 	if _nose_sprite and _nose_sprite.visible and chain.direction.length() > 0:

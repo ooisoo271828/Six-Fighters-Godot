@@ -1,0 +1,122 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/particle_trail_config.gd" id="4_ptc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/flame_trail_config.gd" id="5_ftc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="6_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="7_iv"]
+[ext_resource type="Resource" path="res://resources/vfx/layers/C_explosion_ellipse.tres" id="8_ee"]
+[ext_resource type="Resource" path="res://resources/vfx/layers/C_mushroom_cloud.tres" id="9_mc"]
+[ext_resource type="Resource" path="res://resources/vfx/layers/C_ground_explosion.tres" id="10_ge"]
+
+[sub_resource type="Resource" id="body_meteor"]
+script = ExtResource("2_pv")
+core_color = Color(0.5, 0.32, 0.15, 1)
+core_width = 56.0
+core_height = 44.0
+core_radius = 28.0
+core_rotation_speed = 0.6
+inner_enabled = true
+inner_color = Color(0.7, 0.48, 0.25, 0.7)
+inner_width = 36.0
+inner_height = 28.0
+inner_offset = Vector2(0, 0)
+hotspot_enabled = true
+hotspot_color = Color(0.9, 0.6, 0.3, 0.5)
+hotspot_width = 16.0
+hotspot_height = 12.0
+glow_radius = 40.0
+glow_color = Color(1.0, 0.4, 0.1, 0.35)
+glow_alpha = 0.3
+glow2_radius = 60.0
+glow2_color = Color(1.0, 0.2, 0.05, 0.12)
+glow2_alpha = 0.1
+glow_offset_forward = -10.0
+jitter_enabled = true
+jitter_amplitude = 1.5
+jitter_freq_x = 1.8
+jitter_freq_y = 2.2
+tex_core_path = "vfx://rock_irregular"
+tex_glow_path = "vfx://flame_aura"
+
+[sub_resource type="Resource" id="ptc_meteor"]
+script = ExtResource("4_ptc")
+enabled = true
+count = 25
+lifetime = 0.5
+back_dist_min = 15.0
+back_dist_max = 60.0
+spread_min = 8.0
+spread_max = 16.0
+radius_min = 0.2
+radius_max = 0.7
+color_1 = Color(1.0, 0.5, 0.2, 0.7)
+color_2 = Color(1.0, 0.35, 0.1, 0.4)
+color_3 = Color(0.8, 0.15, 0.05, 0.0)
+life_min = 0.12
+life_max = 0.4
+texture_path = "res://assets/textures/vfx/fire_particle_16.png"
+position_offset = Vector2(-36.0, 0)
+
+[sub_resource type="Resource" id="ftc_meteor"]
+script = ExtResource("5_ftc")
+enabled = true
+count = 16
+inner_min = 2.0
+inner_max = 6.0
+outer_min = 6.0
+outer_max = 16.0
+color_1 = Color(1.0, 0.55, 0.2, 0.6)
+color_2 = Color(1.0, 0.3, 0.05, 0.35)
+life_min = 0.06
+life_max = 0.18
+texture_path = "res://assets/textures/vfx/fire_particle_16.png"
+
+[sub_resource type="Resource" id="ctc_meteor"]
+script = ExtResource("6_ctc")
+enabled = true
+max_samples = 40
+sway_freq = 0.0
+sway_amplitude = 0.0
+outer_width = 12.0
+outer_color = Color(1.0, 0.3, 0.1, 1)
+outer_alpha = 0.25
+mid_width = 7.0
+mid_color = Color(1.0, 0.45, 0.15, 1)
+mid_alpha = 0.4
+inner_width = 3.0
+inner_color = Color(1.0, 0.7, 0.3, 1)
+inner_alpha = 0.7
+
+[sub_resource type="Resource" id="trail_meteor"]
+script = ExtResource("3_td")
+particles = SubResource("ptc_meteor")
+flame = SubResource("ftc_meteor")
+comet = SubResource("ctc_meteor")
+
+[sub_resource type="Resource" id="impact_meteor"]
+script = ExtResource("7_iv")
+spark_count_min = 0
+spark_count_max = 0
+spark_speed_min = 0.0
+spark_speed_max = 0.0
+spark_particle_count = 0
+spark_lifetime = 0.0
+shake_strength = 12.0
+shake_duration = 0.5
+tier_B = ""
+tier_C = ""
+custom_layers = [ExtResource("8_ee"), ExtResource("10_ge"), ExtResource("9_mc")]
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "falling_meteor"
+projectile_kind = 1
+telegraph_shape = 1
+speed = 600.0
+projectile_scale = 1.2
+body = SubResource("body_meteor")
+trail = SubResource("trail_meteor")
+impact = SubResource("impact_meteor")

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "explosion_ellipse"
+kind = 8
+params = {
+"color": Color(1.0, 0.5, 0.1, 1),
+"radius_start": 10.0,
+"radius_end": 60.0,
+"duration": 0.8,
+"scale_x": 1.6
+}

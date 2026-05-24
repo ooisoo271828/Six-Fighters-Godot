@@ -175,6 +175,42 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 		var hit_pos: Vector2 = damage_info.get("hit_pos", target.global_position)
 		_apply_aoe_damage(hit_pos, aoe_radius, caster, target, base_damage, dmg_type, stun_chance, stun_duration)
 
+	# 混合伤害：副伤害类型（如 50% 物理 + 50% 火焰）
+	var sec_type: int = damage_info.get("secondary_damage_type", -1)
+	if sec_type >= 0:
+		var sec_damage: float = damage_info.get("secondary_damage", 0.0)
+		if sec_damage > 0.0:
+			var sec_result := CombatResolver.resolve_attack(
+				caster.stats, target.stats,
+				sec_damage, sec_type,
+				stun_chance, stun_duration,
+				combat_params, rng_func,
+				target.status_effects.get_shock_stacks_for_resolution()
+			)
+			target.take_damage(sec_result.instant_damage)
+			target.apply_status_updates(sec_result.status_updates, combat_params)
+
+			# AOE 也应用副伤害
+			if aoe_radius > 0.0:
+				var hit_pos_sec: Vector2 = damage_info.get("hit_pos", target.global_position)
+				for enemy in enemies:
+					if not (enemy and is_instance_valid(enemy) and enemy.is_alive):
+						continue
+					if enemy == target:
+						continue
+					var dist: float = hit_pos_sec.distance_to(enemy.position)
+					if dist > aoe_radius:
+						continue
+					var sec_aoe_result := CombatResolver.resolve_attack(
+						caster.stats, enemy.stats,
+						sec_damage, sec_type,
+						stun_chance, stun_duration,
+						combat_params, rng_func,
+						enemy.status_effects.get_shock_stacks_for_resolution()
+					)
+					enemy.take_damage(sec_aoe_result.instant_damage)
+					enemy.apply_status_updates(sec_aoe_result.status_updates, combat_params)
+
 
 ## AOE damage on projectile hit (excludes the primary target)
 func _apply_aoe_damage(hit_pos: Vector2, radius: float, caster: Node2D, primary_target: Node2D, base_damage: float, dmg_type: int, stun_chance: float, stun_duration: float) -> void:

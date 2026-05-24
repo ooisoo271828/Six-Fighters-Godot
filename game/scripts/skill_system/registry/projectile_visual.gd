@@ -45,6 +45,11 @@ extends Resource
 ## 辉光层前向偏移（正值=朝弹头方向偏移）
 @export var glow_offset_forward: float = 0.0
 
+# ── 自转（陨石等） ──
+@export_group("Rotation")
+## 核心自转速度（rad/s），0 = 不自转
+@export var core_rotation_speed: float = 0.0
+
 # ── 抖动 ──
 @export_group("Jitter")
 @export var jitter_enabled: bool = false

@@ -26,6 +26,10 @@ class SkillExecutionContext:
 	var hit_aoe_radius: float = 0.0
 	var available_targets: Array = []  # for multi-target seeking
 
+	# ── 混合伤害参数 ──
+	var secondary_damage_type: int = -1
+	var secondary_damage_ratio: float = 0.0
+
 	func _to_string() -> String:
 		return "Context[skill=%s caster=%s target=%s damage=%.1f]" % [skill_id, caster, target, damage]
 
@@ -81,5 +85,8 @@ func _create_chain(context: SkillExecutionContext) -> ExecutionChain:
 	chain.pierce_count = context.pierce_count
 	chain.bounce_damage_scale = context.bounce_damage_scale
 	chain.hit_aoe_radius = context.hit_aoe_radius
+	chain.secondary_damage_type = context.secondary_damage_type
+	chain.secondary_damage = context.damage * context.secondary_damage_ratio
+	chain.secondary_damage_ratio = context.secondary_damage_ratio
 	chain.available_targets = context.available_targets
 	return chain

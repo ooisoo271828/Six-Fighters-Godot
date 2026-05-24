@@ -33,21 +33,25 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, tex_manager: 
 
 	# 加载光晕纹理
 	_glow_texture = null
-	if _body.tex_glow_path != "" and ResourceLoader.exists(_body.tex_glow_path):
-		_glow_texture = load(_body.tex_glow_path)
+	if _body.tex_glow_path != "":
+		if _body.tex_glow_path.begins_with("vfx://"):
+			var key: StringName = StringName(_body.tex_glow_path.trim_prefix("vfx://"))
+			_glow_texture = tex_manager.get_texture(key)
+		elif ResourceLoader.exists(_body.tex_glow_path):
+			_glow_texture = load(_body.tex_glow_path)
 
 	var glow_radius: float = _body.glow_radius
-	var soft_circle := tex_manager.get_texture(VFXTextureManager.SOFT_CIRCLE)
+	var soft_circle: Texture2D = tex_manager.get_texture(VFXTextureManager.SOFT_CIRCLE)
 
 	# ── 主光晕 ──
 	if glow_radius > 0.0:
 		var glow_color: Color = _body.glow_color
 		var glow_alpha: float = _body.glow_alpha
 		_glow_sprite.texture = _glow_texture if _glow_texture else soft_circle
-		var glow_tex_size := _glow_sprite.texture.get_size()
+		var glow_tex_size: Vector2 = _glow_sprite.texture.get_size()
 		_glow_sprite.scale = Vector2(glow_radius * 2.0 / glow_tex_size.x, glow_radius * 2.0 / glow_tex_size.y)
 		if _glow_shader:
-			var mat := tex_manager.get_shared_material(
+			var mat: ShaderMaterial = tex_manager.get_shared_material(
 				"res://scripts/skill_system/vfx/shaders/glow_shader.gdshader",
 				{"glow_color": glow_color, "glow_strength": 1.5, "glow_radius": glow_radius}
 			)
@@ -60,7 +64,7 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, tex_manager: 
 		# 兼容旧参数
 		var base_tex: Texture2D = _glow_texture if _glow_texture else tex_manager.get_texture(VFXTextureManager.CIRCLE)
 		_glow_sprite.texture = base_tex
-		var base_tex_size := base_tex.get_size()
+		var base_tex_size: Vector2 = base_tex.get_size()
 		_glow_sprite.scale = Vector2.ONE * (_body.core_radius * 3.5) / base_tex_size.x
 		if _glow_shader:
 			var mat := tex_manager.get_shared_material(
@@ -80,7 +84,7 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, tex_manager: 
 	if glow2_radius > 0.0:
 		var glow2_color: Color = _body.glow2_color
 		_glow2_sprite.texture = _glow_texture if _glow_texture else soft_circle
-		var g2_tex_size := _glow2_sprite.texture.get_size()
+		var g2_tex_size: Vector2 = _glow2_sprite.texture.get_size()
 		_glow2_sprite.scale = Vector2(glow2_radius * 2.0 / g2_tex_size.x, glow2_radius * 2.0 / g2_tex_size.y)
 		if _glow_shader:
 			var mat := tex_manager.get_shared_material(
@@ -98,7 +102,7 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, tex_manager: 
 	# ── 辐射射线 ──
 	if glow_radius > 0.0:
 		_ray_sprite.texture = tex_manager.get_texture(VFXTextureManager.RAY_STARBURST)
-		var ray_tex_size := _ray_sprite.texture.get_size()
+		var ray_tex_size: Vector2 = _ray_sprite.texture.get_size()
 		_ray_sprite.scale = Vector2.ONE * (glow_radius * 2.2 / ray_tex_size.x)
 		var gc: Color = _body.glow_color
 		_ray_sprite.modulate = Color(gc.r, gc.g, gc.b, 0.25)
@@ -107,18 +111,25 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, tex_manager: 
 		_ray_sprite.visible = false
 
 	# 初始偏移
-	if _glow_forward_offset <= 0.0:
-		_glow_sprite.position = Vector2.ZERO
-		_glow2_sprite.position = Vector2.ZERO
-		_ray_sprite.position = Vector2.ZERO
+	# ��ʼƫ�ƣ�֧�ָ���ֵ����ֵ=����ƫ�ƣ�
+	_glow_sprite.position = Vector2.ZERO
+	_glow2_sprite.position = Vector2.ZERO
+	_ray_sprite.position = Vector2.ZERO
 
 
 func update(_dt: float, _parent: Node2D, chain: ExecutionChain) -> void:
-	if _glow_forward_offset > 0.0 and chain.direction.length() > 0.0:
-		var glow_pos := chain.direction * _glow_forward_offset
+	# ���ƫ�ƣ�֧�ָ���ֵ����ֵ=���
+	if _glow_forward_offset != 0.0 and chain.direction.length() > 0.0:
+		var glow_pos: Vector2 = chain.direction * _glow_forward_offset
 		_glow_sprite.position = glow_pos
 		_glow2_sprite.position = glow_pos
 		_ray_sprite.position = glow_pos
+	
+	# ���ᳯ�򣨷ֱ��涯���ķ���
+		if chain.direction.length() > 0.0:
+			var dir_angle: float = chain.direction.angle()
+			_glow_sprite.rotation = dir_angle
+			_glow2_sprite.rotation = dir_angle
 
 	# 射线层缓慢旋转
 	if _ray_sprite and _ray_sprite.visible:

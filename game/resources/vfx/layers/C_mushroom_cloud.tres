@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="VFXLayerDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/vfx_layer_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+effect_id = "mushroom_cloud"
+kind = 9
+params = {
+"rise_height": 140.0,
+"rise_duration": 1.8,
+"fade_duration": 0.8,
+"scale": 3.0,
+"color": Color(1.0, 0.5, 0.15, 0.95)
+}

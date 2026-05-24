@@ -12,7 +12,7 @@ func create_nodes(parent: Node2D) -> void:
 	_particles.emitting = false
 	_particles.one_shot = false
 	_particles.amount = 1
-	var default_mat := ParticleProcessMaterial.new()
+	var default_mat: ParticleProcessMaterial = ParticleProcessMaterial.new()
 	default_mat.direction = Vector3(1, 0, 0)
 	default_mat.spread = 0
 	_particles.process_material = default_mat
@@ -20,7 +20,7 @@ func create_nodes(parent: Node2D) -> void:
 
 
 func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: VFXTextureManager) -> void:
-	var trail := visual_def.get_trail()
+	var trail: TrailDef = visual_def.get_trail()
 	_config = trail.particles
 	if not _config or not _config.is_enabled():
 		_particles.emitting = false
@@ -43,7 +43,7 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 	_particles.local_coords = false
 
 	# 粒子材质
-	var mat := ParticleProcessMaterial.new()
+	var mat: ParticleProcessMaterial = ParticleProcessMaterial.new()
 	var dir = -chain.direction if chain.direction.length() > 0 else Vector2.UP
 	mat.direction = Vector3(dir.x * 50, dir.y * 50, 0)
 	mat.spread = (_config.spread_min + _config.spread_max) / 2.0
@@ -54,18 +54,18 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 
 	# 缩放曲线
 	if _config.scale_curve:
-		var curve_tex := CurveTexture.new()
+		var curve_tex: CurveTexture = CurveTexture.new()
 		curve_tex.curve = _config.scale_curve
 		mat.scale_curve = curve_tex
 	else:
 		# 默认衰减曲线
-		var trail_curve := Curve.new()
+		var trail_curve: Curve = Curve.new()
 		trail_curve.add_point(Vector2(0.0, 1.0))
 		trail_curve.add_point(Vector2(0.15, 0.95))
 		trail_curve.add_point(Vector2(0.35, 0.7))
 		trail_curve.add_point(Vector2(0.6, 0.3))
 		trail_curve.add_point(Vector2(1.0, 0.0))
-		var trail_curve_tex := CurveTexture.new()
+		var trail_curve_tex: CurveTexture = CurveTexture.new()
 		trail_curve_tex.curve = trail_curve
 		mat.scale_curve = trail_curve_tex
 
@@ -74,13 +74,19 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 		var tc1: Color = _config.color_1
 		var tc2: Color = _config.color_2 if _config.color_2 != Color.WHITE else tc1
 		var tc3: Color = _config.color_3 if _config.color_3 != Color.WHITE else tc2
-		var trail_grad := Gradient.new()
+		var trail_grad: Gradient = Gradient.new()
 		trail_grad.add_point(0.0, Color(tc1.r, tc1.g, tc1.b, 0.9))
 		trail_grad.add_point(0.4, Color(tc2.r, tc2.g, tc2.b, 0.6))
 		trail_grad.add_point(1.0, Color(tc3.r, tc3.g, tc3.b, 0.0))
-		var trail_grad_tex := GradientTexture1D.new()
+		var trail_grad_tex: GradientTexture1D = GradientTexture1D.new()
 		trail_grad_tex.gradient = trail_grad
 		mat.color_initial_ramp = trail_grad_tex
+
+	# λ���ƣ�������ŵĻ���β����
+	if _config.position_offset != Vector2.ZERO:
+		_particles.position = _config.position_offset
+	else:
+		_particles.position = Vector2.ZERO
 
 	_particles.process_material = mat
 	_particles.emitting = true

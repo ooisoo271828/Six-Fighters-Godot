@@ -79,6 +79,8 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D, extra_modifier
 	context.pierce_count = skill_def.pierce_count if skill_def.get("pierce_count") != null else 0
 	context.bounce_damage_scale = skill_def.bounce_damage_scale if skill_def.get("bounce_damage_scale") else 1.0
 	context.hit_aoe_radius = skill_def.hit_aoe_radius if skill_def.get("hit_aoe_radius") else 0.0
+	context.secondary_damage_type = skill_def.secondary_damage_type if skill_def.get("secondary_damage_type") != null else -1
+	context.secondary_damage_ratio = skill_def.secondary_damage_ratio if skill_def.get("secondary_damage_ratio") != null else 0.0
 	context.available_targets = available_targets
 
 	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, target)

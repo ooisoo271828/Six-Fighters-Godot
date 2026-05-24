@@ -19,6 +19,9 @@ extends Resource
 @export var life_max: float = 0.45
 ## 自定义粒子纹理路径。留空 = 使用程序化 SOFT_CIRCLE + color_ramp 着色
 @export var texture_path: String = ""
+## 粒子发射位置偏移（相对于弹体中心），用于将拖尾放在火焰尾部
+@export var position_offset: Vector2 = Vector2.ZERO
+
 ## 缩放曲线（粒子生命周期内的大小变化）。留空 = 使用默认衰减曲线
 @export var scale_curve: Curve
 

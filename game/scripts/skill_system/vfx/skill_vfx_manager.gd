@@ -48,6 +48,9 @@ func _register_executors() -> void:
 	_executor_registry.register(ExecShockwave.new())
 	_executor_registry.register(ExecAfterimage.new())
 	_executor_registry.register(ExecRimGlow.new())
+	_executor_registry.register(ExecEllipseRing.new())
+	_executor_registry.register(ExecMushroomCloud.new())
+	_executor_registry.register(ExecGroundExplosion.new())
 
 
 ## 注册 VFXLayer（由 ArenaScene 在 _ready 时调用）
@@ -189,6 +192,9 @@ const KIND_MAP: Dictionary = {
 	5: &"shockwave",
 	6: &"afterimage",
 	7: &"rim_glow",
+	8: &"ellipse_ring",
+	9: &"mushroom_cloud",
+	10: &"ground_explosion",
 }
 
 func _execute_layers(layers: Array[VFXLayerDef], world_pos: Vector2) -> void:

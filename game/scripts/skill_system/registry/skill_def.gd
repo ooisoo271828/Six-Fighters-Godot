@@ -18,6 +18,13 @@ var category: int = 0
 @export_enum("PHYSICAL:0", "ELEMENTAL_FIRE:1", "ELEMENTAL_ICE:2", "ELEMENTAL_LIGHTNING:3", "ELEMENTAL_POISON:4")
 var damage_type: int = 0
 @export var base_damage: float = 25.0
+
+# ── 混合伤害（一半物理一半火焰等） ──
+## 副伤害类型，-1 = 无混合伤害
+@export var secondary_damage_type: int = -1
+## 副伤害占 base_damage 的比例（0.0~1.0），如 0.5 表示 50% 转副类型
+@export var secondary_damage_ratio: float = 0.0
+
 @export var cooldown: float = 2.0
 @export var rage_cost: float = 0.0
 @export var stun_chance: float = 0.0
@@ -74,6 +81,17 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 	# 战斗属性
 	if csv_data.has("base_damage"):
 		base_damage = float(csv_data["base_damage"])
+	if csv_data.has("secondary_damage_type"):
+		var sdt_str = csv_data["secondary_damage_type"]
+		match sdt_str:
+			"", "-1": secondary_damage_type = -1
+			"physical": secondary_damage_type = 0
+			"elemental_fire": secondary_damage_type = 1
+			"elemental_ice": secondary_damage_type = 2
+			"elemental_lightning": secondary_damage_type = 3
+			"elemental_poison": secondary_damage_type = 4
+	if csv_data.has("secondary_damage_ratio"):
+		secondary_damage_ratio = float(csv_data["secondary_damage_ratio"])
 	if csv_data.has("damage_type"):
 		# damage_type 是枚举，需要转换
 		var dt_str = csv_data["damage_type"]

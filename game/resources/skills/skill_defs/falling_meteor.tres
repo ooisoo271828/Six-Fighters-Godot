@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3 uid="uid://bf3x6y0o1b2k4"]
+
+[ext_resource type="Script" uid="uid://boty6cd3ndrfv" path="res://scripts/skill_system/registry/skill_def.gd" id="1_583yo"]
+
+[resource]
+script = ExtResource("1_583yo")
+skill_id = "falling_meteor"
+display_name = "落石流星"
+category = 2
+damage_type = 0
+base_damage = 60.0
+secondary_damage_type = 1
+secondary_damage_ratio = 0.5
+cooldown = 6.0
+cast_range = 600.0
+telegraph_ms = 600
+effect_type = "emit_meteor"
+target_mode = 0
+hit_aoe_radius = 80.0
+description = "召唤一颗流星从天空坠落，对目标区域造成物理与火焰混合伤害"

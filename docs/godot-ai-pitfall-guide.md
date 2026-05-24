@@ -1,6 +1,6 @@
 # 🛡 Godot AI 编程避坑指南
 
-> **版本**: v3.0 | 创建: 2026-04-28 | 更新: 2026-05-23 | 状态: 持续更新
+> **版本**: v4.0 | 创建: 2026-04-28 | 更新: 2026-05-24 | 状态: 持续更新
 >
 > 本指南汇总了 Six-Fighters-Godot 项目开发过程中反复出现的错误、隐蔽陷阱和系统性教训。
 > 目标：避免团队在同一个坑里跌倒两次。
@@ -360,6 +360,31 @@ ResourceSaver.save(res, path)
 
 **预防**：新增 `@export` 属性后，**立即对所有引用该脚本的 .tres 文件执行强制重载+保存**。或者重启编辑器（会清理缓存）。
 
+### 3.6 `HitVFXNode.setup_sprite()` 已自动将节点加入场景树——不要重复 `add_child()`
+
+**症状**：`Can't add child '...' to 'VFX', already has a parent 'SkillDemo'.`
+
+**根因**：`HitVFXNode.setup_sprite()` 内部调用 `_ensure_in_tree()`，已经将节点添加到场景树。之后再调用 `parent.add_child(node)` 会报错。
+
+```gdscript
+# ❌ 错误：重复 add_child
+var burn: HitVFXNode = HitVFXNode.new()
+burn.setup_sprite(tex, color, scale, pos, lifetime)  # ← 已经加入场景树
+burn.play()
+parent.add_child(burn)  # ← "already has a parent"！
+
+# ✅ 正确：setup_sprite 后不再 add_child
+var burn: HitVFXNode = HitVFXNode.new()
+burn.setup_sprite(tex, color, scale, pos, lifetime)
+burn.play()
+```
+
+**规律**：`HitVFXNode` 和 `Sprite2D` 的行为不同：
+- `Sprite2D.new()` → **不**自动加入场景树，需要手动 `add_child()`
+- `HitVFXNode.new()` + `setup_sprite()` → **自动**加入场景树，不要重复 `add_child()`
+
+**排查思路**：报 `already has a parent` 错误时，检查被添加的节点是否通过 `setup_sprite()`/`_ensure_in_tree()` 已自动加入树。自定义 Sprite2D 和池化 HitVFXNode 的树管理策略不同。
+
 ---
 
 ## 四、粒子系统陷阱（重点）
@@ -454,7 +479,98 @@ print(res.get("property_name"))  # 返回 null 或默认值
 
 ---
 
-### 5.2 资源 UID 缓存过期
+### 5.2 `vfx://` 纹理前缀需要在每个组件中单独实现
+
+**症状**：在 `SkillVisualDef.tres` 中设置了 `tex_glow_path = "vfx://flame_aura"`，但运行时光晕仍然显示为默认圆形。
+
+**根因**：`vfx://` 前缀支持只在 `comp_core_sprite.gd` 中实现了，但 `comp_glow.gd` 中加载光晕纹理的代码没有处理该前缀。
+
+```gdscript
+# ❌ comp_glow.gd 不支持 vfx://
+if _body.tex_glow_path != "" and ResourceLoader.exists(_body.tex_glow_path):
+    _glow_texture = load(_body.tex_glow_path)
+# ResourceLoader.exists("vfx://flame_aura") 返回 false
+# _glow_texture 保持 null，回退到 soft_circle（圆形！）
+
+# ✅ 正确 需要与 comp_core_sprite.gd 一样支持 vfx://
+if _body.tex_glow_path != "":
+    if _body.tex_glow_path.begins_with("vfx://"):
+        var key: StringName = StringName(_body.tex_glow_path.trim_prefix("vfx://"))
+        _glow_texture = tex_manager.get_texture(key)
+    elif ResourceLoader.exists(_body.tex_glow_path):
+        _glow_texture = load(_body.tex_glow_path)
+```
+
+**规律**：项目中有多个纹理加载点（`comp_core_sprite`、`comp_glow`、`comp_trail_particles` 等），每个都需要独立添加 `vfx://` 支持。新增一种纹理引用方式时，**必须 grep 全项目所有纹理加载点**。
+
+---
+
+### 5.3 `.tres` 属性不存在的静默回退
+
+**症状**：在 `.tres` 中设置了新的视觉属性，运行时表现为默认值，且无任何报错。
+
+**根因**：当 `.tres` 引用的 Resource 子类不包含某个属性时，Godot **静默忽略**该属性行。后续代码读取到的是 `@export` 声明的默认值。
+
+**本项目的典型场景**：
+1. 给 `ProjectileVisual` 新增了 `@export var core_rotation_speed: float = 0.0`
+2. 在 `falling_meteor.tres` 中设置了 `core_rotation_speed = 0.5`
+3. 但编辑器中 `projectile_visual.gd` 的缓存尚未更新
+4. `.tres` 加载时 `core_rotation_speed` 不被识别 → 静默忽略
+5. `vis.body.core_rotation_speed` 读取到的是默认值 `0.0`
+
+**预防**：新增 `@export` 属性后，**强制重启编辑器**（仅文件扫描不够）。
+
+---
+
+### 5.4 程序化纹理的中心点偏移误区
+
+**症状**：生成的纹理看起来是菱形/橄榄形而非预期的水滴形。
+
+**根因**：程序化生成纹理时，把最宽点放在了纹理中心（x=50%），导致左右对称、形似菱形。正确的水滴形需要把最宽点偏右（35-40%），右侧保持圆弧，左侧逐渐收窄。
+
+```gdscript
+# ❌ 菱形：最宽点在中心，左右对称
+var cx := size * 0.5
+if dx >= 0.0:
+    local_radius = front_radius * (1.0 - dx / (size * 0.5))
+else:
+    local_radius = back_radius
+# 最宽点在 x=0.5 处 → 左右对称 → 菱形！
+
+# ✅ 水滴形：最宽点偏右，右侧圆弧，左侧收窄
+var center_x := size * 0.4
+if px >= center_x:
+    local_r = round_r * (1.0 - pow(t, 2.5))  # 右侧圆弧
+else:
+    local_r = tail_min_r + (round_r - tail_min_r) * pow(1.0 - t, 2.0)  # 左侧收窄
+```
+
+**设计原则**：任何"前圆后尖"形状的最宽点都不在中心——圆头的中心才是最宽点。设计程序化纹理时先画出期望形状的截面图，再转化成数学公式。
+
+---
+
+### 5.5 旋转 Sprite 时需考虑所有相关层
+
+**症状**：设置了 `_glow_sprite.rotation = angle`，但火焰气团纹理仍然显示为水平朝向。
+
+**根因**：光晕系统有多个 Sprite 层（`_glow_sprite`、`_glow2_sprite`、`_ray_sprite`），但只旋转了主光晕层，其他层的默认朝向（水平向右/0°）覆盖了视觉效果。
+
+```gdscript
+# ❌ 只旋转了主光晕，外层光晕仍然是水平朝向
+_glow_sprite.rotation = chain.direction.angle()
+
+# ✅ 旋转所有光晕层
+if chain.direction.length() > 0.0:
+    var dir_angle: float = chain.direction.angle()
+    _glow_sprite.rotation = dir_angle
+    _glow2_sprite.rotation = dir_angle
+```
+
+**规律**：Godot 的 Component 模式中，一个视觉效果由多个 Sprite 层叠加构成。修改一个层的 transform 时，检查所有相关层是否需要同步修改。
+
+---
+
+### 5.6 资源 UID 缓存过期
 
 **症状**：删除 `.godot/` 后重新打开项目，资源引用仍然错误。
 **根因**：`.godot/uid_cache.bin` 保存了所有资源的 UID 映射。如果文件被移动或重命名，缓存会过期。
@@ -497,6 +613,69 @@ print(res.get("property_name"))  # 返回 null 或默认值
 2. ✅ **Godot 编辑器 API**（通过 plugin）— 引擎级操作
 3. ⚠️ **sed/awk** — 仅用于一行以内的简单替换
 4. ❌ **shell 重定向 + echo** — 避免
+
+### 6.4 Python 字符串替换的隐性陷阱
+
+**症状**：用 Python 执行 `content.replace(old, new)` 后，文件内容没有变化。或者替换了错误的位置。
+
+**陷阱一：中文编码匹配失败**
+
+Python 在 Windows 终端下读取含中文的 `.gd` 文件时，`repr()` 输出的中文显示为乱码 `�`。此时在 Python 脚本中构造的 `old` 字符串如果包含这些中文注释，**替换会静默失败**。
+
+```python
+# ❌ 失败：old 中的中文注释无法匹配（终端编码问题）
+old = '\t# 火焰气团纹理（水滴形：前圆后尖）'
+content.replace(old, new, 1)  # 返回原字符串，不报错！
+
+# ✅ 成功：用不含中文的唯一代码锚点匹配
+old = 'func _generate_flame_aura(size: int) -> Texture2D:'
+# 或者用 Python 的 index + slice 方式
+idx = content.find('关键变量名')
+content = content[:idx] + new_code + content[idx + len(old_code):]
+```
+
+**预防**：
+- 在 Python 替换脚本中，用**代码关键词**（函数名、变量名）而非注释作为匹配锚点
+- 如果必须按上下文替换，用 `content.find()` 定位后再切片替换
+- 替换后立即验证：`print('存在' if old in content else '不存在')`
+
+**陷阱二：`content.replace()` 替换了错误的同名变量**
+
+当文件中多个位置有相同的变量名时，`content.replace()` 替换的是**第一个**匹配，可能导致错误位置的变量被修改。
+
+```python
+# ❌ 替换了 _generate_rock_irregular 中的变量，而非 _generate_mushroom_frame 中的
+fixes = [('var img := Image.create(...)', 'var img: Image = Image.create(...)')]
+for old, new in fixes:
+    content = content.replace(old, new, 1)  # 替换了第一个匹配
+    # 如果两个函数都有 var img :=，替换的是第一个函数中的！
+```
+
+**预防**：
+- 使用 `content.rfind()` 替换最后一个匹配（适合新追加的函数）
+- 或使用 `content.find()` 定位到目标区域后切片替换
+- 或在替换前先检查目标区域是否唯一
+
+**陷阱三：替换结果受原文件缩进影响**
+
+用 `content[:idx] + replacement` 方式替换时，`content[:idx]` 已经包含了原行的缩进（tab 字符）。如果 `replacement` 也带了缩进，最终结果是**两层缩进叠加**，导致缩进错误。
+
+```python
+# 原文件：\t\t_glow_sprite.rotation = chain.direction.angle()
+idx = content.find('_glow_sprite.rotation = chain.direction.angle()')
+# content[:idx] 以 \t\t 结尾（原行的缩进）
+replacement = '\tif xxx:\n\t\tbody'  # 也带了缩进
+# 最终：\t\t\tif xxx   ← 三层缩进！比预期多一层
+
+# ✅ 正确：replacement 不带缩进，或与 content[:idx] 的缩进互补
+replacement = 'if xxx:\n\t\t\tbody'
+```
+
+**预防准则**：
+1. 替换后**立即检查文件内容**，确认替换效果
+2. 切片替换时，`replacement` 不带前导缩进，利用 `content[:idx]` 已有的缩进
+3. 使用 `content.replace()` 时，替换后 `print('成功' if old not in content else '失败')` 验证
+4. 避免在 old/new 字符串中包含中文注释
 
 ---
 
@@ -1187,11 +1366,14 @@ for i in range(count):
 - [ ] 所有 `.gd` 文件的缩进是否一致（Tab，非空格）
 - [ ] 新创建的类是否有 `class_name` 声明
 - [ ] `.tres` 文件引用的脚本是否包含所有属性
+- [ ] 新增 `@export` 后是否重启了编辑器（文件扫描不够）
+- [ ] 新 `vfx://` 纹理是否在所有组件中注册了加载支持
 
 **粒子/VFX 系统**：
 - [ ] 粒子系统的 `direction` 是否非零、`spread` 是否 360（如需全方向）
 - [ ] 粒子系统的 `gravity` 是否需要置零
 - [ ] 是否有多套 VFX 系统在竞争同一事件
+- [ ] 自定义 Sprite2D 和 HitVFXNode 的树管理策略是否正确（HitVFXNode 自动加树）
 
 **UI 控件**：
 - [ ] 弹窗/对话框的锚点是否手动设置为 0.5（不依赖 preset）
@@ -1212,6 +1394,9 @@ for i in range(count):
 - [ ] 调试 `print()` 是否被正确路由到预期目标（编辑器 vs 游戏运行时）
 - [ ] 确认修改的是真正执行的代码路径，而非同名/同类文件
 - [ ] 用 Python 而非 sed 处理需要精确缩进的多行替换
+- [ ] Python 替换后验证：`print('存在' if old in content else '替换失败')`
+- [ ] Python 替换时考虑 `content[:idx]` 已有缩进，避免双重缩进
+- [ ] 替换含中文注释的代码时，用函数名/变量名做锚点而非注释
 
 **坐标系与单位**：
 - [ ] 涉及坐标的常量和变量是否标注了坐标空间（`_tile` 后缀、`_px` 后缀）

@@ -259,6 +259,8 @@ func _emit_hit_signal(target: Node2D) -> void:
 			"hit_aoe_radius": _chain.hit_aoe_radius,
 			"hit_pos": global_position,
 			"projectile_node": self,
+			"secondary_damage_type": _chain.secondary_damage_type,
+			"secondary_damage": _chain.secondary_damage,
 		}
 		_signal_bus.skill_hit.emit(_chain.caster, [target], info)
 
