@@ -101,6 +101,15 @@ func _setup_caster() -> void:
 func _setup_skill_system() -> void:
 	# 等待 SkillSystem 初始化
 	await get_tree().create_timer(0.3).timeout
+
+	# Register VFX layer for hit effects (ring, flash, etc.)
+	var vfx_container := Node2D.new()
+	vfx_container.name = "VFX"
+	add_child(vfx_container)
+	var vfx_manager = _skill_system.get_node_or_null("SkillVFXManager")
+	if vfx_manager:
+		vfx_manager.register_vfx_layer(vfx_container)
+
 	_refresh_skill_list()
 
 func _refresh_skill_list() -> void:

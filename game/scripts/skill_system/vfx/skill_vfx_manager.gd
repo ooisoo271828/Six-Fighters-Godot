@@ -33,7 +33,10 @@ func initialize() -> void:
 	_executor_registry = VFXExecutorRegistry.new()
 	_register_executors()
 
-	print("[VFXManager] Initialized (v0.5 executor strategy, kinds: %s)" % str(_executor_registry.get_registered_kinds()))
+	# 加载着色器预设
+	_tex_manager.load_presets_from_dir("res://resources/vfx/shader_presets/")
+
+	print("[VFXManager] Initialized (v4.0, kinds: %s, presets: %d)" % [str(_executor_registry.get_registered_kinds()), _tex_manager._preset_map.size()])
 
 
 func _register_executors() -> void:
@@ -98,17 +101,36 @@ func _on_skill_hit(_caster: Node2D, targets: Array, info: Dictionary) -> void:
 			layers.append(layer)
 
 	# 技能自定义 Layer
-	if "custom_hit_layers" in visual_def:
-		for custom in visual_def.custom_hit_layers:
-			if custom is VFXLayerDef:
-				layers.append(custom)
+	var imp := visual_def.get_impact()
+	for custom in imp.custom_layers:
+		if custom is VFXLayerDef:
+			layers.append(custom)
 
 	if layers.is_empty():
 		return
 
+	# 使用弹体核心精灵的 global_position（与火球主体圆心精确对齐）
+	var proj_node: Node2D = info.get("projectile_node")
+	var ring_pos: Vector2
+	if proj_node and is_instance_valid(proj_node):
+		# 读取弹体核心精灵的世界坐标（火球红色球体的真实圆心）
+		var comp_core = proj_node.get("_comp_core")
+		if comp_core:
+			var core_sprite = comp_core.get("_core_sprite") as Node2D
+			if core_sprite:
+				ring_pos = core_sprite.global_position
+			else:
+				ring_pos = proj_node.global_position
+		else:
+			ring_pos = proj_node.global_position
+	else:
+		var hit_pos: Vector2 = info.get("hit_pos", Vector2.ZERO)
+		ring_pos = hit_pos if hit_pos != Vector2.ZERO else (
+			targets[0].global_position if targets.size() > 0 and is_instance_valid(targets[0]) else Vector2.ZERO
+		)
 	for t in targets:
 		if is_instance_valid(t):
-			_execute_layers(layers, t.global_position)
+			_execute_layers(layers, ring_pos)
 
 
 func _on_behavior_spawned(_projectile: Node2D, _behavior_type: String, _chain_data: Dictionary) -> void:
@@ -125,27 +147,30 @@ func _on_telegraph_started(_caster: Node2D, target_pos: Vector2, shape: String, 
 
 ## ── 层级解析 ──
 
-func _has_tier_config(vis: Resource) -> bool:
-	for key in ["hit_vfx_tier_A", "hit_vfx_tier_B", "hit_vfx_tier_C"]:
-		if key in vis and vis.get(key) != "":
-			return true
-	if "custom_hit_layers" in vis and vis.custom_hit_layers.size() > 0:
+func _has_tier_config(vis: SkillVisualDef) -> bool:
+	var imp := vis.get_impact()
+	if imp.tier_A != "" or imp.tier_B != "" or imp.tier_C != "":
+		return true
+	if imp.custom_layers.size() > 0:
 		return true
 	return false
 
 
-func _resolve_tier_layer(vis: Resource, tier_id: String) -> VFXLayerDef:
-	var key := "hit_vfx_tier_" + tier_id
-	if key in vis:
-		var effect_id: String = vis.get(key)
-		if effect_id != "":
-			var layer := _tier_registry.resolve(tier_id, effect_id)
-			if layer:
-				return layer
+func _resolve_tier_layer(vis: SkillVisualDef, tier_id: String) -> VFXLayerDef:
+	var imp := vis.get_impact()
+	var effect_id: String = ""
+	match tier_id:
+		"A": effect_id = imp.tier_A
+		"B": effect_id = imp.tier_B
+		"C": effect_id = imp.tier_C
+	if effect_id != "":
+		var layer := _tier_registry.resolve(tier_id, effect_id)
+		if layer:
+			return layer
 	return _tier_registry.get_default(tier_id)
 
 
-func _load_visual_def(skill_id: String) -> Resource:
+func _load_visual_def(skill_id: String) -> SkillVisualDef:
 	var path := "res://resources/skills/skill_visual_defs/" + skill_id + ".tres"
 	if ResourceLoader.exists(path):
 		return ResourceLoader.load(path)

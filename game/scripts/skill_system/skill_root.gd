@@ -38,7 +38,8 @@ func _connect_signal_bus() -> void:
 ## ── 对外 API ──
 
 ## 施放技能的入口
-func cast_skill(caster: Node2D, skill_id: String, target: Node2D) -> void:
+## extra_modifiers: 外部注入的 Modifier 列表（来自装备、天赋、光环等），可选
+func cast_skill(caster: Node2D, skill_id: String, target: Node2D, extra_modifiers: Array[SkillModifier] = [], available_targets: Array = []) -> void:
 	if not skill_registry.is_ready():
 		push_warning("[SkillSystem] Registry not ready, skip cast: " + skill_id)
 		return
@@ -48,7 +49,7 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D) -> void:
 		push_warning("[SkillSystem] Skill not found: " + skill_id)
 		return
 
-	var visual_def: Resource = skill_registry.get_skill_visual(skill_id) as Resource
+	var visual_def: SkillVisualDef = skill_registry.get_skill_visual(skill_id)
 
 	# 获取该技能的基础 Modifier（从 SkillDef 读取）
 	var entity_modifier_ids: Array[String] = []
@@ -57,6 +58,8 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D) -> void:
 
 	# 获取完整的 Modifier 实例列表
 	var modifiers: Array[SkillModifier] = modifier_registry.get_entity_modifiers(entity_modifier_ids)
+	# 合并外部注入的 Modifier（装备、天赋、光环等）
+	modifiers.append_array(extra_modifiers)
 
 	# 构建执行上下文
 	var context: SkillEffect.SkillExecutionContext = SkillEffect.SkillExecutionContext.new()
@@ -68,6 +71,15 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D) -> void:
 	context.damage_type = _int_to_damage_type_string(skill_def.damage_type)
 	context.skill_id = skill_id
 	context.visual_def = visual_def
+	context.delivery_type = skill_def.delivery_type if skill_def.get("delivery_type") else "projectile"
+	context.tracking_enabled = skill_def.tracking_enabled if skill_def.get("tracking_enabled") else false
+	context.turn_rate = skill_def.turn_rate if skill_def.get("turn_rate") else 0.0
+	context.hit_precision_radius = skill_def.hit_precision_radius if skill_def.get("hit_precision_radius") else 0.0
+	context.pierce_enabled = skill_def.pierce_enabled if skill_def.get("pierce_enabled") else false
+	context.pierce_count = skill_def.pierce_count if skill_def.get("pierce_count") != null else 0
+	context.bounce_damage_scale = skill_def.bounce_damage_scale if skill_def.get("bounce_damage_scale") else 1.0
+	context.hit_aoe_radius = skill_def.hit_aoe_radius if skill_def.get("hit_aoe_radius") else 0.0
+	context.available_targets = available_targets
 
 	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, target)
 
@@ -88,7 +100,7 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D) -> void:
 		_execute_chain(chain, skill_def, visual_def)
 
 ## 执行单条叶子链
-func _execute_chain(chain: ExecutionChain, skill_def, visual_def) -> void:
+func _execute_chain(chain: ExecutionChain, skill_def: SkillDef, visual_def: SkillVisualDef) -> void:
 	var executor = executor_pool.acquire()
 	if not executor:
 		push_warning("[SkillSystem] No available executor")

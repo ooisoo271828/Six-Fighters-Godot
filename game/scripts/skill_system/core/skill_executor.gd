@@ -3,8 +3,8 @@
 extends Node
 
 var _chain: ExecutionChain
-var _skill_def: Resource
-var _visual_def: Resource
+var _skill_def: SkillDef
+var _visual_def: SkillVisualDef
 var _signal_bus: Node
 var _completed: bool = false
 var _skill_root: Node
@@ -13,7 +13,7 @@ func _ready() -> void:
 	pass
 
 ## 执行单条叶子链（chain 已由 ModifierProcessor 解析，直接 spawn）
-func execute(chain: ExecutionChain, skill_def: Resource, visual_def: Resource, signal_bus: Node) -> void:
+func execute(chain: ExecutionChain, skill_def: SkillDef, visual_def: SkillVisualDef, signal_bus: Node) -> void:
 	_chain = chain
 	_skill_def = skill_def
 	_visual_def = visual_def

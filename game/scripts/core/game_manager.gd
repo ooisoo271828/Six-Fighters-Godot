@@ -64,13 +64,13 @@ func _create_default_combat_params() -> Resource:
 	params.burn_dot_ratio_per_stack = 0.02
 	
 	# Frost
-	params.frost_duration_base = 2.0
-	params.frost_duration_per_stack = 0.3
+	params.frost_duration_base = 3.0
+	params.frost_duration_per_stack = 1.0
 	params.frost_stack_max = 5
 	params.frost_dot_ratio_base = 0.05
 	params.frost_dot_ratio_per_stack = 0.01
-	params.frost_cc_slow_per_stack = 0.1
-	params.frost_cc_slow_max = 0.5
+	params.frost_cc_slow_per_stack = 0.15
+	params.frost_cc_slow_max = 0.75
 	
 	# Poison
 	params.poison_duration_base = 4.0

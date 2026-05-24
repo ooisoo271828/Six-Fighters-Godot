@@ -1,5 +1,6 @@
 # projectile_visual.gd
 # 弹体外观子 Resource — 核心层、光晕、弹尖、抖动、纹理
+# v4.0：增加 glow_offset_forward、运行时状态查询方法
 class_name ProjectileVisual
 extends Resource
 
@@ -41,6 +42,8 @@ extends Resource
 @export var glow2_radius: float = 0.0
 @export var glow2_color: Color = Color.WHITE
 @export var glow2_alpha: float = 0.25
+## 辉光层前向偏移（正值=朝弹头方向偏移）
+@export var glow_offset_forward: float = 0.0
 
 # ── 抖动 ──
 @export_group("Jitter")
@@ -58,3 +61,6 @@ extends Resource
 
 # ── 缩放 ──
 @export var projectile_scale: float = 1.0
+
+# ── 旧参数兼容 ──
+@export var glow_enabled: bool = true

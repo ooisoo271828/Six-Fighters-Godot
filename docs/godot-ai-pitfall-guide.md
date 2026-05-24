@@ -214,6 +214,37 @@ static func circle(p_center: Vector2, radius: float) -> SpawnZone:
 
 **规范**：所有可能和成员变量冲突的参数加 `p_` 前缀（`p_center`、`p_count`、`p_name`）。特别在静态工厂方法中，这是高频错误。
 
+### 2.8 内部类（inner class）成员的缩进与外部类相同
+
+**症状**：`Parse Error: Unexpected "Indent" in class body`
+**根因**：GDScript 的内部类（`class` 关键字定义的嵌套类）的成员变量和方法，使用与外部类**相同级别**的缩进（一个制表符），而不是"更深一级"。
+
+```gdscript
+class_name SkillEffect
+extends RefCounted
+
+class SkillExecutionContext:
+    extends RefCounted
+
+    var caster: Node2D
+    var visual_def: Resource
+
+    # ❌ 错误：新加的字段用了双制表符（看起来像是"再深一层"）
+        var delivery_type: String = "projectile"
+        var tracking_enabled: bool = false
+
+    # ✅ 正确：与其他成员字段使用相同的单制表符缩进
+    var delivery_type: String = "projectile"
+    var tracking_enabled: bool = false
+
+    func _to_string() -> String:
+        return "Context"
+```
+
+**心理陷阱**：人眼看到 `class SkillExecutionContext:` 后面有缩进，会直觉认为"里面的成员应该再缩进一层"。但 GDScript 的 `class` 块不增加缩进层级——它和 `var`、`func` 一样是类体的顶层成员。
+
+**排查思路**：收到 `Unexpected "Indent"` 时，检查内部类的字段是否意外多了一层缩进。
+
 ---
 
 ## 三、Godot 引擎特性陷阱
@@ -307,6 +338,27 @@ func _restore_camera_position() -> void:
 **症状**：修改了函数逻辑后，运行时行为与代码内容不匹配。
 **根因**：编辑器可能运行的是旧版编译后的脚本，而非磁盘上当前文件的内容。
 **诊断**：在函数入口添加唯一定位标记（如 `print("**_FUNCTION_NAME_**")`），通过检查日志确认函数是否真的执行了新代码。
+
+### 3.5 新增 `@export` 属性后，现有 `.tres` 资源不识别新属性
+
+**症状**：给脚本新增了 `@export var hit_aoe_radius: float = 0.0`，但通过 `ResourceLoader.load()` 加载的 .tres 文件访问该属性时报 `Invalid access to property or key`。
+
+**根因**：Godot 的资源缓存机制。.tres 文件在首次加载时被缓存，缓存中不包含脚本后来新增的属性。即使磁盘上的 .tres 文件已经写了新属性值，缓存中的资源对象仍然没有该属性。
+
+**修复**：强制重新加载并保存资源：
+```gdscript
+# 强制忽略缓存加载
+var res = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+# 重新保存到磁盘（更新缓存）
+ResourceSaver.save(res, path)
+```
+
+**触发场景**：
+- 给 SkillDef 等 Resource 脚本新增 `@export` 字段后
+- 编辑器重启后，旧 .tres 文件的缓存仍然有效
+- 通过 Hastur 执行代码访问新属性时失败
+
+**预防**：新增 `@export` 属性后，**立即对所有引用该脚本的 .tres 文件执行强制重载+保存**。或者重启编辑器（会清理缓存）。
 
 ---
 
@@ -456,6 +508,18 @@ print(res.get("property_name"))  # 返回 null 或默认值
 - 编辑器插件交互 → `hastur.py logs`
 - 游戏运行时调试 → Godot Output 面板
 - 必要时使用 `push_error()/push_warning()` 强制输出到编辑器
+
+### 6.5 多个脚本并行修改同一文件导致重复声明
+
+**症状**：`Parse Error: Variable "xxx" has the same name as a previously declared variable`
+**根因**：当两个独立的 Python 脚本（或两次独立的编辑操作）先后修改同一个 .gd 文件，各自添加一个变量声明时，第二次修改不会检查第一次是否已经添加了同名变量。
+
+**案例**：本次重构中，一个脚本给 `skill_effect.gd` 的 `SkillExecutionContext` 添加了 `hit_aoe_radius`，另一个脚本随后添加 `available_targets` 时也顺带添加了 `hit_aoe_radius`。结果同一个类中有两个 `var hit_aoe_radius: float = 0.0` 声明。
+
+**预防**：
+- 每次修改前检查目标文件中是否已存在同名变量/函数
+- 用 `grep "变量名" 文件名` 验证后再写入
+- 合并多个修改到同一个脚本中执行，避免分散操作
 
 ---
 
@@ -666,6 +730,34 @@ grep -rn "_boss_wave_spawning" scripts/ scenes/
 ```
 
 **核心原则**：**先 grep 再删除，先 grep 再重命名**。这是防止"修好一个地方漏了三个地方"的最简单有效的习惯。
+
+### 8.6 数据管线泄漏：新增字段忘记在传递链中赋值
+
+**症状**：下游系统收到的某个字段值始终为默认值（空字符串、0、false），但上游明明设置了该值。
+
+**根因**：数据管线有多层传递（SkillDef → SkillExecutionContext → ExecutionChain → ProjectileNode）。新增一个字段时，只在源头（SkillDef）和终点（ProjectileNode）写了代码，但中间的传递层（`_create_chain()`）漏掉了赋值。
+
+**案例**：本次重构中，`skill_id` 字段在 SkillDef 中有值，在 ExecutionChain 中有声明，但 `_create_chain()` 函数漏了 `chain.skill_id = context.skill_id` 这一行。结果 VFX 管理器收到的 `skill_id` 始终为空字符串，命中特效静默失败。调试花了很长时间。
+
+**诊断方法**：
+```
+# 在下游入口打印上游传来的值
+print("[DEBUG] skill_id=", chain.skill_id)
+# 如果为空，逐层向上追溯：
+# chain.skill_id ← _create_chain() ← context.skill_id ← cast_skill() ← SkillDef
+```
+
+**预防**：新增字段后，**从源头到终点逐层 grep 该字段名**，确认每一层传递都有赋值。
+
+```gdscript
+# 检查清单：
+# 1. SkillDef 有 @export var xxx
+# 2. SkillExecutionContext 有 var xxx
+# 3. _create_chain() 中有 chain.xxx = context.xxx
+# 4. ExecutionChain.duplicate() 中有 c.xxx = xxx
+# 5. SkillRoot.cast_skill() 中有 context.xxx = skill_def.xxx
+# 6. ProjectileNode/下游代码读取 chain.xxx
+```
 
 ---
 
@@ -894,6 +986,34 @@ var width := TownMapData.MAP_WIDTH * TownTileset.TILE_SIZE
 
 **预防**：报 `Identifier "XXX" not declared` 时，先搜索 `XXX` 在哪个文件定义，确认是否需要加类名前缀。
 
+### 10.4 类型化数组（Array[T]）不接受未类型化的 Array
+
+**症状**：`Invalid type in function 'xxx' in base 'yyy'. The array of argument N (Array) does not have the same element type as the expected typed array argument.`
+**根因**：GDScript 4.x 中，函数参数声明为 `Array[ConcreteType]` 时，调用方必须传入**同样类型化的数组**。把单个元素包装成 `[element]` 会创建一个未类型的 `Array`（等价于 `Array[Variant]`），即使元素类型正确也会被拒绝。
+
+```gdscript
+# 函数签名
+func apply_status_updates(updates: Array[CombatResolver.StatusUpdate], params: CombatParams) -> void
+
+# ❌ 错误：把每个 update 包装成 [update] 再传
+for update in result.status_updates:
+    target.apply_status_updates([update], combat_params)  # 运行时报错！
+#                                ^^^^^^^^ 这是 Array（未类型化），不是 Array[StatusUpdate]
+
+# ✅ 正确：直接传整个类型化的数组
+target.apply_status_updates(result.status_updates, combat_params)
+```
+
+**原理**：
+- `result.status_updates` 的类型是 `Array[StatusUpdate]`（由 `CombatResolver.ResolveResult` 定义）——可以直接传
+- `[update]` 的类型是 `Array`（未类型化，即 `Array[Variant]`）——即使 `update` 本身是 `StatusUpdate`，包装后的数组类型也不同
+
+**常见触发场景**：
+- 从一个类型化数组中取出元素，再用 `[element]` 包装后传给期望 `Array[T]` 的函数
+- 用 `Array.append()` 逐个添加元素到未初始化的数组，然后传给期望 `Array[T]` 的函数
+
+**预防**：如果函数签名用了 `Array[T]`，调用方要么传入同样类型化的数组，要么用 `Array[Type]()` 显式构造。
+
 ---
 
 ## 十一、AI 幻觉与上下文污染（方法论重点）
@@ -1009,6 +1129,53 @@ const CORRIDOR_LENGTH_PX := CORRIDOR_LENGTH_TILES * TILE_SIZE
 - 重构不只是在替换代码逻辑——你也在替换对代码的**心理模型**
 - 旧代码可能有隐藏的边界处理，重构时无意中丢弃了
 - 每次重构完成后，**除了测试主路径，更要测试边界条件**：0 元素、最后一轮、空状态
+
+### 13.2 批量删除代码段时"范围溢出"——误删不相关的函数
+
+**症状**：重构后场景无法启动，或关键函数（如 `_ready()`、`_process()`）消失。
+
+**根因**：当从一个大文件中按"段"删除代码时，段的边界往往不精确。如果删除范围覆盖了多个逻辑段，不相关的函数会被一并删除。
+
+**案例**：从 `arena_scene.gd`（672行）中删除"战斗逻辑段"时，删除了从"战斗常量"到"阶段逻辑"之间的所有内容。本意是只删 `_update_combat()`、`_update_dots()`、`_find_nearest_*()`、`_cleanup_dead_units()`，但实际上把 `_ready()`、`_initialize()`、`_create_tilemap()`、`_create_hud()`、`_setup_joystick()`、`_start_combat()`、`_process()`、`_update_hero_follow()` 也一并删除了——因为这些函数在文件中位于被删除段的边界之内。
+
+**预防方法**：
+
+1. **逐函数删除**，而非按段删除：每次只删除一个函数，删除前确认该函数没有被其他未迁移的代码调用
+2. **删除前列出清单**：明确哪些函数要删、哪些要留，逐个确认
+3. **删除后立即验证**：用编辑器或 Hastur 加载脚本，确认所有 `func` 定义仍然存在
+4. **备份**：删除大段代码前，先 `git stash` 或创建分支
+
+**自检清单**（删除段后立即执行）：
+```
+grep "func " 文件名 | wc -l    # 对比删除前后的函数数量
+# 如果数量少了，检查少了哪些
+```
+
+**通用原则**：代码删除的"爆炸半径"往往比你预想的大。宁可多删几次小的，不要一次删一大块。
+
+### 13.3 Effect 代码强制覆盖配置值——破坏了数据驱动设计
+
+**症状**：在 SkillVisualDef 中配置了 `trajectory_type = 0`（直线），但投射物仍然按曲线飞行。
+
+**根因**：Effect 执行代码中硬编码了行为覆盖。`emit_projectile.gd` 对所有多弹道技能强制设置 `chain.trajectory_type = 1`（贝塞尔曲线），无视 SkillVisualDef 中的配置。
+
+```gdscript
+# ❌ 错误：强制覆盖配置
+for i in range(count):
+    var chain := _create_chain(context)
+    chain.trajectory_type = 1  # 强制贝塞尔，无视 visual_def 的配置
+
+# ✅ 正确：尊重配置，只对需要的技能添加变化
+for i in range(count):
+    var chain := _create_chain(context)
+    # 只对已配置为贝塞尔的技能添加随机变化
+    if is_multi and not is_tracking and chain.trajectory_type == 1:
+        chain.control_point_offset = randf_range(20.0, 160.0)
+```
+
+**教训**：Effect 执行代码应该**增强**配置（添加随机变化），而不是**覆盖**配置（强制改变类型）。配置是数据驱动设计的核心，代码应该尊重它。
+
+**预防**：在 Effect 代码中修改 chain 属性前，问自己："这个值是应该来自配置，还是应该由代码决定？"如果 SkillVisualDef 已经定义了该值，就不应该覆盖。
 
 ---
 

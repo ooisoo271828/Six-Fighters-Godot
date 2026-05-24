@@ -3,12 +3,6 @@ extends Node2D
 ## Arena 战斗场景 — 熔岩洞穴竞技场
 ## 走廊阶段：位置触发刷怪 → Boss阶段：5秒倒计时 → 5波推怪
 
-# ── 战斗常量 ──
-const ATTACK_RANGE := 155.0
-const ENEMY_SPEED := 95.0
-const ENEMY_RANGED_RANGE := 280.0
-const ENEMY_MELEE_RANGE := 80.0
-
 # ── 镜头/跟随参数 ──
 const FORMATION_Y_BIAS := 120.0
 const SOFT_FOLLOW_RADIUS := 350.0
@@ -47,6 +41,9 @@ enum Phase {
 var _arena_map: ArenaMapData
 var _ground_tilemap: TileMapLayer
 
+# ── 战斗编排 ──
+var combat_mediator: CombatMediator
+
 # ── 运行时状态（战斗） ──
 var combat_params: CombatParams
 var arena_config: ArenaConfig
@@ -60,6 +57,7 @@ var skill_registry: SkillRegistry
 var skill_system: Node
 var joystick: VirtualJoystick
 
+
 # ── 运行时状态（阶段） ──
 var phase: int = Phase.CORRIDOR
 var wave_label: Label
@@ -71,20 +69,16 @@ var _exit_dialog: PanelContainer
 var _corridor_wave_idx := 0
 var _corridor_wave_config: Array[Dictionary] = []
 
-# Boss 倒计时阶段
+# Boss
 var _countdown_timer := 0.0
-
-# Boss 战阶段
 var _wave_spawner: WaveSpawner
-
-# Boss æé¶æ®µ
 var _boss_wave_index := 0
 var _boss_wave_time := 0.0
 var _boss_wave_initial_count := 0
 
-# ══════════════════════════════════════════
+# ═════════════════
 #  初始化
-# ══════════════════════════════════════════
+# ═════════════════
 
 func _ready() -> void:
 	_initialize()
@@ -102,33 +96,37 @@ func _initialize() -> void:
 	combat_params = GameManager.combat_params
 	arena_config = ArenaConfig.create_default()
 
-	# 地图数据
 	_arena_map = ArenaMapData.new()
 	_corridor_wave_config = _arena_map.get_corridor_waves()
 
-	# SkillSystem
 	var skill_system_scene: PackedScene = load("res://scenes/skill_system/skill_system.tscn")
 	skill_system = skill_system_scene.instantiate()
 	add_child(skill_system)
 	skill_registry = skill_system.skill_registry
 	GameManager.skill_registry = skill_registry
 
-	# HeroRegistry
+	# Register VFX layer with the skill VFX manager
+	var vfx_manager = skill_system.get_node_or_null("SkillVFXManager")
+	if vfx_manager:
+		vfx_manager.register_vfx_layer(vfx_container)
+
 	hero_registry = HeroRegistry.new()
 	add_child(hero_registry)
 
-	# 初始位置：走廊入口
+	combat_mediator = CombatMediator.new()
+	add_child(combat_mediator)
+	combat_mediator.setup(combat_params, rng_func)
+	combat_mediator.all_heroes_dead.connect(_trigger_defeat)
+
 	var entry := _arena_map.get_entry_world_position()
 	camera_anchor.position = Vector2(entry.x, entry.y - FORMATION_Y_BIAS)
 	camera_2d.reset_smoothing()
 
-	# 相机边界
 	camera_2d.limit_left = 0
 	camera_2d.limit_right = ArenaMapData.MAP_WIDTH * ArenaMapData.TILE_SIZE
 	camera_2d.limit_top = 0
 	camera_2d.limit_bottom = ArenaMapData.MAP_HEIGHT * ArenaMapData.TILE_SIZE
 
-	# å·æªç³»ç»
 	_wave_spawner = WaveSpawner.new()
 	add_child(_wave_spawner)
 
@@ -204,9 +202,9 @@ func _on_joystick_input(dx: float, dy: float) -> void:
 func _on_joystick_stopped() -> void:
 	camera_anchor.clear_joystick_input()
 
-# ══════════════════════════════════════════
+# ═════════════════
 #  战斗启动
-# ══════════════════════════════════════════
+# ═════════════════
 
 func _start_combat() -> void:
 	var result := GameManager.spawn_squad(y_sort_container, _get_spawn_center(), {
@@ -218,14 +216,18 @@ func _start_combat() -> void:
 	heroes = result["heroes"]
 	hero_slot_indices = result["slot_indices"]
 
+	combat_mediator.register_heroes(heroes)
+	combat_mediator.register_enemies(enemies)
+	combat_mediator.set_skill_system(skill_system)
+	combat_mediator.set_enemy_attack_callbacks(_spawn_enemy_shuriken, _spawn_enemy_slash)
 	EventBus.emit_combat_started()
 
 func _get_spawn_center() -> Vector2:
 	return camera_anchor.position + Vector2(0, FORMATION_Y_BIAS)
 
-# ══════════════════════════════════════════
+# ═════════════════
 #  主循环
-# ══════════════════════════════════════════
+# ═════════════════
 
 func _process(delta: float) -> void:
 	if phase == Phase.VICTORY or phase == Phase.DEFEAT:
@@ -233,10 +235,9 @@ func _process(delta: float) -> void:
 
 	_update_hero_follow(delta)
 	_clamp_positions()
-	_update_dots(delta)
-	_update_combat(delta)
+	if combat_mediator:
+		combat_mediator.update(delta)
 	_update_phase_logic(delta)
-	_cleanup_dead_units()
 	_check_end_conditions()
 	_update_ui()
 
@@ -246,9 +247,9 @@ func _clamp_positions() -> void:
 		if enemy and is_instance_valid(enemy):
 			enemy.position = _arena_map.clamp_to_walkable(enemy.position)
 
-# ══════════════════════════════════════════
+# ═════════════════
 #  英雄跟随
-# ══════════════════════════════════════════
+# ═════════════════
 
 func _get_formation_target(slot_index: int) -> Vector2:
 	return _get_spawn_center() + GameManager.get_formation_offset(slot_index)
@@ -266,107 +267,6 @@ func _update_hero_follow(dt: float) -> void:
 			hero.position = hero.position.lerp(target, FOLLOW_LERP_URGENT * dt)
 		else:
 			hero.position = hero.position.lerp(target, FOLLOW_LERP_NORMAL * dt)
-
-# ══════════════════════════════════════════
-#  DoT / 状态效果
-# ══════════════════════════════════════════
-
-func _update_dots(dt: float) -> void:
-	var dot_interval: float = combat_params.dot_tick_interval_sec
-	for hero in heroes:
-		if hero and is_instance_valid(hero) and hero.is_alive:
-			hero.status_effects.tick(dt, dot_interval, func(dmg): hero.take_damage(dmg))
-	for enemy in enemies:
-		if enemy and is_instance_valid(enemy) and enemy.is_alive:
-			enemy.status_effects.tick(dt, dot_interval, func(dmg): enemy.take_damage(dmg))
-
-# ══════════════════════════════════════════
-#  战斗逻辑
-# ══════════════════════════════════════════
-
-func _update_combat(dt: float) -> void:
-	for hero in heroes:
-		if not (hero and is_instance_valid(hero) and hero.is_alive):
-			continue
-		if hero.status_effects.is_stunned():
-			continue
-		var target := _find_nearest_enemy(hero.position)
-		if not target:
-			continue
-		var dist := hero.position.distance_to(target.position)
-		if dist > ATTACK_RANGE + 20:
-			continue
-		var pick: RoleAI.AutonomyPick = hero.tick_ai(dt, target, combat_params, rng_func)
-		if not pick:
-			continue
-		skill_system.cast_skill(hero, pick.skill.skill_id, target)
-		var result := CombatResolver.resolve_attack(
-			hero.stats, target.stats,
-			pick.skill.base_damage, pick.skill.damage_type,
-			pick.skill.stun_chance if pick.skill.stun_chance else 0.0,
-			pick.skill.stun_duration if pick.skill.stun_duration else 0.0,
-			combat_params, rng_func,
-			target.status_effects.get_shock_stacks_for_resolution()
-		)
-		target.take_damage(result.instant_damage)
-		hero.timers.rage = minf(100.0, hero.timers.rage + result.instant_damage * 0.15)
-		for update in result.status_updates:
-			target.apply_status_updates([update], combat_params)
-
-	for enemy in enemies:
-		if not (enemy and is_instance_valid(enemy) and enemy.is_alive):
-			continue
-		var target := _find_nearest_hero(enemy.position)
-		if not target:
-			continue
-		var skill_type: String = enemy.get_meta("skill_type", "slash")
-		var is_ranged := skill_type == "shuriken"
-		var attack_range := ENEMY_RANGED_RANGE if is_ranged else ENEMY_MELEE_RANGE
-		var dist := enemy.position.distance_to(target.position)
-		if dist > attack_range:
-			var dir := (target.position - enemy.position).normalized()
-			enemy.position += dir * ENEMY_SPEED * dt
-			continue
-		if enemy.tick_ai(dt, target):
-			var result := CombatResolver.resolve_attack(
-				enemy.stats, target.stats,
-				enemy.base_attack, CombatResolver.DamageType.PHYSICAL,
-				0.0, 0.0, combat_params, rng_func,
-				target.status_effects.get_shock_stacks_for_resolution()
-			)
-			if is_ranged:
-				_spawn_enemy_shuriken(enemy, target, result.instant_damage)
-			else:
-				_spawn_enemy_slash(enemy, target)
-				target.take_damage(result.instant_damage)
-
-func _find_nearest_enemy(pos: Vector2) -> Enemy:
-	var nearest: Enemy = null
-	var nearest_dist := INF
-	for enemy in enemies:
-		if not (enemy and is_instance_valid(enemy) and enemy.is_alive):
-			continue
-		var dist := pos.distance_to(enemy.position)
-		if dist < nearest_dist:
-			nearest_dist = dist
-			nearest = enemy
-	return nearest
-
-func _find_nearest_hero(pos: Vector2) -> Hero:
-	var nearest: Hero = null
-	var nearest_dist := INF
-	for hero in heroes:
-		if not (hero and is_instance_valid(hero) and hero.is_alive):
-			continue
-		var dist := pos.distance_to(hero.position)
-		if dist < nearest_dist:
-			nearest_dist = dist
-			nearest = hero
-	return nearest
-
-# ══════════════════════════════════════════
-#  阶段逻辑（走廊 → Boss 倒计时 → Boss 战）
-# ══════════════════════════════════════════
 
 func _update_phase_logic(dt: float) -> void:
 	match phase:
@@ -428,6 +328,7 @@ func _on_wave_spawn(pos: Vector2, _config: WaveConfig, is_elite: bool) -> void:
 
 	_add_unit_shadow(enemy)
 	enemies.append(enemy)
+	combat_mediator.register_enemies(enemies)
 
 func _start_boss_countdown() -> void:
 	phase = Phase.BOSS_COUNTDOWN
@@ -547,13 +448,10 @@ func _spawn_enemy_slash(enemy: Node2D, target: Node2D) -> void:
 #  清理 / 结算
 # ══════════════════════════════════════════
 
-func _cleanup_dead_units() -> void:
-	heroes = heroes.filter(func(h): return h and is_instance_valid(h) and h.is_alive)
-	enemies = enemies.filter(func(e): return e and is_instance_valid(e) and e.is_alive)
+
 
 func _check_end_conditions() -> void:
-	if heroes.is_empty() and phase != Phase.DEFEAT:
-		_trigger_defeat()
+	pass  # hero death handled by CombatMediator.all_heroes_dead signal
 
 func _save_hub_return_position() -> void:
 	# 传送门下方 3 个角色身位

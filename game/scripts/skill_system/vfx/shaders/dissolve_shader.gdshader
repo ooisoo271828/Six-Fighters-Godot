@@ -1,34 +1,47 @@
 shader_type canvas_item;
 
-/// Dissolve Shader — 基于噪声的溶解消散效果
-/// 用于弹体消亡、命中消融等需要"魔法消散"感的场景。
+/// Dissolve Shader — 基于噪声或径向距离的溶解消散效果
 ///
-/// 使用方式：
-///   1. 创建 ShaderMaterial，设置 shader 为此文件
-///   2. 设置 noise_texture 为一张噪声纹理（或用 NoiseTexture2D 程序化生成）
-///   3. Tween 驱动 dissolve_amount 从 0.0 → 1.0
-///   4. 调整 dissolve_color 和 edge_width 控制溶解边缘颜色和宽度
+/// dissolve_mode:
+///   0 = 噪声溶解（默认，随机消散）
+///   1 = 边缘→中心溶解（从外圈往内圈逐步溶解）
 
 uniform float dissolve_amount : hint_range(0.0, 1.0) = 0.0;  // 0=完整, 1=完全溶解
 uniform vec4 dissolve_color : source_color = vec4(1.0, 0.8, 0.3, 1.0);  // 溶解边缘颜色
+uniform vec4 base_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);  // 基础颜色
 uniform float edge_width : hint_range(0.0, 0.3) = 0.05;
 uniform sampler2D noise_texture;  // 外部噪声纹理
+uniform int dissolve_mode : hint_range(0, 1) = 0;  // 0=噪声, 1=边缘→中心
+uniform vec2 center = vec2(0.5, 0.5);  // 径向溶解的中心点
 
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	float noise = texture(noise_texture, UV).r;
 
-	// 噪声值低于溶解阈值的部分被丢弃
-	float edge = smoothstep(dissolve_amount - edge_width, dissolve_amount, noise);
-	float is_edge = smoothstep(dissolve_amount, dissolve_amount + edge_width, noise) - edge;
+	// 应用基础颜色
+	vec4 colored = tex * base_color;
 
-	// 基础颜色
-	COLOR = tex;
+	float dissolve_threshold;
 
-	// 溶解：噪声值低于阈值的像素变为透明
-	COLOR.a *= step(dissolve_amount, noise);
+	if (dissolve_mode == 1) {
+		// 边缘→中心溶解：距离越远越先溶解
+		float dist = length(UV - center) * 2.0;
+		dissolve_threshold = (1.0 - dist) + noise * 0.15;
+		float edge = smoothstep(dissolve_amount - edge_width, dissolve_amount, dissolve_threshold);
+		float is_edge = smoothstep(dissolve_amount, dissolve_amount + edge_width, dissolve_threshold) - edge;
 
-	// 溶解边缘高亮：在溶解边界处叠加发光色
-	COLOR.rgb += dissolve_color.rgb * is_edge * dissolve_color.a;
-	COLOR.a = max(COLOR.a, is_edge * dissolve_color.a);
+		COLOR = colored;
+		COLOR.a *= step(dissolve_amount, dissolve_threshold);
+		COLOR.rgb += dissolve_color.rgb * is_edge * dissolve_color.a;
+		COLOR.a = max(COLOR.a, is_edge * dissolve_color.a);
+	} else {
+		// 噪声溶解（默认）
+		float edge = smoothstep(dissolve_amount - edge_width, dissolve_amount, noise);
+		float is_edge = smoothstep(dissolve_amount, dissolve_amount + edge_width, noise) - edge;
+
+		COLOR = colored;
+		COLOR.a *= step(dissolve_amount, noise);
+		COLOR.rgb += dissolve_color.rgb * is_edge * dissolve_color.a;
+		COLOR.a = max(COLOR.a, is_edge * dissolve_color.a);
+	}
 }

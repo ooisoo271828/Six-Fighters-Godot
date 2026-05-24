@@ -36,6 +36,24 @@ var target_mode: int = 0
 # ── Effect 类型 ──
 @export var effect_type: String = "emit_projectile"
 
+# ── 投送方式 ──
+@export var delivery_type: String = "projectile"  # "projectile" / "instant"
+
+# ── 追踪参数 ──
+@export var tracking_enabled: bool = false
+@export var turn_rate: float = 0.0           # rad/s
+@export var hit_precision_radius: float = 0.0 # px
+
+# ── 穿透参数 ──
+@export var pierce_enabled: bool = false
+@export var pierce_count: int = 0              # -1 = 无限
+
+# ── 弹射参数 ──
+@export var bounce_damage_scale: float = 1.0
+
+# AOE on hit
+@export var hit_aoe_radius: float = 0.0  # px, 0 = no AOE
+
 # ── 内置 Modifier（基础配置，运行时会被装备/天赋等覆盖） ──
 @export var base_modifier_ids: Array[String] = []
 
@@ -94,8 +112,24 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 	
 	# 行为参数（特殊，因为不是所有技能都有）
 	# 这些参数可能不存储在 SkillDef 中，而是存储在 SkillVisualDef 或 Effect 参数中
-	# 这里只处理通用参数
-	
+	# 投送与命中参数
+	if csv_data.has("delivery_type"):
+		delivery_type = csv_data["delivery_type"]
+	if csv_data.has("tracking_enabled"):
+		tracking_enabled = csv_data["tracking_enabled"] == "true"
+	if csv_data.has("turn_rate"):
+		turn_rate = float(csv_data["turn_rate"])
+	if csv_data.has("hit_precision_radius"):
+		hit_precision_radius = float(csv_data["hit_precision_radius"])
+	if csv_data.has("pierce_enabled"):
+		pierce_enabled = csv_data["pierce_enabled"] == "true"
+	if csv_data.has("pierce_count"):
+		pierce_count = int(csv_data["pierce_count"])
+	if csv_data.has("bounce_damage_scale"):
+		bounce_damage_scale = float(csv_data["bounce_damage_scale"])
+		if csv_data.has("hit_aoe_radius"):
+			hit_aoe_radius = float(csv_data["hit_aoe_radius"])
+
 	print("[SkillDef] Loaded CSV values for %s: base_damage=%.1f, cooldown=%.1f" % [skill_id, base_damage, cooldown])
 
 ## 静态方法：从 CSV 文件加载某个 skill_id 的所有数值

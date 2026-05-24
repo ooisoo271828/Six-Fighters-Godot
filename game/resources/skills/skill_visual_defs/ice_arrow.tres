@@ -1,0 +1,97 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/particle_trail_config.gd" id="4_ptc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="5_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="6_iv"]
+
+[sub_resource type="Resource" id="body_ice"]
+script = ExtResource("2_pv")
+core_color = Color(0.25, 0.55, 1.0, 1)
+core_width = 8.0
+core_height = 32.0
+core_radius = 4.0
+inner_enabled = true
+inner_color = Color(0.6, 0.85, 1.0, 1)
+inner_width = 4.0
+inner_height = 20.0
+nose_enabled = true
+nose_color = Color(0.8, 0.95, 1.0, 1)
+nose_length = 16.0
+nose_width = 2.0
+glow_radius = 6.0
+glow_color = Color(0.4, 0.7, 1.0, 1)
+glow_alpha = 0.5
+glow2_radius = 10.0
+glow2_color = Color(0.3, 0.6, 1.0, 1)
+glow2_alpha = 0.2
+glow_offset_forward = 16.0
+jitter_enabled = true
+jitter_amplitude = 0.4
+jitter_freq_x = 4.0
+jitter_freq_y = 3.0
+
+[sub_resource type="Resource" id="ptc_ice"]
+script = ExtResource("4_ptc")
+enabled = true
+count = 25
+lifetime = 0.4
+back_dist_min = 15.0
+back_dist_max = 35.0
+radius_min = 0.1
+radius_max = 0.5
+color_1 = Color(0.8, 0.95, 1.0, 1)
+color_2 = Color(0.4, 0.7, 1.0, 1)
+color_3 = Color(0.2, 0.4, 0.9, 1)
+life_min = 0.15
+life_max = 0.4
+
+[sub_resource type="Resource" id="ctc_ice"]
+script = ExtResource("5_ctc")
+enabled = true
+max_samples = 24
+sway_freq = 0.6
+sway_amplitude = 1.2
+outer_width = 6.0
+outer_color = Color(0.5, 0.8, 1.0, 1)
+outer_alpha = 0.3
+mid_width = 3.5
+mid_color = Color(0.4, 0.7, 1.0, 1)
+mid_alpha = 0.6
+inner_width = 1.5
+inner_alpha = 0.9
+
+[sub_resource type="Resource" id="trail_ice"]
+script = ExtResource("3_td")
+particles = SubResource("ptc_ice")
+comet = SubResource("ctc_ice")
+
+[sub_resource type="Resource" id="impact_ice"]
+script = ExtResource("6_iv")
+spark_count_min = 80
+spark_count_max = 160
+spark_speed_min = 80.0
+spark_speed_max = 250.0
+spark_life_min = 0.5
+spark_life_max = 1.2
+spark_color = Color(0.4, 0.7, 1.0, 1)
+spark_particle_count = 120
+spark_lifetime = 0.8
+shake_strength = 3.0
+shake_duration = 0.15
+tier_B = "spark_magic"
+tier_C = "burst_ice"
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "ice_arrow"
+projectile_kind = 1
+speed = 337.5
+projectile_scale = 1.75
+projectile_count_min = 3
+projectile_count_max = 3
+body = SubResource("body_ice")
+trail = SubResource("trail_ice")
+impact = SubResource("impact_ice")

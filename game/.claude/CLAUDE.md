@@ -130,12 +130,78 @@ When executing GDScript via Hastur, runtime errors now include full location inf
 
 ---
 
+## VFX System v4.0 Architecture
+
+### Data Layer
+
+```
+SkillVisualDef (纯容器)
+├── body: ProjectileVisual      ← 弹体核心（core/inner/hotspot/nose/glow/jitter/纹理）
+├── trail: TrailDef             ← 拖尾系统容器
+│   ├── particles: ParticleTrailConfig  ← 向后散射粒子（可选）
+│   ├── flame: FlameTrailConfig         ← 向前前缘火焰（可选）
+│   ├── comet: CometTrailConfig         ← Line2D 实线拖尾（可选）
+│   └── path_dots: PathDotConfig        ← 路径光点（可选）
+└── impact: ImpactVisual        ← 命中视觉（火花/震屏/VFX层级池）
+```
+
+**子 Resource 文件**：`scripts/skill_system/registry/` 下的 `projectile_visual.gd`, `trail_def.gd`, `particle_trail_config.gd`, `flame_trail_config.gd`, `comet_trail_config.gd`, `path_dot_config.gd`, `impact_visual.gd`
+
+### Rendering Layer (Component Pattern)
+
+```
+ProjectileNode (壳 — 运动 + 命中检测)
+├── CompCoreSprite     ← core/inner/hotspot/nose 四层 Sprite
+├── CompGlow           ← glow/glow2/ray 光晕 + ShaderMaterial
+├── CompTrailParticles ← GPUParticles2D 向后散射
+├── CompFlameTrail     ← GPUParticles2D 向前火焰
+├── CompCometTrail     ← Line2D × 3 实线拖尾
+├── CompPathDots       ← 路径光点
+└── CompExplosion      ← 命中爆炸
+```
+
+**Component 文件**：`scripts/skill_system/pools/components/` 下
+
+### Texture & Color Rules
+
+```
+[规则] 粒子纹理优先级：
+  1. 子 Config 的 texture_path → 加载并使用
+  2. 未指定 → VFXTextureManager 程序化纹理（SOFT_CIRCLE / CIRCLE）
+
+[规则] 颜色渐变仅在无自定义纹理时应用（有纹理 → 纹理原色即最终色）
+
+[规则] 每个拖尾子系统独立着色（particles.color_1/2/3, flame.color_1/2, comet 各层颜色）
+
+[规则] 程序化纹理由 VFXTextureManager 统一管理，带缓存
+```
+
+### Shader Preset System
+
+```
+[规则] 着色器参数通过 ShaderPreset Resource 传递（类型安全），不传裸 Dictionary
+[规则] 内置预设：glow_default, glow_intense, glow_subtle, glow_pulsing
+[规则] 预设文件：resources/vfx/shader_presets/*.tres
+[规则] VFXTextureManager.get_shared_material() 返回共享实例，禁止运行时修改 uniform
+[规则] 需要运行时动画 → duplicate_material() 创建独立副本
+```
+
+### Object Pool Rules
+
+```
+[规则] 每个 Component 的 reset() 在池复用时调用，清理纹理引用和状态
+[规则] Component.configure() 必须为每个视觉元素明确设值（启用/禁用）
+[规则] 禁止"不设值就保留上一技能状态"的隐式行为
+```
+
+---
+
 ## Project Structure
 
 ```
 game/
 ├── addons/hasturoperationgd/   # Godot plugin (active)
-├── assets/                      # Sprites, textures, shaders
+├── assets/textures/vfx/        # VFX 纹理（particles/, cores/, glows/）
 ├── scenes/
 │   ├── arena/                   # Combat arena
 │   ├── dev/                     # SkillDemo, test scenes
@@ -143,18 +209,29 @@ game/
 │   ├── skill_system/            # Skill system scene
 │   └── viewer/                  # Hero/skill viewer
 ├── scripts/
+│   ├── skill_system/
+│   │   ├── registry/            # SkillDef, SkillVisualDef, 子 Resource 类
+│   │   ├── core/                # SkillEffect, ExecutionChain, Modifier
+│   │   ├── pools/               # ProjectileNode, ProjectilePool
+│   │   │   └── components/      # CompCoreSprite, CompGlow, CompTrail...
+│   │   ├── vfx/                 # SkillVFXManager, executors, shaders
+│   │   │   ├── executors/       # ExecRing, ExecParticleBurst...
+│   │   │   └── shaders/         # glow, dissolve, ring_wave, telegraph
+│   │   └── signal_bus/          # SkillSignalBus
+│   ├── combat/                  # Combat system, TargetSelector
 │   ├── arena/                   # Arena logic
-│   ├── combat/                  # Combat system
-│   ├── core/                    # Singletons
-│   ├── data/                    # Data definitions
-│   ├── dev/                     # Dev tools (camera_anchor, skill_demo)
-│   ├── hub/                     # Hub logic
-│   ├── skill_system/            # Skill registry, effects, modifiers, VFX
-│   ├── ui/                      # UI components
-│   └── units/                   # Unit definitions
-├── resources/                   # Godot resources
-├── tools/                       # Python CLI tools (editor_call.py, hastur.py)
-└── docs/                        # Design docs, references, handoff notes
+│   ├── core/                    # Singletons (GameManager)
+│   └── ...
+├── resources/
+│   ├── skills/
+│   │   ├── skill_defs/          # SkillDef .tres（战斗数据）
+│   │   ├── skill_visual_defs/   # SkillVisualDef .tres（视觉数据）
+│   │   └── modifiers/           # ModifierDef .tres
+│   └── vfx/
+│       ├── tiers/               # VFX 层级池定义
+│       ├── layers/              # VFXLayerDef .tres
+│       └── shader_presets/      # ShaderPreset .tres
+└── docs/                        # Design docs, references
 ```
 
 **Detailed references**:

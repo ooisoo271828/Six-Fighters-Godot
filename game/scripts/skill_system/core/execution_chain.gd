@@ -67,6 +67,27 @@ var _time_triggers: Array[Dictionary]
 var _distance_triggers: Array[Dictionary]
 var _hit_triggers: Array[Dictionary]
 
+## ── 追踪参数 ──
+var tracking_enabled: bool = false
+var turn_rate: float = 0.0              # rad/s，方向修正最大角速度
+var hit_precision_radius: float = 0.0   # 命中精准范围，0 = 精确碰撞
+
+## ── 穿透参数 ──
+var pierce_enabled: bool = false
+var pierce_count: int = 0               # -1 = 无限穿透
+var hit_targets: Array[Node2D] = []     # 已命中目标列表（穿透模式防重复）
+
+## ── 弹射参数 ──
+var bounce_damage_scale: float = 1.0
+
+## AOE on hit
+var hit_aoe_radius: float = 0.0    # 弹射伤害系数
+
+## ── 伤害上下文（命中时供 CombatMediator 使用） ──
+var skill_def_ref: Resource             # 引用 SkillDef
+var enemy_query_func: Callable
+var available_targets: Array = []  # for multi-target seeking          # () -> Array[Node2D]，弹射目标查询回调
+
 ## ── 临时状态（在 ProjectileNode 中使用） ──
 var elapsed_time: float = 0.0
 var hit_count: int = 0
@@ -148,6 +169,16 @@ func duplicate() -> ExecutionChain:
 	c.modifier_stack = modifier_stack.duplicate()
 	c.modifier_index = modifier_index
 	c.parent_chain = self
+	c.tracking_enabled = tracking_enabled
+	c.turn_rate = turn_rate
+	c.hit_precision_radius = hit_precision_radius
+	c.pierce_enabled = pierce_enabled
+	c.pierce_count = pierce_count
+	c.bounce_damage_scale = bounce_damage_scale
+	c.hit_aoe_radius = hit_aoe_radius
+	c.skill_def_ref = skill_def_ref
+	c.enemy_query_func = enemy_query_func
+	c.available_targets = available_targets
 	return c
 
 func add_child(new_chain: ExecutionChain) -> void:
@@ -171,33 +202,13 @@ func explode() -> void:
 	behavior_state = "Exploded"
 	chain_destroyed.emit(self)
 
-## ── 查找最近敌人 ──
-
-func _find_nearest_enemy_excluding(exclude: Node2D) -> Node2D:
-	if not caster or not is_instance_valid(caster):
-		return null
-	# 简单实现：从 caster 的父节点（期望是 ArenaScene）查找
-	var arena = caster.get_parent()
-	if not arena:
-		return null
-	var enemies = arena.get("enemies")
-	if not enemies:
-		return null
-	var nearest: Node2D = null
-	var nearest_dist: float = INF
-	for e in enemies:
-		if e == exclude or not is_instance_valid(e):
-			continue
-		var d: float = position.distance_to(e.global_position)
-		if d < nearest_dist:
-			nearest_dist = d
-			nearest = e
-	return nearest
-
 ## ── 弹射 ──
 
 func reroute_to_nearest_enemy(exclude: Node2D) -> bool:
-	var next := _find_nearest_enemy_excluding(exclude)
+	var enemies: Array = enemy_query_func.call() if enemy_query_func.is_valid() else []
+	if enemies.is_empty():
+		return false
+	var next: Node2D = TargetSelector.find_nearest_excluding(position, enemies, exclude)
 	if next:
 		direction = position.direction_to(next.global_position)
 		target = next

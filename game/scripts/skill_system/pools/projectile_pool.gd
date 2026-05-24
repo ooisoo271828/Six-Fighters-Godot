@@ -42,7 +42,7 @@ func _create_projectile_node() -> Node2D:
 	return node
 
 ## 从池中取出一个投射物
-func spawn(chain: ExecutionChain, visual_def: Resource, signal_bus: Node) -> Node2D:
+func spawn(chain: ExecutionChain, visual_def: SkillVisualDef, signal_bus: Node) -> Node2D:
 	var node: Node2D
 	if _pool.is_empty():
 		node = _create_projectile_node()

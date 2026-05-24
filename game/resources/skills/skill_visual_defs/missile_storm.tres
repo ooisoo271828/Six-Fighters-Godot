@@ -1,72 +1,91 @@
-[gd_resource type="Resource" script_class="SkillVisualDef" format=3 uid="uid://vhu70da2xqrt"]
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
 
-[ext_resource type="Resource" uid="uid://klyngyns8nbf" path="res://resources/skills/skill_visual_defs/missile_storm_impact.tres" id="1_20wjc"]
-[ext_resource type="Script" uid="uid://ge330whaolln" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_c7xsd"]
-[ext_resource type="Resource" uid="uid://cl0lknrafok38" path="res://resources/skills/skill_visual_defs/missile_storm_projectile.tres" id="2_bqr42"]
-[ext_resource type="Resource" uid="uid://d0erg507aqrje" path="res://resources/skills/skill_visual_defs/missile_storm_trail.tres" id="4_j278c"]
-[ext_resource type="Resource" uid="uid://dlvs176vawtme" path="res://resources/skills/skill_visual_defs/missile_storm_vfx_override.tres" id="5_1eok5"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/particle_trail_config.gd" id="4_ptc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="5_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="6_iv"]
 
-[resource]
-script = ExtResource("1_c7xsd")
-skill_id = "missile_storm"
-projectile_visual = ExtResource("2_bqr42")
-trail_visual = ExtResource("4_j278c")
-impact_visual = ExtResource("1_20wjc")
-vfx_override = ExtResource("5_1eok5")
-projectile_kind = 3
-trajectory_type = 2
-speed = 450.0
-projectile_scale = 0.8
-projectile_count_min = 9
-projectile_count_max = 12
+[sub_resource type="Resource" id="body_missile"]
+script = ExtResource("2_pv")
 core_width = 16.0
 core_height = 16.0
 core_radius = 8.0
-core_inner_enabled = true
-core_inner_color = Color(0.96862745, 0.8156863, 0.5686275, 1)
-core_inner_width = 8.0
-core_inner_height = 8.0
-core_hotspot_enabled = true
-core_hotspot_width = 4.0
-core_hotspot_height = 4.0
-core_glow_radius = 14.0
-core_glow_color = Color(1, 0.53333336, 0.17254902, 1)
-core_glow_alpha = 0.35
-core_glow2_color = Color(1, 0.7529412, 0.39607844, 1)
+inner_enabled = true
+inner_color = Color(0.969, 0.816, 0.569, 1)
+inner_width = 8.0
+inner_height = 8.0
+hotspot_enabled = true
+hotspot_width = 4.0
+hotspot_height = 4.0
+glow_radius = 14.0
+glow_color = Color(1, 0.533, 0.173, 1)
+glow_alpha = 0.35
+glow2_color = Color(1, 0.753, 0.396, 1)
 jitter_enabled = true
 jitter_amplitude = 0.8
 jitter_freq_x = 3.5
 jitter_freq_y = 2.9
-trail_particle_count = 6
-trail_particle_lifetime = 0.25
-trail_back_dist_min = 6.0
-trail_back_dist_max = 18.0
-trail_spread_min = 12.0
-trail_spread_max = 12.0
-trail_radius_min = 0.15
-trail_radius_max = 0.4
-trail_color_1 = Color(1, 0.9411765, 0.8627451, 1)
-trail_color_2 = Color(1, 0.7882353, 0.56078434, 1)
-trail_life_min = 0.1
-trail_life_max = 0.25
-comet_max_samples = 32
-comet_outer_width = 8.0
-comet_outer_color = Color(1, 0.9411765, 0.8627451, 1)
-comet_outer_alpha = 0.3
-comet_mid_width = 5.0
-comet_mid_color = Color(1, 0.7882353, 0.56078434, 1)
-comet_mid_alpha = 0.55
-comet_inner_width = 2.5
-comet_inner_alpha = 0.9
-comet_sway_freq = 0.9
-comet_sway_amplitude = 1.8
-impact_spark_count_max = 18
-impact_speed_min = 60.0
-impact_speed_max = 130.0
-impact_life_min = 0.15
-impact_life_max = 0.35
-impact_color = Color(1, 0.9019608, 0.7294118, 1)
-impact_particle_count = 16
-impact_lifetime = 0.35
-impact_shake_strength = 2.0
-impact_shake_duration = 0.12
+
+[sub_resource type="Resource" id="ptc_missile"]
+script = ExtResource("4_ptc")
+enabled = true
+count = 6
+lifetime = 0.25
+back_dist_min = 6.0
+back_dist_max = 18.0
+spread_min = 12.0
+spread_max = 12.0
+radius_min = 0.15
+radius_max = 0.4
+color_1 = Color(1, 0.941, 0.863, 1)
+color_2 = Color(1, 0.788, 0.561, 1)
+life_min = 0.1
+life_max = 0.25
+
+[sub_resource type="Resource" id="ctc_missile"]
+script = ExtResource("5_ctc")
+enabled = true
+max_samples = 32
+sway_freq = 0.9
+sway_amplitude = 1.8
+outer_width = 8.0
+outer_color = Color(1, 0.941, 0.863, 1)
+outer_alpha = 0.3
+mid_width = 5.0
+mid_color = Color(1, 0.788, 0.561, 1)
+mid_alpha = 0.55
+inner_width = 2.5
+inner_alpha = 0.9
+
+[sub_resource type="Resource" id="trail_missile"]
+script = ExtResource("3_td")
+particles = SubResource("ptc_missile")
+comet = SubResource("ctc_missile")
+
+[sub_resource type="Resource" id="impact_missile"]
+script = ExtResource("6_iv")
+spark_count_max = 18
+spark_speed_min = 60.0
+spark_speed_max = 130.0
+spark_life_min = 0.15
+spark_life_max = 0.35
+spark_color = Color(1, 0.902, 0.729, 1)
+spark_particle_count = 16
+spark_lifetime = 0.35
+shake_strength = 2.0
+shake_duration = 0.12
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "missile_storm"
+projectile_kind = 3
+trajectory_type = 2
+speed = 720.0
+projectile_scale = 0.8
+projectile_count_min = 9
+projectile_count_max = 12
+body = SubResource("body_missile")
+trail = SubResource("trail_missile")
+impact = SubResource("impact_missile")

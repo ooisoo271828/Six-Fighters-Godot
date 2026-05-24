@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ShaderPreset" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/vfx/shader_preset.gd" id="1_sp"]
+[ext_resource type="Shader" path="res://scripts/skill_system/vfx/shaders/glow_shader.gdshader" id="2_sh"]
+
+[resource]
+script = ExtResource("1_sp")
+shader_path = "res://scripts/skill_system/vfx/shaders/glow_shader.gdshader"
+display_name = "Glow Default"
+glow_color = Color(1.0, 0.6, 0.2, 1.0)
+glow_strength = 1.5
+glow_radius = 8.0
+pulse_speed = 0.0

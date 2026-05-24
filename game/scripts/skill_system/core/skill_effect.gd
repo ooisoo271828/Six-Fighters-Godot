@@ -14,7 +14,17 @@ class SkillExecutionContext:
 	var damage: float
 	var damage_type: String
 	var skill_id: String
-	var visual_def: Resource  # SkillVisualDef
+	var visual_def: SkillVisualDef
+
+	var delivery_type: String = "projectile"
+	var tracking_enabled: bool = false
+	var turn_rate: float = 0.0
+	var hit_precision_radius: float = 0.0
+	var pierce_enabled: bool = false
+	var pierce_count: int = 0
+	var bounce_damage_scale: float = 1.0
+	var hit_aoe_radius: float = 0.0
+	var available_targets: Array = []  # for multi-target seeking
 
 	func _to_string() -> String:
 		return "Context[skill=%s caster=%s target=%s damage=%.1f]" % [skill_id, caster, target, damage]
@@ -52,6 +62,7 @@ func _create_chain(context: SkillExecutionContext) -> ExecutionChain:
 	chain.target_pos = context.target_pos
 	chain.direction = context.direction
 	chain.position = context.caster.global_position
+	chain.skill_id = context.skill_id
 	chain.damage = context.damage
 	chain.damage_type = context.damage_type
 	chain.base_damage = context.damage
@@ -63,4 +74,12 @@ func _create_chain(context: SkillExecutionContext) -> ExecutionChain:
 	chain.speed = 300.0
 	chain.behavior_state = "Flying"
 	chain.travel_time_multiplier = 1.0
+	chain.tracking_enabled = context.tracking_enabled
+	chain.turn_rate = context.turn_rate
+	chain.hit_precision_radius = context.hit_precision_radius
+	chain.pierce_enabled = context.pierce_enabled
+	chain.pierce_count = context.pierce_count
+	chain.bounce_damage_scale = context.bounce_damage_scale
+	chain.hit_aoe_radius = context.hit_aoe_radius
+	chain.available_targets = context.available_targets
 	return chain

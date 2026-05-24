@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3 uid="uid://cebmaunc4ewo4"]
+
+[ext_resource type="Script" uid="uid://boty6cd3ndrfv" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "ice_arrow"
+display_name = "冰箭术"
+damage_type = 2
+base_damage = 28.0
+cooldown = 3.5
+cast_range = 500.0
+telegraph_ms = 300
+tracking_enabled = false
+turn_rate = 4.0
+hit_precision_radius = 14.0
+hit_aoe_radius = 14.0
+description = "发射3枚冰箭，追踪不同目标，命中后造成冰霜减速"

@@ -1,69 +1,98 @@
-[gd_resource type="Resource" script_class="SkillVisualDef" format=3 uid="uid://csup35wtg42vh"]
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
 
-[ext_resource type="Script" uid="uid://ge330whaolln" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_4huj3"]
-[ext_resource type="Resource" uid="uid://b16yu50nc0u6j" path="res://resources/skills/skill_visual_defs/fireball_basic_impact.tres" id="1_aje5r"]
-[ext_resource type="Resource" uid="uid://dkodt0xhy4fh" path="res://resources/skills/skill_visual_defs/fireball_basic_projectile.tres" id="2_iika7"]
-[ext_resource type="Resource" uid="uid://c47qkvo276v5h" path="res://resources/skills/skill_visual_defs/fireball_basic_trail.tres" id="4_6rqsj"]
-[ext_resource type="Resource" uid="uid://bian7x5n6c8jl" path="res://resources/skills/skill_visual_defs/fireball_basic_vfx_override.tres" id="5_me0ab"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/particle_trail_config.gd" id="4_ptc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/flame_trail_config.gd" id="5_ftc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="6_iv"]
+
+[sub_resource type="Resource" id="body_fireball"]
+script = ExtResource("2_pv")
+core_color = Color(0.722, 0.137, 0.106, 1)
+core_width = 36.0
+core_height = 36.0
+core_radius = 18.0
+inner_enabled = true
+inner_color = Color(0.91, 0.384, 0.306, 1)
+inner_width = 21.0
+inner_height = 17.0
+inner_offset = Vector2(2, -2)
+hotspot_enabled = true
+hotspot_color = Color(1, 0.643, 0.529, 1)
+hotspot_width = 11.0
+hotspot_height = 9.0
+hotspot_offset = Vector2(-4, 3)
+nose_enabled = true
+nose_color = Color(0.851, 0.267, 0.208, 1)
+nose_length = 18.0
+nose_width = 5.0
+glow_radius = 21.0
+glow_color = Color(1, 0.435, 0.373, 1)
+jitter_enabled = true
+tex_core_path = "res://assets/textures/vfx/fire_core_64.png"
+tex_glow_path = "res://assets/textures/vfx/soft_circle_64.png"
+tex_explosion_path = "res://assets/textures/vfx/spark_16.png"
+tex_nose_path = ""
+
+[sub_resource type="Resource" id="ptc_fireball"]
+script = ExtResource("4_ptc")
+enabled = true
+count = 20
+lifetime = 0.5
+back_dist_min = 30.0
+back_dist_max = 120.0
+radius_min = 0.15
+radius_max = 0.9
+color_1 = Color(1, 0.824, 0.769, 1)
+color_2 = Color(1, 0.729, 0.624, 1)
+color_3 = Color(1, 0.914, 0.89, 1)
+life_min = 0.18
+life_max = 0.5
+texture_path = "res://assets/textures/vfx/fire_particle_32.png"
+
+[sub_resource type="Resource" id="ftc_fireball"]
+script = ExtResource("5_ftc")
+enabled = true
+count = 12
+inner_min = 1.2
+inner_max = 5.5
+outer_min = 5.5
+outer_max = 14.0
+color_1 = Color(1, 0.482, 0.412, 1)
+color_2 = Color(0.835, 0.212, 0.173, 1)
+life_min = 0.1
+life_max = 0.195
+texture_path = "res://assets/textures/vfx/fire_particle_16.png"
+
+[sub_resource type="Resource" id="trail_fireball"]
+script = ExtResource("3_td")
+particles = SubResource("ptc_fireball")
+flame = SubResource("ftc_fireball")
+
+[sub_resource type="Resource" id="impact_fireball"]
+script = ExtResource("6_iv")
+spark_count_min = 400
+spark_count_max = 600
+spark_speed_min = 200.0
+spark_speed_max = 600.0
+spark_life_min = 0.4
+spark_life_max = 1.0
+spark_color = Color(0.722, 0.137, 0.106, 1)
+spark_particle_count = 500
+spark_lifetime = 0.8
+shake_strength = 8.0
+shake_duration = 0.3
+tier_B = "spark_fire"
+tier_C = "ring_fire"
 
 [resource]
-script = ExtResource("1_4huj3")
+script = ExtResource("1_svd")
 skill_id = "fireball_basic"
-projectile_visual = ExtResource("2_iika7")
-trail_visual = ExtResource("4_6rqsj")
-impact_visual = ExtResource("1_aje5r")
-vfx_override = ExtResource("5_me0ab")
 projectile_kind = 1
 telegraph_shape = 1
 speed = 225.0
 projectile_scale = 0.5
-core_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
-core_width = 36.0
-core_height = 36.0
-core_radius = 18.0
-core_inner_enabled = true
-core_inner_color = Color(0.9098039, 0.38431373, 0.30588236, 1)
-core_inner_width = 21.0
-core_inner_height = 17.0
-core_inner_offset = Vector2(2, -2)
-core_hotspot_enabled = true
-core_hotspot_color = Color(1, 0.6431373, 0.5294118, 1)
-core_hotspot_width = 11.0
-core_hotspot_height = 9.0
-core_hotspot_offset = Vector2(-4, 3)
-core_nose_enabled = true
-core_nose_color = Color(0.8509804, 0.26666668, 0.20784314, 1)
-core_nose_length = 18.0
-core_nose_width = 5.0
-core_glow_radius = 21.0
-core_glow_color = Color(1, 0.43529412, 0.37254903, 1)
-jitter_enabled = true
-tex_core_path = "res://assets/textures/vfx/fire_core_64.png"
-tex_glow_path = "res://assets/textures/vfx/soft_circle_64.png"
-tex_trail_path = "res://assets/textures/vfx/fire_particle_32.png"
-tex_explosion_path = "res://assets/textures/vfx/spark_16.png"
-tex_front_flame_path = "res://assets/textures/vfx/fire_particle_16.png"
-front_flame_enabled = true
-front_flame_color_1 = Color(1, 0.48235294, 0.4117647, 1)
-front_flame_color_2 = Color(0.8352941, 0.21176471, 0.17254902, 1)
-trail_particle_enabled = true
-trail_particle_count = 20
-trail_particle_lifetime = 0.5
-trail_back_dist_min = 30.0
-trail_back_dist_max = 120.0
-trail_radius_min = 0.15
-trail_radius_max = 0.9
-trail_color_1 = Color(1, 0.8235294, 0.76862746, 1)
-trail_color_2 = Color(1, 0.7294118, 0.62352943, 1)
-trail_color_3 = Color(1, 0.9137255, 0.8901961, 1)
-impact_spark_count_min = 160
-impact_spark_count_max = 240
-impact_speed_min = 350.0
-impact_speed_max = 800.0
-impact_life_min = 0.25
-impact_life_max = 0.6
-impact_color = Color(0.72156864, 0.13725491, 0.105882354, 1)
-impact_particle_count = 200
-impact_lifetime = 0.5
-hit_vfx_tier_B = "spark_fire"
-hit_vfx_tier_C = "burst_fire"
+body = SubResource("body_fireball")
+trail = SubResource("trail_fireball")
+impact = SubResource("impact_fireball")
