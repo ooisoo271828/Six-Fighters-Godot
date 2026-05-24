@@ -56,7 +56,7 @@ func configure(visual_def: SkillVisualDef, _chain: ExecutionChain, _tex_manager:
 	_pos_initialized = false
 
 
-func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
+func update(_dt: float, parent: Node2D, chain: ExecutionChain) -> void:
 	if not _config:
 		return
 
@@ -95,6 +95,12 @@ func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
 		var t := float(i) / float(max(1, swayed.size()))
 		var offset := sin(t * TAU * _config.sway_freq + chain.elapsed_time * 2.0) * _config.sway_amplitude * t
 		swayed[i] += perp * offset
+
+	# 向后偏移到梯形尾部
+	if _config.back_offset != 0.0:
+		var tail_offset := -fwd * _config.back_offset
+		for i in range(swayed.size()):
+			swayed[i] += tail_offset
 
 	_line_outer.points = PackedVector2Array(swayed)
 	_line_mid.points = PackedVector2Array(swayed)

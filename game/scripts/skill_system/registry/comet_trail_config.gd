@@ -11,6 +11,8 @@ extends Resource
 @export var sway_amplitude: float = 1.1
 ## 沿长度方向的宽度曲线。留空 = 使用默认锥形衰减
 @export var width_curve: Curve
+## 拖尾向后偏移量（相对于弹体中心，负方向 = 尾部）
+@export var back_offset: float = 0.0
 
 # ── 外层 ──
 @export_group("Outer Layer")

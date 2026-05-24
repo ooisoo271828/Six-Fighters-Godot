@@ -95,7 +95,7 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 		_nose_sprite.visible = false
 
 
-func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
+func update(dt: float, _parent: Node2D, chain: ExecutionChain) -> void:
 	if not _body:
 		return
 
@@ -123,6 +123,10 @@ func update(dt: float, parent: Node2D, chain: ExecutionChain) -> void:
 	# 弹尖朝向
 	if _nose_sprite and _nose_sprite.visible and chain.direction.length() > 0:
 		_nose_sprite.rotation = chain.direction.angle()
+
+	# 核心朝向（扇形纹理前宽后窄，需要旋转到运动方向）
+	if _core_sprite and chain.direction.length() > 0:
+		_core_sprite.rotation = chain.direction.angle()
 
 
 func on_destroy(_parent: Node2D) -> void:

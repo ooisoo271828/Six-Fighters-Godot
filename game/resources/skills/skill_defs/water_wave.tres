@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3 uid="uid://c1water_wave_def"]
+
+[ext_resource type="Script" uid="uid://boty6cd3ndrfv" path="res://scripts/skill_system/registry/skill_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+skill_id = "water_wave"
+display_name = "水浪术"
+damage_type = 0
+base_damage = 35.0
+cooldown = 5.0
+telegraph_ms = 350
+target_mode = 2
+tracking_enabled = false
+turn_rate = 4.0
+hit_precision_radius = 14.0
+bounce_remaining = 2
+bounce_type = 1
+bounce_damage_scale = 1.0
+hit_aoe_radius = 0.0
+description = "发射一道水浪，在最多3个血量最低的敌人之间弹射，每次命中后从命中位置生成新的水浪"

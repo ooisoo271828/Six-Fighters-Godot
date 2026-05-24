@@ -1,6 +1,6 @@
 # 🛡 Godot AI 编程避坑指南
 
-> **版本**: v4.0 | 创建: 2026-04-28 | 更新: 2026-05-24 | 状态: 持续更新
+> **版本**: v4.1 | 创建: 2026-04-28 | 更新: 2026-05-25 | 状态: 持续更新
 >
 > 本指南汇总了 Six-Fighters-Godot 项目开发过程中反复出现的错误、隐蔽陷阱和系统性教训。
 > 目标：避免团队在同一个坑里跌倒两次。
@@ -360,7 +360,38 @@ ResourceSaver.save(res, path)
 
 **预防**：新增 `@export` 属性后，**立即对所有引用该脚本的 .tres 文件执行强制重载+保存**。或者重启编辑器（会清理缓存）。
 
-### 3.6 `HitVFXNode.setup_sprite()` 已自动将节点加入场景树——不要重复 `add_child()`
+### 3.6 静态单例持旧代码——编辑器内 Play 不重置 `static var`
+
+**症状**：修改了 `class_name` 脚本（如 `VFXTextureManager`）并在其中添加了新功能（例如新的程序化纹理生成函数），但在编辑器内 Play 场景时，新功能不生效。旧版本代码仍然运行。
+
+**根因**：Godot 编辑器中 `EditorInterface.play_custom_scene()` 在**同一进程内**运行场景。`static var`（类静态变量）在进程生命周期内持久存在。修改脚本后重新 Play，`_instance` 仍然是旧脚本创建的对象，不具备新功能。
+
+```gdscript
+# ❌ 错误：retain old instance that was created before script modifications
+static func get_instance() -> VFXTextureManager:
+    if _instance == null:
+        _instance = VFXTextureManager.new()
+    return _instance  # may be outdated if script was recompiled
+```
+
+**修复**：在入口处主动失效旧实例：
+
+```gdscript
+func _ready() -> void:
+    VFXTextureManager._instance = null  # ← 强制下次 get_instance() 创建新实例
+    _tex_manager = VFXTextureManager.get_instance()
+```
+
+**规律**：涉及 `static var _instance` 缓存的单例，在编辑器内 Play 场景时必然遇到此问题。如果在 Play 过程中修改了单例脚本，缓存的旧实例不会自动失效。
+
+**排查思路**：
+- 修改了 `class_name` 脚本但 Play 后不生效 → 检查是否有 `static var` 缓存了旧实例
+- 在 `_ready()` 中添加 `ClassName._instance = null` 测试是否修复
+- 对比：**"新游戏进程"**（菜单 → 新游戏，跑独立进程）vs **"编辑器内 Play"**（`EditorInterface.play_custom_scene()`，同一进程）
+
+---
+
+### 3.7 `HitVFXNode.setup_sprite()` 已自动将节点加入场景树——不要重复 `add_child()`
 
 **症状**：`Can't add child '...' to 'VFX', already has a parent 'SkillDemo'.`
 
@@ -459,6 +490,48 @@ var skip_skills := ["missile_storm"]
 if info.get("skill_id", "") in skip_skills:
     return
 ```
+
+---
+
+### 4.4 GPUParticles2D.emission_shape / emission_rect_extents 在 Godot 4.6 中不存在
+
+**症状**：编译报错或运行时报错 `Invalid assignment of property or key 'emission_shape'`。
+
+**根因**：Godot 4.6 的 `GPUParticles2D` 没有 `emission_shape` 和 `emission_rect_extents` 属性。2D 粒子系统不支持矩形发射区域。
+
+```gdscript
+# 错误：在 GPUParticles2D 上使用不存在的属性
+_particles.emission_shape = 1
+
+# 正确：用多个 Sprite2D 手动排列成线/弧
+for i in range(count):
+    var s := Sprite2D.new()
+    var t := float(i) / float(count - 1) - 0.5
+    s.position = perp * t * width
+    parent.add_child(s)
+```
+
+**预防**：使用前先枚举 `GPUParticles2D` 的属性列表确认属性存在。
+
+---
+
+### 4.5 Sprite2D.scale vs GPUParticles2D 粒子缩放：含义完全不同
+
+**症状**：用 `Sprite2D` 代替粒子系统时，`scale = Vector2.ONE * 5.0` 后 Sprite 变得极大。
+
+**根因**：GPUParticles2D 的 scale 是相对缩放系数，Sprite2D 的 scale 是纹理像素的直接倍数。
+
+```gdscript
+# 错误
+s.scale = Vector2.ONE * 5.0  # 32x32 CIRLCE  → 160x160 像素
+
+# 正确：按期望像素尺寸计算
+var desired_px: float = 10.0
+var tex_size := tex.get_size()
+s.scale = Vector2.ONE * (desired_px / tex_size.x)
+```
+
+**最佳实践**：从 GPUParticles2D 迁移到 Sprite2D 时，scale 先缩小 10 倍再逐步调整。
 
 ---
 
@@ -939,6 +1012,95 @@ print("[DEBUG] skill_id=", chain.skill_id)
 ```
 
 ---
+### 8.7 `await` 延时期间 `_process` 仍在运行
+
+**症状**：在 `await get_tree().create_timer(0.2).timeout` 之后，出现了意料之外的第二次触发（如命中两次、生成两个对象）。
+
+**根因**：`await` 暂停当前函数的执行，但**不暂停节点的 `_process()`**。在 await 等待期间：
+- `_process()` 每帧持续运行
+- 命中检测、碰撞检查等逻辑继续执行
+- 如果在 await 之前已经满足了触发条件但没有及时阻止，等待期间可能重复触发
+
+```gdscript
+# 错误：await 期间 _process 继续运行，可以再次命中
+func _bounce_respawn(target, next) -> void:
+    _hide_all_visuals()
+    var new_chain := _chain.duplicate()
+    # 此时 _chain.behavior_state 仍然是 "Flying"
+    # _process 继续运行，_check_hit 可能再次触发
+
+    await get_tree().create_timer(0.2).timeout
+    # 0.2 秒后可能已经被第二次命中了！
+
+    pool.spawn(new_chain, _visual_def, _signal_bus)
+    _chain.destroy()
+
+# 正确：await 前立即阻止所有后续处理
+func _bounce_respawn(target, next) -> void:
+    set_process(false)              # 停止 _process
+    _hide_all_visuals()             # 隐藏视觉
+    # 通知各组件清理
+    _comp_flame.on_destroy(self)
+
+    var new_chain := _chain.duplicate()
+    # ... 设置 new_chain ...
+
+    await get_tree().create_timer(0.2).timeout
+    if not is_instance_valid(self):
+        return
+
+    pool.spawn(new_chain, _visual_def, _signal_bus)
+    _chain.destroy()  # 现在安全了：_process 已停止
+```
+
+**规律**：任何在 `await` 前改变了游戏状态的函数，都必须考虑 await 期间 `_process` 继续运行的影响。
+
+**排查清单**：
+- await 前是否调用了 `set_process(false)`
+- await 条件的检查是否是幂等的（多次检查结果相同）
+- 如果 await 期间有其他代码改变了状态，是否会导致 await 后的逻辑出错
+
+---
+
+### 8.8 提前设置 `behavior_state = "Destroyed"` 导致 `destroy()` 短路
+
+**症状**：技能只能播放一次，后续技能全部卡死。对象池中的节点永不归还。
+
+**根因**：`ExecutionChain.destroy()` 的实现是幂等的——如果 `behavior_state` 已经为 `"Destroyed"`，它会**直接 return**，不发出 `chain_destroyed` 信号。
+
+```gdscript
+# ExecutionChain.destroy() 的实现
+func destroy() -> void:
+    if behavior_state == "Destroyed":
+        return                  # ← 如果状态已是 Destroyed，什么都不做！
+    behavior_state = "Destroyed"
+    chain_destroyed.emit(self)  # ← 信号永不发出！
+```
+
+如果在调用 `_chain.destroy()` 之前设置了 `_chain.behavior_state = "Destroyed"`，`destroy()` 会被短路。`chain_destroyed` 信号永不发出 → `_on_chain_destroyed` 不执行 → `pool.despawn()` 不调用 → 节点永不归还对象池 → 对象池耗尽 → 所有新技能无法生成。
+
+```gdscript
+# 错误：提前设置 Destroyed 状态
+func _bounce_respawn(target, next) -> void:
+    _chain.behavior_state = "Destroyed"  # ← 隐患：后续 destroy() 被短路
+    # ...
+    await get_tree().create_timer(0.2).timeout
+    _chain.destroy()  # 静默失败：chain_destroyed 信号永不发出！
+
+# 正确：只停 _process，不动 behavior_state
+func _bounce_respawn(target, next) -> void:
+    set_process(false)  # 停止 _process 就够了
+    # ...
+    await get_tree().create_timer(0.2).timeout
+    _chain.destroy()  # 正常发出 chain_destroyed，触发完整回收流程
+```
+
+**核心规则**：`behavior_state` 是链的状态机核心变量。它应该只由 `destroy()`、`explode()`、`keep_alive()` 等专用方法修改。**永远不要手动设置 `behavior_state`**。
+
+**排查思路**：技能只能播放一次 → 怀疑对象池不归还 → 检查 `_on_chain_destroyed` 是否执行 → 检查 `chain_destroyed` 信号是否发出 → 回溯是否在调用 `destroy()` 之前修改了 `behavior_state`。
+
+---
+
 
 ## 九、数据流设计陷阱
 
@@ -1229,6 +1391,45 @@ target.apply_status_updates(result.status_updates, combat_params)
 - 如果幻觉严重，考虑开新对话重新开始
 
 ---
+### 11.3 AI 编造不存在的 API / 属性 / 枚举值
+
+**症状**：AI 在代码中使用了实际上不存在的类名、属性名或枚举值，导致编译或运行时报错。例如使用 `GPUParticles2D.EMISSION_SHAPE_RECTANGLE` 或 `GPUParticles2D.emission_rect_extents`。
+
+**根因**：AI 的训练数据中包含不同版本的 Godot API。当其"记忆"的 API 与当前使用的 Godot 版本（4.6）不匹配时，可能编造出看起来合理但其实不存在的 API。特别是在以下场景中症状明显：
+
+- **枚举值**：AI 可能从 Godot 3.x 或 Godot 4.0-4.2 的记忆中提取枚举名，但这些在 4.6 中不存在或已改名
+- **属性名**：`GPUParticles3D` 的属性被错误应用到 `GPUParticles2D` 上
+- **函数签名**：参数数量或类型与实际不匹配
+- **类名**：引用的类在 Godot 4.6 的项目中不存在（如 `GPUParticlesEmissionShape2D`）
+
+```gdscript
+# AI 可能生成的错误代码：
+_particles.emission_shape = GPUParticles2D.EMISSION_SHAPE_RECTANGLE  # 不存在
+_particles.emission_rect_extents = Vector2(1, 25)                    # 不存在
+
+# AI 可能编造的类：
+var emit_shape = GPUParticlesEmissionShape2D.new()  # 不存在
+```
+
+**防御措施**：
+
+1. **怀疑所有"看起来太方便"的 API** — 如果感觉这个 API 像是"专门为我的需求设计的"，先查文档确认
+2. **`get_property_list()` 验证** — 怀疑某个属性不存在时，用代码枚举确认：
+   ```gdscript
+   var obj = ClassName.new()
+   for prop in obj.get_property_list():
+       print(prop.name)
+   ```
+3. **区分 GPUParticles2D vs GPUParticles3D** — 两个类的 API 在 Godot 4.6 中有显著差异（3D 有 emission_shape，2D 没有）
+4. **区分 Sprite2D vs GPUParticles2D 的行为差异** — scale 的含义不同、树管理策略不同、坐标空间不同
+
+**规律**：以下场景最容易触发 AI 编造 API：
+- 粒子系统的高级配置（发射区域、发射形状）
+- 版本间 API 有差异的特性（2D 粒子、ShaderMaterial、自定义 Resource）
+- Godot 4.0 → 4.2 → 4.6 之间发生变化的 API
+
+---
+
 
 ## 十二、坐标与单位换算陷阱（重点）
 
@@ -1368,12 +1569,16 @@ for i in range(count):
 - [ ] `.tres` 文件引用的脚本是否包含所有属性
 - [ ] 新增 `@export` 后是否重启了编辑器（文件扫描不够）
 - [ ] 新 `vfx://` 纹理是否在所有组件中注册了加载支持
+- [ ] `class_name` 单例（`static var _instance`）修改后是否失效了旧实例
+- [ ] 编辑器内 Play 场景 vs 独立进程运行，`static var` 行为是否一致
 
 **粒子/VFX 系统**：
 - [ ] 粒子系统的 `direction` 是否非零、`spread` 是否 360（如需全方向）
 - [ ] 粒子系统的 `gravity` 是否需要置零
 - [ ] 是否有多套 VFX 系统在竞争同一事件
 - [ ] 自定义 Sprite2D 和 HitVFXNode 的树管理策略是否正确（HitVFXNode 自动加树）
+- [ ] Sprite2D 的 scale 是否基于像素计算（不是粒子系统的相对缩放逻辑）
+- [ ] `GPUParticles2D.emission_shape` 在当前 Godot 版本中是否存在（4.6 中不存在）
 
 **UI 控件**：
 - [ ] 弹窗/对话框的锚点是否手动设置为 0.5（不依赖 preset）
@@ -1407,6 +1612,8 @@ for i in range(count):
 - [ ] 状态机中的所有状态是否都有"进入→运行→退出"的完整定义
 - [ ] **最后一个状态的退出条件**被正确处理
 - [ ] 重构后测了边界条件：最后一轮、0 元素、空列表、最小配置
+- [ ] `await` 前是否调用了 `set_process(false)` 阻止 _process 继续运行
+- [ ] `behavior_state` 是否只用专用方法修改（`destroy()`、`explode()`、`keep_alive()`），永不手动赋值
 
 **重构安全**：
 - [ ] 删除/重命名函数或变量前，**grep 了全项目**的所有引用
@@ -1425,6 +1632,9 @@ for i in range(count):
 **AI 协作**：
 - [ ] AI 引用的文件确实存在于项目中
 - [ ] AI 的建议与当前技术栈匹配（Godot/Python，非 UE/Unity）
+- [ ] AI 使用的类名/属性/枚举值在当前 Godot 版本中真实存在（用 `get_property_list()` 验证）
+- [ ] 区分了 `GPUParticles2D` 和 `GPUParticles3D` 的 API 差异
+- [ ] 区分了 `Sprite2D.scale`（像素倍数）和 `GPUParticles2D` 的粒子缩放（相对值）
 
 ---
 

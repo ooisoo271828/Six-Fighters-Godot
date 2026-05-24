@@ -36,6 +36,7 @@ const RING_SPIKY := &"ring_spiky"
 const ROCK_IRREGULAR := &"rock_irregular"
 const MUSHROOM_CLOUD := &"mushroom_cloud"
 const FLAME_AURA := &"flame_aura"
+const WAVE_FAN := &"wave_fan"
 
 # ── 程序化纹理分辨率 ──
 
@@ -45,6 +46,7 @@ const RAY_SIZE := 64
 const RING_SPIKY_SIZE := 128
 const ROCK_IRREGULAR_SIZE := 64
 const MUSHROOM_FRAME_SIZE := 96
+const WAVE_FAN_SIZE := 64
 
 
 ## 获取纹理（带缓存）
@@ -137,6 +139,8 @@ func _load_or_generate(key: StringName) -> Texture2D:
 			return _generate_rock_irregular(ROCK_IRREGULAR_SIZE)
 		FLAME_AURA:
 			return _generate_flame_aura(64)
+		WAVE_FAN:
+			return _generate_wave_fan(WAVE_FAN_SIZE)
 		NOISE_PERLIN:
 			var noise := NoiseTexture2D.new()
 			noise.noise = FastNoiseLite.new()
@@ -372,14 +376,16 @@ func _generate_mushroom_frame(size: int, frame: int) -> Texture2D:
 	var cy: float = float(size) * 0.75
 	var progress: float = float(frame) / 7.0
 
-	var base_color: Color = Color(0.35, 0.22, 0.12, 0.85)
-	var top_color: Color = Color(0.55, 0.32, 0.15, 0.7)
-	var fade_color: Color = Color(0.5, 0.4, 0.3, 0.0)
+	var base_color: Color = Color(0.65, 0.38, 0.15, 0.9)
+	var top_color: Color = Color(0.85, 0.5, 0.2, 0.8)
+	var fade_color: Color = Color(0.7, 0.55, 0.4, 0.0)
 
-	var stem_height: float = size * (0.15 + progress * 0.25)
-	var stem_width: float = size * (0.10 - progress * 0.03)
+	# 先算冠位置，再让茎延伸到冠中心，确保无间隙
 	var cap_radius: float = size * (0.15 + progress * 0.20)
-	var cap_center_y: float = cy - stem_height - size * (0.05 + progress * 0.08)
+	var cap_center_y: float = cy * (0.48 - progress * 0.18)
+	var cap_vert_radius: float = cap_radius * 1.3
+	var stem_height: float = cy - cap_center_y + size * 0.05
+	var stem_width: float = size * (0.12 - progress * 0.03)
 	var dissipation: float = maxf(0.0, (progress - 0.6) / 0.4)
 	var top_fade: float = clampf((progress - 0.5) * 3.0, 0.0, 1.0)
 
@@ -389,31 +395,39 @@ func _generate_mushroom_frame(size: int, frame: int) -> Texture2D:
 			var py: float = float(y)
 			var alpha: float = 0.0
 
-			# 茎部
-			var dist_stem_center: float = abs(px - cx)
-			if py >= cy - stem_height and py <= cy:
-				var stem_alpha: float = 1.0 - dist_stem_center / maxf(stem_width, 1.0)
-				stem_alpha = clampf(stem_alpha, 0.0, 0.7)
-				var bottom_factor: float = (py - (cy - stem_height)) / stem_height
-				stem_alpha *= (0.5 + bottom_factor * 0.5)
-				alpha = maxf(alpha, stem_alpha)
-
-			# 冠部
-			var dy: float = py - cap_center_y
-			var dx: float = px - cx
-			var dist_cap: float = sqrt(dx * dx + dy * dy)
-			if dist_cap <= cap_radius:
-				var radial_factor: float = 1.0 - dist_cap / cap_radius
+			# 冠部（椭圆：纵向半径 × 1.3）
+			var dy_cap: float = py - cap_center_y
+			var dx_cap: float = px - cx
+			var norm_dist: float = sqrt(dx_cap * dx_cap + (dy_cap / 1.3) * (dy_cap / 1.3))
+			if norm_dist <= cap_radius:
+				var radial_factor: float = 1.0 - norm_dist / cap_radius
 				var cap_alpha: float = clampf(radial_factor * 1.2, 0.0, 0.9)
-				if dy < 0:
-					cap_alpha *= 1.1
-				else:
-					cap_alpha *= 0.6
+				# 上下半球平滑过渡（消除中心水平线）
+				var vert_t: float = clampf(dy_cap / maxf(cap_vert_radius, 1.0), -1.0, 1.0)
+				var half_blend: float = lerpf(1.1, 0.85, vert_t * 0.5 + 0.5)
+				cap_alpha *= half_blend
 				if dissipation > 0.0:
 					var diss_edge: float = 1.0 - radial_factor
 					cap_alpha *= 1.0 - diss_edge * dissipation * 1.5
 				cap_alpha = clampf(cap_alpha, 0.0, 1.0)
 				alpha = maxf(alpha, cap_alpha)
+
+			# 茎部（延伸到冠中心，与冠高 alpha 区重叠）
+			var dist_stem_center: float = abs(px - cx)
+			if py >= cy - stem_height and py <= cy:
+				var stem_alpha: float = 1.0 - smoothstep(stem_width * 0.5, stem_width, dist_stem_center)
+				stem_alpha = clampf(stem_alpha, 0.0, 0.7)
+				var bottom_factor: float = (py - (cy - stem_height)) / stem_height
+				stem_alpha *= (0.4 + bottom_factor * 0.6)
+				# 底部不规则碎裂边缘（多层噪声扰动 + 柔化渐变）
+				var n1: float = sin(px * 0.45 + py * 0.7) * 0.06
+				var n2: float = cos(px * 0.8 - py * 0.35) * 0.04
+				var n3: float = sin(px * 1.5 + py * 1.2) * 0.02
+				var noise_offset: float = (n1 + n2 + n3) * stem_height
+				var bottom_edge: float = cy + noise_offset
+				var bottom_fade: float = smoothstep(bottom_edge, bottom_edge - stem_height * 0.12, py)
+				stem_alpha *= bottom_fade
+				alpha = maxf(alpha, stem_alpha)
 
 			if alpha > 0.01:
 				var col: Color = base_color.lerp(top_color, progress)
@@ -441,7 +455,7 @@ func _generate_flame_aura(size: int) -> Texture2D:
 			var dy: float = py - cy
 			
 			var local_r: float
-			var alpha_scale: float = 1.0
+			var _alpha_scale: float = 1.0
 			
 			if px >= center_x:
 				var t: float = (px - center_x) / (float(size) - center_x)
@@ -465,6 +479,47 @@ func _generate_flame_aura(size: int) -> Texture2D:
 					if px < center_x:
 						var tail_depth: float = (center_x - px) / center_x
 						alpha *= 1.0 - tail_depth * 0.35
+					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+
+	return ImageTexture.create_from_image(img)
+
+
+## 扇形水浪纹理：前宽后窄，前圆后尖，带波浪边缘
+func _generate_wave_fan(size: int) -> Texture2D:
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cy: float = float(size) * 0.5
+	var front_x: float = float(size) * 0.92
+	var back_x: float = float(size) * 0.08
+	var max_half_h: float = float(size) * 0.44
+	var min_half_h: float = float(size) * 0.06
+	var edge_softness: float = float(size) * 0.04
+
+	for x in range(size):
+		var px: float = float(x)
+		var t: float = clampf((px - back_x) / (front_x - back_x), 0.0, 1.0)
+		var half_h: float = lerpf(min_half_h, max_half_h, pow(t, 0.6))
+		# 波浪边缘（靠近尾部更明显）
+		var wave1: float = sin(px * 0.35 + 1.0) * float(size) * 0.018 * (1.0 - t)
+		var wave2: float = cos(px * 0.55 - 0.5) * float(size) * 0.012 * (1.0 - t)
+		half_h += wave1 + wave2
+		half_h = maxf(half_h, 1.0)
+
+		for y in range(size):
+			var py: float = float(y)
+			var dy: float = abs(py - cy)
+			if dy <= half_h + edge_softness:
+				var alpha: float = 1.0
+				if dy > half_h:
+					alpha = 1.0 - (dy - half_h) / edge_softness
+				# 中心更亮，边缘渐淡
+				var core_blend: float = clampf(1.0 - dy / maxf(half_h, 1.0), 0.0, 1.0)
+				alpha *= 0.5 + 0.5 * core_blend
+				# 尾部尖端渐隐
+				if t < 0.15:
+					alpha *= t / 0.15
+				alpha = clampf(alpha, 0.0, 1.0)
+				if alpha > 0.01:
 					img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
 
 	return ImageTexture.create_from_image(img)

@@ -22,9 +22,13 @@ class SkillExecutionContext:
 	var hit_precision_radius: float = 0.0
 	var pierce_enabled: bool = false
 	var pierce_count: int = 0
+	var bounce_remaining: int = 0
+	var bounce_type: int = 0            # 0=REDIRECT, 1=RESPAWN
 	var bounce_damage_scale: float = 1.0
 	var hit_aoe_radius: float = 0.0
 	var available_targets: Array = []  # for multi-target seeking
+	var target_mode: int = 0            # 0=NEAREST, 1=FARTHEST, 2=LOWEST_HP, 3=HIGHEST_HP, 4=RANDOM
+	var cast_range: float = 300.0       # 技能射程（px）
 
 	# ── 混合伤害参数 ──
 	var secondary_damage_type: int = -1
@@ -83,8 +87,11 @@ func _create_chain(context: SkillExecutionContext) -> ExecutionChain:
 	chain.hit_precision_radius = context.hit_precision_radius
 	chain.pierce_enabled = context.pierce_enabled
 	chain.pierce_count = context.pierce_count
+	chain.bounce_remaining = context.bounce_remaining
+	chain.bounce_type = context.bounce_type
 	chain.bounce_damage_scale = context.bounce_damage_scale
 	chain.hit_aoe_radius = context.hit_aoe_radius
+	chain.target_mode = context.target_mode
 	chain.secondary_damage_type = context.secondary_damage_type
 	chain.secondary_damage = context.damage * context.secondary_damage_ratio
 	chain.secondary_damage_ratio = context.secondary_damage_ratio

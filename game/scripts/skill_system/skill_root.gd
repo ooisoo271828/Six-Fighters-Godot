@@ -38,8 +38,9 @@ func _connect_signal_bus() -> void:
 ## ── 对外 API ──
 
 ## 施放技能的入口
+## available_targets: 场上所有可用目标（由调用方提供，如 CombatMediator 的 alive_enemies）
 ## extra_modifiers: 外部注入的 Modifier 列表（来自装备、天赋、光环等），可选
-func cast_skill(caster: Node2D, skill_id: String, target: Node2D, extra_modifiers: Array[SkillModifier] = [], available_targets: Array = []) -> void:
+func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extra_modifiers: Array[SkillModifier] = []) -> void:
 	if not skill_registry.is_ready():
 		push_warning("[SkillSystem] Registry not ready, skip cast: " + skill_id)
 		return
@@ -47,6 +48,13 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D, extra_modifier
 	var skill_def: Resource = skill_registry.get_skill(skill_id)
 	if not skill_def:
 		push_warning("[SkillSystem] Skill not found: " + skill_id)
+		return
+
+	# ── 目标选择 ──
+	var target_mode: int = skill_def.target_mode if skill_def.get("target_mode") != null else 0
+	var cast_range: float = skill_def.cast_range if skill_def.get("cast_range") else 300.0
+	var target: Node2D = TargetSelector.select_target(caster.position, available_targets, target_mode, cast_range)
+	if not target:
 		return
 
 	var visual_def: SkillVisualDef = skill_registry.get_skill_visual(skill_id)
@@ -77,11 +85,15 @@ func cast_skill(caster: Node2D, skill_id: String, target: Node2D, extra_modifier
 	context.hit_precision_radius = skill_def.hit_precision_radius if skill_def.get("hit_precision_radius") else 0.0
 	context.pierce_enabled = skill_def.pierce_enabled if skill_def.get("pierce_enabled") else false
 	context.pierce_count = skill_def.pierce_count if skill_def.get("pierce_count") != null else 0
+	context.bounce_remaining = skill_def.bounce_remaining if skill_def.get("bounce_remaining") != null else 0
+	context.bounce_type = skill_def.bounce_type if skill_def.get("bounce_type") != null else 0
 	context.bounce_damage_scale = skill_def.bounce_damage_scale if skill_def.get("bounce_damage_scale") else 1.0
 	context.hit_aoe_radius = skill_def.hit_aoe_radius if skill_def.get("hit_aoe_radius") else 0.0
 	context.secondary_damage_type = skill_def.secondary_damage_type if skill_def.get("secondary_damage_type") != null else -1
 	context.secondary_damage_ratio = skill_def.secondary_damage_ratio if skill_def.get("secondary_damage_ratio") != null else 0.0
 	context.available_targets = available_targets
+	context.target_mode = target_mode
+	context.cast_range = cast_range
 
 	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, target)
 

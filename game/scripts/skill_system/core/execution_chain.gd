@@ -83,7 +83,10 @@ var pierce_count: int = 0               # -1 = 无限穿透
 var hit_targets: Array[Node2D] = []     # 已命中目标列表（穿透模式防重复）
 
 ## ── 弹射参数 ──
+enum BounceType { REDIRECT, RESPAWN }
+var bounce_type: int = BounceType.REDIRECT
 var bounce_damage_scale: float = 1.0
+var target_mode: int = 0  # 0=NEAREST, 2=LOWEST_HP, 4=RANDOM (for bounce selection)
 
 ## AOE on hit
 var hit_aoe_radius: float = 0.0    # 弹射伤害系数
@@ -182,7 +185,10 @@ func duplicate() -> ExecutionChain:
 	c.hit_precision_radius = hit_precision_radius
 	c.pierce_enabled = pierce_enabled
 	c.pierce_count = pierce_count
+	c.bounce_remaining = bounce_remaining
+	c.bounce_type = bounce_type
 	c.bounce_damage_scale = bounce_damage_scale
+	c.target_mode = target_mode
 	c.hit_aoe_radius = hit_aoe_radius
 	c.skill_def_ref = skill_def_ref
 	c.enemy_query_func = enemy_query_func

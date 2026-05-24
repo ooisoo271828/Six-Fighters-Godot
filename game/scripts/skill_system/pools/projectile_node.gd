@@ -32,8 +32,12 @@ var _bezier_end: Vector2
 ## ── 纹理管理器 ──
 var _tex_manager: VFXTextureManager
 
+## ── 浪头偏移（命中检测用） ──
+var _crest_offset: float = 0.0
+
 
 func _ready() -> void:
+	VFXTextureManager._instance = null
 	_tex_manager = VFXTextureManager.get_instance()
 	_setup_components()
 
@@ -46,7 +50,7 @@ func _setup_components() -> void:
 	_comp_comet = CompCometTrail.new()
 	_comp_path_dots = CompPathDots.new()
 	_comp_explosion = CompExplosion.new()
-	_components = [_comp_core, _comp_glow, _comp_trail, _comp_flame, _comp_comet, _comp_path_dots, _comp_explosion]
+	_components = [_comp_glow, _comp_core, _comp_trail, _comp_flame, _comp_comet, _comp_path_dots, _comp_explosion]
 	for c in _components:
 		c.create_nodes(self)
 
@@ -59,8 +63,16 @@ func initialize(chain: ExecutionChain, visual_def: SkillVisualDef, signal_bus: N
 
 	global_position = chain.position
 
-	# 初始化曲线
+	# 从 visual_def 读取轨迹类型（chain 默认为 0）
+	if _visual_def.trajectory_type > 0 and chain.trajectory_type == 0:
+		chain.trajectory_type = _visual_def.trajectory_type
+
+	# 初始化曲线（随机弧线方向）
 	if chain.trajectory_type > 0:
+		if chain.control_point_offset == 0.0 or chain.control_point_offset == 100.0:
+			chain.control_point_offset = randf_range(80.0, 200.0) * (1.0 if randi() % 2 == 0 else -1.0)
+		if not chain.has_meta("bezier_forward_ratio"):
+			chain.set_meta("bezier_forward_ratio", randf_range(0.4, 0.7))
 		_init_bezier()
 
 	# 配置所有组件
@@ -82,6 +94,11 @@ func initialize(chain: ExecutionChain, visual_def: SkillVisualDef, signal_bus: N
 
 	# 设置速度（从 visual_def）
 	_chain.speed = _visual_def.speed
+
+	# 读取浪头偏移（用于命中检测）
+	var trail_def := _visual_def.get_trail()
+	if trail_def and trail_def.flame and trail_def.flame.is_enabled():
+		_crest_offset = trail_def.flame.forward_offset
 
 	set_process(true)
 
@@ -137,7 +154,7 @@ func _process(dt: float) -> void:
 		if c.is_active():
 			c.update(dt, self, _chain)
 
-	# 命中检测
+	# 命中检测（使用浪头位置）
 	_check_hit()
 
 	# 行为更新信号
@@ -215,12 +232,19 @@ func _update_expansion() -> void:
 
 ## ── 命中检测 ──
 
+func _get_crest_pos() -> Vector2:
+	if _crest_offset > 0.0 and _chain.direction.length() > 0:
+		return global_position + _chain.direction * _crest_offset
+	return global_position
+
+
 func _check_hit() -> void:
 	if _chain.target == null or not is_instance_valid(_chain.target):
 		_chain.destroy()
 		return
 	var hit_radius := _chain.hit_precision_radius + _chain.current_radius if _chain.tracking_enabled else _chain.current_radius + 10.0
-	var dist := global_position.distance_to(_chain.target.global_position)
+	var check_pos := _get_crest_pos()
+	var dist := check_pos.distance_to(_chain.target.global_position)
 	if dist < hit_radius:
 		_handle_hit(_chain.target)
 
@@ -237,13 +261,22 @@ func _handle_hit(target: Node2D) -> void:
 	else:
 		_emit_hit_signal(target)
 		if _chain.bounce_remaining > 0:
-			var enemies: Array = _chain.enemy_query_func.call() if _chain.enemy_query_func.is_valid() else []
-			var next: Node2D = TargetSelector.find_nearest_excluding(global_position, enemies, target) if not enemies.is_empty() else null
+			var enemies: Array = _chain.enemy_query_func.call() if _chain.enemy_query_func.is_valid() else _chain.available_targets
+			# Exclude hit target BEFORE selecting next bounce target
+			if target not in _chain.hit_targets:
+				_chain.hit_targets.append(target)
+			var next: Node2D = TargetSelector.select_for_bounce(
+				global_position, enemies, _chain.target_mode, _chain.hit_targets)
 			if next:
 				_chain.bounce_remaining -= 1
-				_chain.direction = global_position.direction_to(next.global_position)
-				_chain.target = next
-				return
+				match _chain.bounce_type:
+					ExecutionChain.BounceType.REDIRECT:
+						_chain.direction = global_position.direction_to(next.global_position)
+						_chain.target = next
+						return
+					ExecutionChain.BounceType.RESPAWN:
+						_bounce_respawn(target, next)
+						return
 		_chain.destroy()
 
 
@@ -257,7 +290,7 @@ func _emit_hit_signal(target: Node2D) -> void:
 			"damage_type": _chain.damage_type,
 			"skill_id": _chain.skill_id,
 			"hit_aoe_radius": _chain.hit_aoe_radius,
-			"hit_pos": global_position,
+			"hit_pos": _get_crest_pos(),
 			"projectile_node": self,
 			"secondary_damage_type": _chain.secondary_damage_type,
 			"secondary_damage": _chain.secondary_damage,
@@ -267,6 +300,39 @@ func _emit_hit_signal(target: Node2D) -> void:
 
 func _on_chain_hit(_chain_ref: ExecutionChain, _target: Node2D) -> void:
 	pass
+
+
+func _bounce_respawn(_hit_target: Node2D, next_target: Node2D) -> void:
+	# 立即停止处理和隐藏视觉效果
+	set_process(false)
+	_hide_all_visuals()
+	_comp_flame.on_destroy(self)
+	_comp_comet.on_destroy(self)
+
+	# 播放命中特效（已由 _emit_hit_signal 触发）
+
+	var new_chain := _chain.duplicate()
+	new_chain.position = global_position
+	new_chain.target = next_target
+	new_chain.target_pos = next_target.global_position
+	new_chain.direction = global_position.direction_to(next_target.global_position)
+	new_chain.hit_targets = _chain.hit_targets.duplicate()
+	new_chain.distance_traveled = 0.0
+	new_chain.elapsed_time = 0.0
+	new_chain.control_point_offset = randf_range(80.0, 200.0) * (1.0 if randi() % 2 == 0 else -1.0)
+	new_chain.set_meta("bezier_forward_ratio", randf_range(0.4, 0.7))
+	new_chain.behavior_state = "Flying"
+
+	# 延时 0.2 秒后生成下一个弹射水浪
+	await get_tree().create_timer(0.2).timeout
+	if not is_instance_valid(self):
+		return
+
+	var pool = get_parent()
+	if pool.has_method("spawn"):
+		pool.spawn(new_chain, _visual_def, _signal_bus)
+
+	_chain.destroy()
 
 
 ## ── 销毁 ──

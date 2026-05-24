@@ -56,6 +56,9 @@ var target_mode: int = 0
 @export var pierce_count: int = 0              # -1 = 无限
 
 # ── 弹射参数 ──
+@export var bounce_remaining: int = 0
+@export_enum("REDIRECT:0", "RESPAWN:1")
+var bounce_type: int = 0
 @export var bounce_damage_scale: float = 1.0
 
 # AOE on hit
@@ -143,10 +146,17 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 		pierce_enabled = csv_data["pierce_enabled"] == "true"
 	if csv_data.has("pierce_count"):
 		pierce_count = int(csv_data["pierce_count"])
+	if csv_data.has("bounce_remaining"):
+		bounce_remaining = int(csv_data["bounce_remaining"])
+	if csv_data.has("bounce_type"):
+		var bt_str = csv_data["bounce_type"]
+		match bt_str:
+			"redirect": bounce_type = 0
+			"respawn": bounce_type = 1
 	if csv_data.has("bounce_damage_scale"):
 		bounce_damage_scale = float(csv_data["bounce_damage_scale"])
-		if csv_data.has("hit_aoe_radius"):
-			hit_aoe_radius = float(csv_data["hit_aoe_radius"])
+	if csv_data.has("hit_aoe_radius"):
+		hit_aoe_radius = float(csv_data["hit_aoe_radius"])
 
 	print("[SkillDef] Loaded CSV values for %s: base_damage=%.1f, cooldown=%.1f" % [skill_id, base_damage, cooldown])
 

@@ -1,0 +1,111 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/particle_trail_config.gd" id="4_ptc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="5_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/flame_trail_config.gd" id="6_ftc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="7_iv"]
+
+[sub_resource type="Resource" id="body_water"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://wave_fan"
+core_color = Color(0.15, 0.45, 0.8, 1)
+core_width = 86.0
+core_height = 48.0
+core_radius = 24.0
+inner_enabled = false
+inner_color = Color(0.35, 0.7, 1.0, 1)
+inner_width = 5.0
+inner_height = 20.0
+nose_enabled = false
+nose_color = Color(0.5, 0.85, 1.0, 1)
+nose_length = 10.0
+nose_width = 24.0
+glow_radius = 10.0
+glow_color = Color(0.2, 0.5, 1.0, 1)
+glow_alpha = 0.3
+glow2_radius = 0.0
+glow2_color = Color(0.15, 0.4, 0.9, 1)
+glow2_alpha = 0.0
+jitter_enabled = true
+jitter_amplitude = 1.5
+jitter_freq_x = 3.5
+jitter_freq_y = 2.8
+
+[sub_resource type="Resource" id="ptc_water"]
+script = ExtResource("4_ptc")
+enabled = false
+color_1 = Color(0.7, 0.9, 1.0, 1)
+color_2 = Color(0.3, 0.65, 1.0, 1)
+color_3 = Color(0.2, 0.4, 0.8, 1)
+life_min = 0.1
+life_max = 0.3
+
+[sub_resource type="Resource" id="ctc_water"]
+script = ExtResource("5_ctc")
+enabled = true
+max_samples = 10
+sway_freq = 2.0
+sway_amplitude = 3.0
+outer_width = 2.0
+outer_color = Color(0.25, 0.55, 1.0, 1)
+outer_alpha = 0.1
+mid_width = 1.0
+mid_color = Color(0.4, 0.8, 1.0, 1)
+mid_alpha = 0.2
+inner_width = 0.5
+inner_alpha = 0.3
+back_offset = 42.0
+
+[sub_resource type="Resource" id="ftc_water"]
+script = ExtResource("6_ftc")
+enabled = true
+count = 18
+inner_min = 0.5
+inner_max = 2.0
+outer_min = 2.0
+outer_max = 6.0
+color_1 = Color(0.5, 0.85, 1.0, 1)
+color_2 = Color(0.8, 0.95, 1.0, 0.8)
+life_min = 0.2
+life_max = 0.5
+forward_offset = 28.0
+crest_mode = true
+crest_width = 48.0
+particle_scale_min = 0.4
+particle_scale_max = 0.9
+
+[sub_resource type="Resource" id="trail_water"]
+script = ExtResource("3_td")
+particles = SubResource("ptc_water")
+flame = SubResource("ftc_water")
+comet = SubResource("ctc_water")
+
+[sub_resource type="Resource" id="impact_water"]
+script = ExtResource("7_iv")
+spark_count_min = 120
+spark_count_max = 200
+spark_speed_min = 80.0
+spark_speed_max = 300.0
+spark_life_min = 0.3
+spark_life_max = 0.8
+spark_color = Color(0.3, 0.65, 1.0, 1)
+spark_particle_count = 160
+spark_lifetime = 0.8
+shake_strength = 5.0
+shake_duration = 0.15
+tier_B = "spark_magic"
+tier_C = "burst_ice"
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "water_wave"
+projectile_kind = 1
+trajectory_type = 1
+speed = 168.0
+projectile_scale = 1.3
+body = SubResource("body_water")
+trail = SubResource("trail_water")
+impact = SubResource("impact_water")
