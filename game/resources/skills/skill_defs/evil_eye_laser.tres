@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "evil_eye_laser"
+display_name = "魔眼激光"
+category = 2
+damage_type = 1
+base_damage = 35.0
+cooldown = 8.0
+cast_range = 700.0
+telegraph_ms = 500
+effect_type = "emit_evil_eye_laser"
+target_mode = 6
+delivery_type = "instant"
+max_targets = 0
+description = "召唤魔眼射出激光，地面端点沿轨迹移动，对椭圆范围内的敌人造成持续伤害"

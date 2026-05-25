@@ -59,7 +59,7 @@ func _init_map() -> void:
 			# 交替深浅草地增加层次
 			if (x + y) % 3 == 0:
 				tile_type = TownTileset.Tile.GRASS_DARK
-			ground_layer.set_cell(Vector2i(x, y), 0, Vector2i(tile_type % 8, tile_type / 8))
+			ground_layer.set_cell(Vector2i(x, y), 0, Vector2i(tile_type % 8, int(tile_type) / 8))
 
 	# 铺设道路
 	for segment in TownMapData.ROAD_SEGMENTS:
@@ -68,18 +68,18 @@ func _init_map() -> void:
 		if from.x == to.x:
 			# 垂直道路
 			for y in range(mini(from.y, to.y), maxi(from.y, to.y) + 1):
-				ground_layer.set_cell(Vector2i(from.x, y), 0, Vector2i(TownTileset.Tile.DIRT_ROAD % 8, TownTileset.Tile.DIRT_ROAD / 8))
+				ground_layer.set_cell(Vector2i(from.x, y), 0, Vector2i(TownTileset.Tile.DIRT_ROAD % 8, int(TownTileset.Tile.DIRT_ROAD) / 8))
 		else:
 			# 水平道路
 			for x in range(mini(from.x, to.x), maxi(from.x, to.x) + 1):
-				ground_layer.set_cell(Vector2i(x, from.y), 0, Vector2i(TownTileset.Tile.DIRT_ROAD % 8, TownTileset.Tile.DIRT_ROAD / 8))
+				ground_layer.set_cell(Vector2i(x, from.y), 0, Vector2i(TownTileset.Tile.DIRT_ROAD % 8, int(TownTileset.Tile.DIRT_ROAD) / 8))
 
 	# 绘制建筑（墙壁 + 屋顶）
 	for building in TownMapData.BUILDINGS:
 		var rect: Rect2i = building["rect"]
-		var wall_coord := Vector2i(building["wall_tile"] % 8, building["wall_tile"] / 8)
-		var roof_coord := Vector2i(building["roof_tile"] % 8, building["roof_tile"] / 8)
-		var floor_coord := Vector2i(building["floor_tile"] % 8, building["floor_tile"] / 8)
+		var wall_coord := Vector2i(building["wall_tile"] % 8, int(building["wall_tile"]) / 8)
+		var roof_coord := Vector2i(building["roof_tile"] % 8, int(building["roof_tile"]) / 8)
+		var floor_coord := Vector2i(building["floor_tile"] % 8, int(building["floor_tile"]) / 8)
 		var door: Vector2i = building["door_pos"]
 
 		for x in range(rect.position.x, rect.position.x + rect.size.x):
@@ -102,11 +102,11 @@ func _init_map() -> void:
 
 	# 装饰物（花丛、树木等放装饰层）
 	for deco in TownMapData.DECORATIONS:
-		var coord := Vector2i(deco["tile"] % 8, deco["tile"] / 8)
+		var coord := Vector2i(deco["tile"] % 8, int(deco["tile"]) / 8)
 		decor_layer.set_cell(deco["pos"], 0, coord)
 
 	# 传送门平台标记（地面特殊颜色）
-	var portal_coord := Vector2i(TownTileset.Tile.STONE_WALL % 8, TownTileset.Tile.STONE_WALL / 8)
+	var portal_coord := Vector2i(TownTileset.Tile.STONE_WALL % 8, int(TownTileset.Tile.STONE_WALL) / 8)
 	for dx in range(-1, 2):
 		for dy in range(-1, 2):
 			ground_layer.set_cell(TownMapData.PORTAL_TILE + Vector2i(dx, dy), 0, portal_coord)

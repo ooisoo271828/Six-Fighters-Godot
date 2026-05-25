@@ -14,5 +14,5 @@ func get_kind() -> StringName:
 ## world_pos: Vector2 — 世界坐标
 ## pool: HitVFXPool — 命中特效对象池（可为 null）
 ## tex_manager: VFXTextureManager — 纹理管理器
-func execute(layer: VFXLayerDef, world_pos: Vector2, pool: HitVFXPool, tex_manager: VFXTextureManager) -> void:
+func execute(_layer: VFXLayerDef, _world_pos: Vector2, _pool: HitVFXPool, _tex_manager: VFXTextureManager) -> void:
 	pass

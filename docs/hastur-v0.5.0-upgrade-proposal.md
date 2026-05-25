@@ -1,10 +1,10 @@
-# HasturOperationGD v0.5.0 升级方案
+# HasturOperationGD v0.5.0 Upgrade Proposal
 
-> 状态：已定稿待实施 | 创建：2026-05-25 | 当前版本：v0.4.0 | 目标版本：v0.5.0
+> Status: **Implemented** | Created: 2026-05-25 | Implemented: 2026-05-25 | Current: v0.5.0
 
 ---
 
-## 一、动机
+## 1. Motivation
 
 经过大激光术技能开发全流程（从方案设计到多轮调试到最终交付），系统梳理了 Hastur 插件在工作流中的所有摩擦点。归纳为四类：
 
@@ -15,322 +15,547 @@
 | 可见性缺口 | 7 | 数据存在但 API 没暴露 | 信息盲区 |
 | 工作流缺口 | 8 | 流程不顺 | 反复手动操作 |
 
-**设计原则**：
-- 所有新增 API 为独立端点，向后兼容 v0.4.0
-- 优先解决"无报错"类错误（最难定位）
-- 优先解决高频操作（资源扫描、属性查询、脚本编译）
+### 关于 Hot-Reload 的决策
+
+原方案包含 `POST /api/script/hot-reload` 端点。经评估后**决定删除**，原因：
+
+Godot 4 没有官方脚本热重载 API。`ResourceLoader.load(path, "GDScript", CACHE_MODE_IGNORE)` 只返回一个新的 Resource 对象，**已经实例化的脚本对象不会被替换**。场景树中已 `add_child` 的节点仍使用旧版本脚本。这意味着所谓的"热重载"只能刷新编辑器缓存，不能替代 stop → replay 的工作流。不做半截子工程。
+
+### 注册式路由升级
+
+当前 broker-server 的 `tcp-server.ts` 存在严重的代码重复：4 个 `send*` 方法（~150 行）结构完全相同，4 个 `handle*Result` 方法（~48 行）逻辑完全相同。`http-server.ts` 的 executor 查找模式重复 14 次，超时错误处理重复 8 次。新增端点意味着复制粘贴更多重复代码。
+
+v0.5.0 将 broker-server 和 Godot 插件同时升级为注册式路由，作为新端点的结构性前置。
 
 ---
 
-## 二、P0 — 核心增强（必须做）
+## 2. Design Principles
 
-### P0-1: `POST /api/project/rescan`
+1. **一次性交付** — 不分 alpha/beta，所有变更在同一个版本中发布
+2. **路由重构优先** — 先消除重复代码，再添加新端点
+3. **向后兼容** — v0.4.0 的所有 API 不变，新增端点和字段不破坏现有客户端
+4. **force 参数** — `scene/save` 默认 `force=false`，需显式 `force=true` 覆盖
+5. **无 hot-reload** — 不做 Godot 4 无法真正实现的功能
 
-**目的**：强制编辑器刷新文件系统和脚本类缓存。
+---
 
-**痛点**：修改 `.gd` 或 `.tres` 后编辑器仍使用旧缓存。避坑指南 3.1、3.5、5.1、5.6 均涉及此问题，反复出现。
+## 3. Phase 1 — Registration-Based Routing Refactor
 
-**API 规范**：
-```
-POST /api/project/rescan
-Authorization: Bearer <token>
+所有新端点依赖泛型路由基础设施。此阶段不新增功能，只消除重复代码。
 
-Response 200:
-{
-  "success": true,
-  "data": {
-    "scanned": true
-  }
+### 3.1 tcp-server.ts: Generic `sendRequest` / `handleResult`
+
+**问题**：4 个 `send*` 方法（`sendExecute`, `sendSceneTreeRequest`, `sendCreateNodeRequest`, `sendDeleteNodeRequest`）结构完全相同 — 唯一差异是 `type` 字符串和 `data` 负载形状。4 个 `handle*Result` 方法逻辑完全相同 — 提取 `request_id`，查找 pending request，清除 timer，resolve promise。
+
+**方案**：
+
+```typescript
+// 替代 4 个 send* 方法（~150 行 → ~25 行）
+async sendRequest<T = Record<string, unknown>>(
+    executorId: string,
+    type: string,
+    data: Record<string, unknown>,
+    timeoutMs: number = 10000
+): Promise<T> {
+    for (const [, ctx] of this.connections) {
+        if (ctx.executorId === executorId) {
+            const requestId = crypto.randomUUID()
+            const message = JSON.stringify({
+                type,
+                data: { request_id: requestId, ...data },
+            }) + '\n'
+
+            return new Promise<T>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    ctx.pendingRequests.delete(requestId)
+                    reject(new Error('TIMEOUT'))
+                }, timeoutMs)
+                ctx.pendingRequests.set(requestId, { resolve, reject, timer })
+                ctx.socket.write(message)
+            })
+        }
+    }
+    return Promise.reject(new Error('Executor not connected'))
 }
 ```
 
-**实现方案**：
-- Godot 端 `broker_client.gd` 增 `_handle_message` case: `"rescan"`
-- 调 `ei.get_resource_filesystem().scan()` 触发异步扫描
-- 返回结果
+```typescript
+// 替代 4 个 handle*Result 方法（~48 行 → ~10 行）
+private handleResult(socketId: string, data: Record<string, unknown>): void {
+    const ctx = this.connections.get(socketId)
+    if (!ctx) return
+    const requestId = data.request_id as string
+    const pending = ctx.pendingRequests.get(requestId)
+    if (pending) {
+        clearTimeout(pending.timer)
+        ctx.pendingRequests.delete(requestId)
+        pending.resolve(data)
+    }
+}
+```
 
-**涉及文件**：
-- `broker-server/src/types.ts` — 加 `RescanResult` 接口
-- `broker-server/src/tcp-server.ts` — 加 `sendRescanRequest()`
-- `broker-server/src/http-server.ts` — 加 `POST /api/project/rescan`
-- `game/addons/hasturoperationgd/broker_client.gd` — 加 `_handle_rescan()`
+**`handleMessage` 重构**：用 `RESULT_TYPES` Set + 泛型 `handleResult` 替代 switch/case 中的 4 个 result case：
 
+```typescript
+const RESULT_TYPES = new Set([
+    'execute_result', 'scene_tree_result', 'create_node_result',
+    'delete_node_result', 'rescan_result', 'script_check_result',
+    'scene_properties_result', 'scene_save_result'
+])
 
-### P0-2: `POST /api/script/check`
+if (RESULT_TYPES.has(message.type)) {
+    this.handleResult(socketId, message.data as Record<string, unknown>)
+    return
+}
+
+// 仅剩 4 个特殊 case（非 request/response 模式）
+switch (message.type) {
+    case 'register':   this.handleRegister(...); break
+    case 'pong':       /* inline RTT calc */;    break
+    case 'heartbeat':  /* inline ack reply */;   break
+    case 'logs':       this.handleLogs(...);     break
+}
+```
+
+**调用方变为一行**：
+
+```typescript
+// Before: sendSceneTreeRequest(executorId, timeout) — 30 行方法
+// After:
+this.sendRequest(executorId, 'get_scene_tree', {}, timeout)
+```
+
+### 3.2 http-server.ts: `resolveExecutor` + `asyncTcpRoute` Helpers
+
+**问题**：executor 查找模式（7 行）重复 14 次，try/catch 超时处理（~15 行）重复 8 次。
+
+**方案**：
+
+```typescript
+// 替代 14 处 executor 查找（98 行 → 14×1 + 10 = 24 行）
+function resolveExecutor(req, res, executorManager): ExecutorInfo | null {
+    const executor = executorManager.findById(req.params.id)
+    if (!executor) {
+        res.status(404).json({ success: false, error: 'Executor not found', hint: '...' })
+        return null
+    }
+    return executor
+}
+
+// 替代 8 处 try/catch 超时处理（120 行 → 8×1 + 20 = 28 行）
+function asyncTcpRoute(handler: () => Promise<any>, res: Response, errorMsg: string): void {
+    handler()
+        .then(result => res.json({ success: true, data: result }))
+        .catch(err => {
+            const status = err.message === 'TIMEOUT' ? 504 : 500
+            res.status(status).json({ success: false, error: err.message || errorMsg })
+        })
+}
+```
+
+**路由变为一行**：
+
+```typescript
+// Before: 35 行
+// After:
+app.get('/api/executors/:id/scene/tree', (req, res) => {
+    const executor = resolveExecutor(req, res, executorManager)
+    if (!executor) return
+    asyncTcpRoute(() => tcpServer.sendRequest(executor.id, 'get_scene_tree', {}, 10000), res, 'Failed to get scene tree')
+})
+```
+
+### 3.3 broker_client.gd: `_message_handlers` Dictionary
+
+**问题**：`_handle_message()` 的 match 块有 13 个 case，每新增消息类型需修改 match 块。
+
+**方案**：
+
+```gdscript
+var _message_handlers: Dictionary = {}
+
+func _init_handlers() -> void:
+    _message_handlers = {
+        "register_result": _handle_register_result,
+        "execute": _handle_execute,
+        "ping": func(_data): _send_message({"type": "pong"}),
+        "heartbeat_ack": _handle_heartbeat_ack,
+        "pong": _handle_pong,
+        "get_scene_tree": _handle_get_scene_tree_request,
+        "create_node": _handle_create_node_request,
+        "delete_node": _handle_delete_node_request,
+        # v0.5.0 新增:
+        "rescan": _handle_rescan_request,
+        "script_check": _handle_script_check_request,
+        "get_properties": _handle_get_properties_request,
+        "scene_save": _handle_scene_save_request,
+    }
+
+func _handle_message(raw: String) -> void:
+    # ... parse JSON ...
+    var type = msg.get("type", "")
+    var data = msg.get("data", {})
+    if _message_handlers.has(type):
+        _message_handlers[type].call(data)
+    else:
+        push_warning("BrokerClient: unknown message type '%s'" % type)
+```
+
+新增消息类型 = 新增一行字典条目，零修改已有代码。
+
+### 3.4 Duplication Metrics
+
+| File | Before | After | Delta |
+|------|--------|-------|-------|
+| `tcp-server.ts` | ~691 行 | ~568 行 | **-123 行** |
+| `http-server.ts` | ~760 行 | ~624 行 | **-136 行** |
+| `broker_client.gd` | ~778 行 | ~867 行 | +89 行（4 个新 handler） |
+| **合计** | ~2229 行 | ~2059 行 | **-170 行重复代码** |
+
+新增端点代码 +220 行。净效果：代码总量基本不变，但重复代码消除、可维护性大幅提升。
+
+---
+
+## 4. Phase 2 — New Endpoints
+
+### 4.1 `POST /api/project/rescan`
+
+**目的**：强制编辑器刷新文件系统和脚本类缓存。
+
+**痛点**：修改 `.gd` 或 `.tres` 后编辑器仍使用旧缓存。避坑指南 3.1、3.5、5.1、5.6 均涉及此问题。
+
+**API**：
+
+```bash
+POST /api/project/rescan
+Authorization: Bearer <token>
+
+# Response 200:
+{"success": true, "data": {"scanned": true}}
+```
+
+**Godot 端实现**：
+
+```gdscript
+func _handle_rescan_request(data: Dictionary) -> void:
+    var request_id = str(data.get("request_id", ""))
+    var ei = _get_editor_interface()
+    if ei == null:
+        _send_result("rescan_result", request_id, {"success": false, "error": "No editor plugin"})
+        return
+    ei.get_resource_filesystem().scan()
+    _send_result("rescan_result", request_id, {"success": true, "scanned": true})
+```
+
+**注意**：`scan()` 是异步操作，响应表示扫描已触发而非已完成。对使用场景（执行代码前强制 rescan）足够，因为 Godot 内部队列会在下次脚本执行前处理完扫描。
+
+**涉及文件**：`tcp-server.ts`（无新增方法，用 `sendRequest`）、`http-server.ts`（1 条路由）、`broker_client.gd`（1 个 handler）、`types.ts`（`RescanResult`）
+
+---
+
+### 4.2 `POST /api/script/check`
 
 **目的**：编译 GDScript 但不执行，返回详细编译错误。
 
 **痛点**：脚本编译失败时返回 zombie（`get_script_method_list() == 0`），报错行号不准确。需人工用 `CACHE_MODE_IGNORE` 检测。
 
-**API 规范**：
-```
+**API**：
+
+```bash
 POST /api/script/check
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{
-  "code": "extends Node2D\nfunc _ready():\n    pass",
-  "language": "gdscript"
-}
+{"code": "extends Node2D\nfunc _ready():\n    pass"}
 
-Response 200 (成功):
-{
-  "success": true,
-  "data": {
-    "compile_success": true,
-    "method_count": 5,
-    "errors": []
-  }
-}
+# Response 200 (成功):
+{"success": true, "data": {"compile_success": true, "method_count": 5, "errors": []}}
 
-Response 200 (编译失败):
-{
-  "success": true,
-  "data": {
-    "compile_success": false,
-    "method_count": 0,
-    "errors": [
-      {
-        "line": 3,
-        "column": 1,
-        "message": "Parse Error: Unexpected token",
-        "file": "memory"
-      }
-    ]
-  }
-}
+# Response 200 (编译失败):
+{"success": true, "data": {"compile_success": false, "method_count": 0, "errors": [
+    {"line": 3, "column": 1, "message": "Parse Error: Unexpected token", "file": "memory"}
+]}}
 ```
 
-**实现方案**：
-- 复用 `GDScriptExecutor.execute_code()` 的编译阶段逻辑
-- 创建 `GDScript` 对象 → `source_code = code` → `reload()`
-- 捕获编译错误并返回
-- 不执行 `run()`
-- Python CLI 增加 `hastur.py check 'code'` 命令
+**Godot 端实现**：从 `gdscript_executor.gd` 的 `execute_code()` 提取 Phase A（源码准备）+ Phase B（编译）为独立的 `compile_only()` 方法：
 
-**涉及文件**：
-- `broker-server/src/types.ts` — 加 `ScriptCheckResult`
-- `broker-server/src/tcp-server.ts` — 加 `sendScriptCheckRequest()`
-- `broker-server/src/http-server.ts` — 加 `POST /api/script/check`
-- `game/addons/hasturoperationgd/broker_client.gd` — 加 `_handle_script_check()`
-- `game/tools/hastur.py` — 加 `cmd_check()`
+```gdscript
+func compile_only(code: String) -> Dictionary:
+    var result = {"compile_success": false, "compile_error": "", "method_count": 0, "errors": []}
+    if code.strip_edges() == "":
+        result.compile_error = "Code is empty"
+        return result
 
+    var source := _ensure_tool_annotation(code) if _is_full_class(code) else _wrap_snippet(code)
+    var script := GDScript.new()
+    script.source_code = source
+    _error_capturer.start_capture(script.resource_path)
+    var err := script.reload()
+    var captured := _error_capturer.stop_capture()
 
-### P0-3: `GET /api/executors/:id/scene/properties`
+    if err != OK:
+        result.compile_error = "\n".join(captured) if captured.size() > 0 else _error_code_to_string(err)
+        for msg in captured:
+            result.errors.append(_parse_compile_error(msg))
+        return result
+
+    result.compile_success = true
+    result.method_count = script.get_script_method_list().size()
+    return result
+```
+
+现有 `execute_code()` 内部调用 `compile_only()` 获取编译结果，编译失败则直接返回，成功则继续执行阶段。
+
+**涉及文件**：`gdscript_executor.gd`（提取 `compile_only`）、`broker_client.gd`（1 个 handler）、`http-server.ts`（1 条路由）、`types.ts`（`ScriptCheckResult`）
+
+---
+
+### 4.3 `GET /api/executors/:id/scene/properties`
 
 **目的**：获取场景树中指定节点的属性值。
 
-**痛点**：检查节点状态（position、scale、visible 等）必须写 GDSnippet 单次执行，频次高、重复劳动。`/api/scene/tree` 只返回节点名称/类型/路径，不返回属性值。
+**痛点**：检查节点状态（position、scale、visible 等）必须写 GDSnippet 单次执行，频次高、重复劳动。
 
-**API 规范**：
-```
-GET /api/executors/:id/scene/properties?path=/root/SkillDemo/Caster
+**API**：
+
+```bash
+GET /api/executors/:id/scene/properties?path=/root/SkillDemo/Caster&filter=position,visible
 Authorization: Bearer <token>
 
-Response 200:
+# Response 200:
 {
-  "success": true,
-  "data": {
-    "node_path": "/root/SkillDemo/Caster",
-    "node_type": "Node2D",
-    "property_count": 12,
-    "properties": {
-      "position": {"x": 0, "y": 150},
-      "rotation": 0.0,
-      "scale": {"x": 1.0, "y": 1.0},
-      "visible": true,
-      "script": "res://scripts/dev/demo_caster.gd"
+    "success": true,
+    "data": {
+        "node_path": "/root/SkillDemo/Caster",
+        "node_type": "Node2D",
+        "property_count": 2,
+        "properties": {
+            "position": {"x": 0, "y": 150},
+            "visible": true
+        }
     }
-  }
 }
 ```
 
-**返回哪些属性**：过滤掉 Godot 内部属性（`_meta`、`_import_path` 等），只返回对用户有意义的值。
-**安全**：编辑器执行器可用（通过 `EditorInterface`）；游戏执行器返回不可用。
+**过滤策略**：黑名单 + 可选白名单
 
-**涉及文件**：
-- `broker-server/src/types.ts` — `ScenePropertiesResult`
-- `broker-server/src/tcp-server.ts` — `sendGetPropertiesRequest()`
-- `broker-server/src/http-server.ts` — `GET /api/executors/:id/scene/properties`
-- `game/addons/hasturoperationgd/broker_client.gd` — `_handle_get_properties()`
+- **黑名单**（始终排除）：`_meta`、`_import_path`、`script`、`owner`、所有 `_` 前缀属性
+- **可选白名单**：`filter` 查询参数（逗号分隔），指定时只返回列出的属性
+- **类型限制**：只返回带 `PROPERTY_USAGE_STORAGE` 或 `PROPERTY_USAGE_EDITOR` 标志的属性
 
+**序列化**：`_serialize_value()` 将 Godot 类型转为 JSON 兼容格式。不可序列化类型（`Callable`、`RID`、`Object` 引用）降级为 `"[<type>: <info>]"` 字符串。
 
-### P0-4: `POST /api/scene/save`
+**涉及文件**：`broker_client.gd`（1 个 handler + `_get_node_properties` + `_serialize_value` 辅助方法）、`http-server.ts`（1 条路由）、`types.ts`（`ScenePropertiesResult`）
+
+---
+
+### 4.4 `POST /api/scene/save`
 
 **目的**：保存编辑器中当前打开的 `.tscn` 到磁盘。
 
-**痛点**：`create_node` 创建的节点不会自动持久化。重新打开场景后丢失。
+**痛点**：`create_node` 创建的节点不会自动持久化，重新打开场景后丢失。
 
-**API 规范**：
-```
+**API**：
+
+```bash
 POST /api/scene/save
-Authorization: Bearer <token>
-
-Response 200:
-{
-  "success": true,
-  "data": {
-    "saved": true,
-    "path": "res://scenes/dev/skill_demo.tscn"
-  }
-}
-```
-
-**实现**：`ei.save_scene()`（保存当前场景）或根据需要 `ei.save_scene_as()`。
-
-**风险**：覆盖磁盘上的 `.tscn`。如果编辑器中有未保存的手动编辑可能丢失。
-
-**涉及文件**：
-- `broker-server/src/types.ts` — `SceneSaveResult`
-- `broker-server/src/tcp-server.ts` — `sendSceneSaveRequest()`
-- `broker-server/src/http-server.ts` — `POST /api/scene/save`
-- `game/addons/hasturoperationgd/broker_client.gd` — `_handle_scene_save()`
-
-
-### P0-5: `POST /api/script/hot-reload`
-
-**目的**：强制 Godot 重新加载磁盘上指定路径的脚本文件，清除内存缓存。
-
-**痛点**：修改 `.gd` 文件后编辑器继续使用旧版本缓存（避坑指南 3.1、3.4）。改代码后必须 stop→replay，迭代周期长。
-
-**API 规范**：
-```
-POST /api/script/hot-reload
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{
-  "path": "res://scripts/skill_system/pools/laser_beam_node.gd"
-}
+{"force": false}
 
-Response 200:
-{
-  "success": true,
-  "data": {
-    "reloaded": true,
-    "path": "res://scripts/skill_system/pools/laser_beam_node.gd",
-    "compile_success": true,
-    "method_count": 20
-  }
-}
+# Response 200:
+{"success": true, "data": {"saved": true, "path": "res://scenes/dev/skill_demo.tscn"}}
 ```
 
-**实现方案**：
-1. `ei.get_resource_filesystem().update_file(path)` — 通知编辑器文件系统文件已变更
-2. `ResourceLoader.load(path, "GDScript", ResourceLoader.CACHE_MODE_IGNORE)` — 用忽略缓存模式加载
-3. 检查 `get_script_method_list().size() > 0` 确认编译成功
-4. 如果编译失败，返回具体错误
+**force 参数说明**：
 
-**限制**：已实例化节点的运行中脚本实例不会被替换。仅影响下一次 `load()` 调用。
+Godot 4 的 EditorInterface 不暴露 `has_unsaved_changes()` API，无法在服务端检测编辑器是否有未保存修改。`force` 参数作为调用方承诺机制：
 
-**涉及文件**：
-- `broker-server/src/types.ts` — `HotReloadResult`
-- `broker-server/src/tcp-server.ts` — `sendHotReloadRequest()`
-- `broker-server/src/http-server.ts` — `POST /api/script/hot-reload`
-- `game/addons/hasturoperationgd/broker_client.gd` — `_handle_hot_reload()`
+- `force=false`（默认）：调用方确认无冲突
+- `force=true`：调用方接受覆盖风险
 
+如果 Godot 未来版本增加此 API，可在不改变 API 契约的前提下增加服务端检查。
+
+**涉及文件**：`broker_client.gd`（1 个 handler）、`http-server.ts`（1 条路由）、`types.ts`（`SceneSaveResult`）
 
 ---
 
-## 三、P1 — 重要增强
+### 4.5 `POST /api/execute` Response Enhancement
 
-### P1-1: 错误报告可读性增强
+**目的**：在执行结果中增加 `summary` 字段，让 AI 和 CLI 快速判断成功/失败。
 
-**目的**：让编译/运行时错误更易于 AI 和 CLI 消费，减少"error JSON 太大看不懂"的问题。
+**实现**：纯 broker-server 端修改，无需新 TCP 消息类型。在 `http-server.ts` 的 `/api/execute` 路由中，收到 `execute_result` 后构造 summary：
 
-**实现**：在 `http-server.ts` 的 `POST /api/execute` 响应中增加 `summary` 字段：
-
-```json
-{
-  "success": true,
-  "data": {
-    "summary": {
-      "compile_ok": false,
-      "run_ok": false,
-      "error_count": 1,
-      "first_error": {
-        "line": 3,
-        "message": "Parse Error: ..."
-      }
-    },
-    "compile_error": "...",
-    "compile_error_details": [...],
-    ...
-  }
+```typescript
+const summary = {
+    compile_ok: result.compile_success,
+    run_ok: result.run_success,
+    error_count: (result.compile_error ? 1 : 0) + (result.run_error ? 1 : 0),
+    first_error: result.compile_error
+        ? { message: result.compile_error, line: extractLine(result.compile_error) }
+        : result.run_error
+        ? { message: result.run_error, line: extractLine(result.run_error) }
+        : null,
+    output_count: result.outputs?.length || 0,
 }
 ```
 
-**工作量**：~15 行（纯 broker-server 端修改）
+**新增 `extractLine` 辅助函数**：从 Godot 错误字符串中提取行号（匹配 `at line N` 或 `(N:M)` 模式）。
 
-
-### P1-2: 游戏运行时日志接入
-
-**目的**：让游戏进程（`EditorInterface.play_custom_scene()`）中的 `print()` 和 `push_error()` 也能通过 Hastur broker 访问。
-
-**需求**：完整行号、堆栈、文件路径。
-
-**现状**：`game_executor.gd` 在游戏进程内初始化 `BrokerClient`，`BrokerClient._init_log_catcher()` 创建 `EditorLogCatcher` 和 `HasturLogger` 并注册到 OS。理论上日志管道已建立。
-
-**验证步骤**：
-1. 启动游戏场景
-2. 通过 `GET /api/executors/:id/logs` 检查是否能获取游戏进程的 `print()` 输出
-3. 如果不可见，排查 OS Logger 是否跨进程工作
-
-**如果跨进程不通**：让 `game_executor.gd` 在 `_process()` 中主动轮询日志缓存并通过 TCP 批量上报。
-
-**工作量**：~50-80 行（验证 + 实现）
-
+**涉及文件**：`http-server.ts`（修改 execute 路由 + extractLine 函数）
 
 ---
 
-## 四、文件修改清单
+## 5. Phase 3 — CLI Commands
 
-### Broker Server（TypeScript）
+`game/tools/hastur.py` 新增 4 个命令：
 
-| 文件 | 修改 |
-|------|------|
-| `src/types.ts` | 新增 6 个接口定义 |
-| `src/tcp-server.ts` | 新增 5 个 `sendXxxRequest()` 方法 |
-| `src/http-server.ts` | 新增 5 条路由 + 错误摘要处理 |
+```bash
+# 编译检查
+python tools/hastur.py check 'print("hello")'
+# → {"compile_success": true, "method_count": N, "errors": []}
 
-### Godot 插件（GDScript）
+# 文件系统刷新
+python tools/hastur.py rescan
+# → {"scanned": true}
 
-| 文件 | 修改 |
-|------|------|
-| `broker_client.gd` | `_handle_message()` 新增 5 个 case + handler |
-| `gdscript_executor.gd` | 可选暴露 compile-only 入口 |
+# 场景保存
+python tools/hastur.py save              # force=false
+python tools/hastur.py save --force      # force=true
 
-### CLI（Python）
+# 节点属性
+python tools/hastur.py props /root/Main/Caster
+python tools/hastur.py props /root/Main/Caster --filter position,visible
+```
 
-| 文件 | 修改 |
-|------|------|
-| `game/tools/hastur.py` | 新增 `check`、`rescan`、`hot-reload`、`props`、`save` 命令 |
+`game/tools/editor_call.py` 标记为 deprecated，不再新增功能。
 
-### 版本号
+---
 
-| 文件 | 修改 |
-|------|------|
-| `game/addons/hasturoperationgd/plugin.cfg` | `version=0.5.0` |
+## 6. File Modification Matrix
+
+### Broker Server (TypeScript)
+
+| File | Modification |
+|------|-------------|
+| `src/types.ts` | 新增接口：`RescanResult`, `ScriptCheckResult`, `ScenePropertiesResult`, `SceneSaveResult`, `ExecuteSummary` |
+| `src/tcp-server.ts` | 重构：`sendRequest()` + `handleResult()` + `RESULT_TYPES` Set；删除 4 个旧 `send*` 和 4 个旧 `handle*Result` |
+| `src/http-server.ts` | 重构：`resolveExecutor()` + `asyncTcpRoute()` 辅助函数；新增 4 条路由；execute 路由增加 summary |
+
+### Godot Plugin (GDScript)
+
+| File | Modification |
+|------|-------------|
+| `broker_client.gd` | 重构：`_message_handlers` 字典替代 match 块；新增 4 个 handler |
+| `gdscript_executor.gd` | 新增 `compile_only()` 方法；`execute_code()` 内部调用 `compile_only()` |
+
+### CLI (Python)
+
+| File | Modification |
+|------|-------------|
+| `game/tools/hastur.py` | 新增 `check`、`rescan`、`save`、`props` 命令 |
+
+### Version
+
+| File | Change |
+|------|--------|
+| `game/addons/hasturoperationgd/plugin.cfg` | `version="0.5.0"` |
 | `broker-server/package.json` | `"version": "0.5.0"` |
+| `broker_client.gd` | `_plugin_version = "0.5.0"` |
+| `http-server.ts` | `version: '0.5.0'` |
 
 ---
 
-## 五、实施顺序建议
+## 7. Implementation Order
 
-1. 先改版本号 + 文档
-2. rescan（最简单，验证全流程）
-3. scene/save（次简单，独立端点）
-4. script/check（需要理解 GDScriptExecutor 编译逻辑）
-5. hot-reload（依赖 script/check 的实现）
-6. scene/properties（需要理解场景树遍历）
-7. 错误报告可读性（纯 broker-server 端）
-8. 游戏运行时日志（需验证，可能需要额外调试）
+| Step | Files | Description | Est. |
+|------|-------|-------------|------|
+| 1 | `types.ts` | 新增所有接口定义 | 15 min |
+| 2 | `tcp-server.ts` | 添加 `sendRequest` + `handleResult`；转换现有 4 个 send 方法调用 `sendRequest`；删除旧方法 | 45 min |
+| 3 | `http-server.ts` | 添加 `resolveExecutor` + `asyncTcpRoute`；转换现有路由；验证无回归 | 60 min |
+| 4 | All TS | `tsc --noEmit` 编译检查 | 10 min |
+| 5 | `gdscript_executor.gd` | 提取 `compile_only()` 方法；`execute_code()` 内部调用 | 30 min |
+| 6 | `broker_client.gd` | 添加 `_message_handlers` 字典 + `_init_handlers()`；添加 4 个新 handler | 60 min |
+| 7 | `http-server.ts` | 添加 4 条新路由 + execute summary 增强 | 45 min |
+| 8 | `hastur.py` | 添加 4 个 CLI 命令 | 30 min |
+| 9 | Integration | 端到端验证所有端点（与 Godot 编辑器联调） | 60 min |
+| 10 | Version | `plugin.cfg` + `package.json` 版本号 → 0.5.0 | 5 min |
+| 11 | Docs | 更新技术蓝皮书 v0.5.0 变更记录 | 60 min |
+
+**Total: ~6.5 hours**
 
 ---
 
-## 六、风险与注意
+## 8. Testing & Verification Strategy
 
-1. **游戏运行时日志**：需要先验证 `play_custom_scene()` 的场景是否独立进程。如果是独立进程，OS Logger 不跨进程通信，需要改用 TCP 推送。
-2. **热重载限制**：Godot 4 无官方脚本热重载 API。`update_file()` 只能通知编辑器文件系统刷新，无法替换运行中脚本实例。
-3. **场景保存覆盖**：`save_scene()` 无条件覆盖磁盘 .tscn。如果编辑器中有用户手动编辑但未保存的内容，调用此 API 可能导致丢失。
-4. **向后兼容**：v0.4.0 的所有 API 不变。新增端点和字段不会破坏现有客户端。
+### Layer 1: Unit-level（无需 Godot）
+
+- `sendRequest` 生成唯一 request_id
+- `sendRequest` 无匹配 executor 时 reject
+- `sendRequest` 超时后 reject with "TIMEOUT"
+- `handleResult` 正确 resolve 匹配的 pending request
+- `handleResult` 对未知 request_id 静默忽略
+- `tsc --noEmit` 编译通过
+
+### Layer 2: Integration（broker-server + Godot 编辑器）
+
+| Endpoint | Test | Success Criteria |
+|----------|------|-----------------|
+| `POST /api/project/rescan` | 外部创建新 `.gd` 文件后调用 | `scanned: true`，Godot FileSystem 面板显示新文件 |
+| `POST /api/script/check` (valid) | 发送 `print("hello")` | `compile_success: true`, `method_count > 0` |
+| `POST /api/script/check` (invalid) | 发送语法错误代码 | `compile_success: false`, `errors` 有 line + message |
+| `GET .../scene/properties` | 查询已知节点 | 返回 position, scale 等属性 |
+| `GET .../properties?filter=position` | 带过滤查询 | properties 只含 position |
+| `POST /api/scene/save` (force=false) | 无修改时保存 | `saved: true, path` 正确 |
+| `POST /api/scene/save` (force=true) | 有修改时保存 | `saved: true`，磁盘文件更新 |
+| `POST /api/execute` summary | 执行任意代码 | 响应含 `summary` 字段 |
+
+### Layer 3: CLI
+
+```bash
+python tools/hastur.py check 'print("hello")'    # compile_success: true
+python tools/hastur.py check 'var x = '           # compile_success: false
+python tools/hastur.py rescan                      # scanned: true
+python tools/hastur.py save                        # saved: true
+python tools/hastur.py save --force                # saved: true
+python tools/hastur.py props /root/Main            # properties dict
+```
+
+### Layer 4: Regression
+
+验证 v0.4.0 功能不受影响：
+
+```bash
+python tools/hastur.py exec 'print("hello")'
+python tools/hastur.py scene-tree
+python tools/hastur.py logs 10
+curl http://localhost:5302/api/health
+```
+
+---
+
+## 9. Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| `scan()` 异步，rescan 响应先于扫描完成 | 低 — 下次 execute 前扫描已完成 | 文档说明；如需同步可后续加 `scan_status` 端点 |
+| Godot 4 无 `has_unsaved_changes()` API | 中 — force 参数无法服务端强制 | 作为调用方承诺机制；文档明确风险 |
+| 属性序列化复杂类型（Callable, RID） | 低 — 少数属性不可序列化 | `_serialize_value` 降级为字符串表示 |
+| `_message_handlers` 字典的 Callable 生命周期 | 中 — Lambda 可能被 GC | 用方法引用而非 lambda；`_init_handlers()` 在 `_init()` 中调用一次 |
+| 注册式路由破坏 Godot 端 outbound 回调 | 低 — 回调通过 result type 路由 | 字典天然支持双向路由 |
+
+---
+
+## 10. Version Bump Checklist
+
+- [ ] `game/addons/hasturoperationgd/plugin.cfg` → `version="0.5.0"`
+- [ ] `broker/hastur-operation-plugin-main/broker-server/package.json` → `"version": "0.5.0"`
+- [ ] `broker_client.gd` → `_plugin_version = "0.5.0"`
+- [ ] `http-server.ts` → health endpoint `version: '0.5.0'`
+- [ ] `docs/HasturOperationGD-Technical-Whitepaper.md` → 更新版本对照表和功能演进
+- [ ] `docs/hastur-v0.5.0-upgrade-proposal.md` → 标记为 "Implemented"
+
+---
+
+*本方案于 2026-05-25 定稿，基于 v0.4.0 生产版本和大激光术开发全流程的实践反馈。*

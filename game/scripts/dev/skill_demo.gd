@@ -4,42 +4,44 @@ extends Node2D
 
 ## ── 受体模式 ──
 ## 每个模式定义了多个靶标相对于锚点的偏移位置
+const BODY_H: float = 80.0  # 一个身位（像素）
+
 const TARGET_POSITIONS: Dictionary = {
+	"pentagon": {
+		"name": "五目标",
+		"positions": [
+			Vector2(0, -80),
+			Vector2(0, -400),
+			Vector2(-120, -240), Vector2(0, -240), Vector2(120, -240),
+		],
+	},
 	"single": {
 		"name": "单受体",
-		"positions": [Vector2(0, -260)],
+		"positions": [Vector2(0, -200)],
 	},
 	"dual": {
 		"name": "双目标",
-		"positions": [Vector2(-90, -260), Vector2(90, -260)],
+		"positions": [Vector2(-90, -200), Vector2(90, -200)],
 	},
 	"triangle": {
 		"name": "三角阵",
-		"positions": [Vector2(0, -210), Vector2(-100, -290), Vector2(100, -290)],
+		"positions": [Vector2(0, -150), Vector2(-100, -230), Vector2(100, -230)],
 	},
 	"scatter": {
 		"name": "散开群",
 		"positions": [
-			Vector2(0, -200), Vector2(-130, -250),
-			Vector2(130, -250), Vector2(-70, -320),
-			Vector2(70, -320),
+			Vector2(0, -140), Vector2(-130, -190),
+			Vector2(130, -190), Vector2(-70, -260),
+			Vector2(70, -260),
 		],
 	},
 	"line": {
 		"name": "一字排",
-		"positions": [Vector2(-180, -260), Vector2(-90, -260),
-			Vector2(0, -260), Vector2(90, -260), Vector2(180, -260)],
-	},
-	"formation": {
-		"name": "三排列",
-		"positions": [
-			Vector2(0, -200),
-			Vector2(-100, -260), Vector2(0, -260), Vector2(100, -260),
-			Vector2(0, -320),
-		],
+		"positions": [Vector2(-180, -200), Vector2(-90, -200),
+			Vector2(0, -200), Vector2(90, -200), Vector2(180, -200)],
 	},
 }
-const TARGET_MODE_KEYS: Array[String] = ["single", "dual", "triangle", "scatter", "line", "formation"]
+const TARGET_MODE_KEYS: Array[String] = ["pentagon", "single", "dual", "triangle", "scatter", "line"]
 const SPEEDS: Array[float] = [0.5, 1.0, 2.0]
 ## 速度倍率按钮标签
 const SPEED_LABELS: Array[String] = ["0.5×", "1×", "2×"]
@@ -101,8 +103,8 @@ func _setup_caster() -> void:
 	_caster.name = "Caster"
 	_caster.set_script(preload("res://scripts/dev/demo_caster.gd"))
 	add_child(_caster)
-	# 施法者位置：锚点 + 阵型偏移
-	_caster.position = Vector2(0, 150)
+	# 施法者位置：操作栏上方
+	_caster.position = Vector2(0, 190)
 
 ## ── 技能系统 ──
 
@@ -230,7 +232,6 @@ func _do_cast() -> void:
 		_status_label.text = "SkillSystem 不可用"
 		return
 
-	# 选第一个靶标作为主目标
 	if _targets.is_empty():
 		_status_label.text = "无靶标"
 		return
@@ -242,25 +243,40 @@ func _do_cast() -> void:
 	_pause_btn.text = "⏸"
 	_status_label.text = "施放: %s" % _selected_skill
 
+	# 目标选择由 SkillSystem 根据 SkillDef 配置自动完成
 	_skill_system.cast_skill(_caster, _selected_skill, _targets)
 
+	# 如果 cast_skill 未产生任何投射物（如目标超出射程），立即重置状态并提示
+	if _count_active_projectiles() == 0:
+		_is_casting = false
+		Engine.time_scale = 1.0
+		var skill_def = _skill_system.get_skill_def(_selected_skill)
+		var rng = skill_def.cast_range if skill_def else 0
+		_status_label.text = "射程%.0f内无合法目标" % rng
+
 func _count_active_projectiles() -> int:
-	var pool = _skill_system.get_node_or_null("ProjectilePool")
-	var beam_pool = _skill_system.get_node_or_null("LaserBeamPool")
 	var count := 0
+	var pool = _skill_system.get_node_or_null("ProjectilePool")
 	if pool and pool.has_method("get_active_count"):
 		count += pool.get_active_count()
-	if beam_pool and beam_pool.has_method("get_active_count"):
-		count += beam_pool.get_active_count()
+	var lb_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	if lb_pool and lb_pool.has_method("get_active_count"):
+		count += lb_pool.get_active_count()
+	var ee_pool = _skill_system.get_node_or_null("EvilEyePool")
+	if ee_pool and ee_pool.has_method("get_active_count"):
+		count += ee_pool.get_active_count()
 	return count
 
 func _clear_all_projectiles() -> void:
 	var pool = _skill_system.get_node_or_null("ProjectilePool")
 	if pool and pool.has_method("clear_all"):
 		pool.clear_all()
-	var beam_pool = _skill_system.get_node_or_null("LaserBeamPool")
-	if beam_pool and beam_pool.has_method("clear_all"):
-		beam_pool.clear_all()
+	var lb_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	if lb_pool and lb_pool.has_method("clear_all"):
+		lb_pool.clear_all()
+	var ee_pool = _skill_system.get_node_or_null("EvilEyePool")
+	if ee_pool and ee_pool.has_method("clear_all"):
+		ee_pool.clear_all()
 
 func _process(dt: float) -> void:
 	if not _is_casting:
@@ -284,11 +300,6 @@ func _process(dt: float) -> void:
 		else:
 			Engine.time_scale = 1.0
 			_status_label.text = "施放完成"
-	elif _cast_timer > 10.0:
-		# 安全超时：防止因特殊技能（如持续激光柱）卡死 UI
-		_is_casting = false
-		Engine.time_scale = 1.0
-		_status_label.text = "施放完成（超时）"
 
 func _input(event: InputEvent) -> void:
 	# 空格键：播放/停止快捷操作

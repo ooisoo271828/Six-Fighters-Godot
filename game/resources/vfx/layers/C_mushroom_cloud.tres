@@ -6,6 +6,7 @@
 script = ExtResource("1")
 effect_id = "mushroom_cloud"
 kind = 9
+delay = 0.2
 params = {
 "rise_height": 140.0,
 "rise_duration": 1.8,

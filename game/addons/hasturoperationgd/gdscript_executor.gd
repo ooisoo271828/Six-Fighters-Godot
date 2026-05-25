@@ -21,15 +21,18 @@ func dispose() -> void:
 		_error_capturer = null
 
 
-func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin = null) -> Dictionary:
+## 内部编译 — 编译 GDScript 并返回编译结果（含编译好的 script 对象）
+## compile_only() 和 execute_code() 均调用此方法，消除编译阶段代码重复
+func _compile_source(code: String) -> Dictionary:
 	var result = {
 		"compile_success": false,
 		"compile_error": "",
 		"compile_error_details": [],
-		"run_success": false,
-		"run_error": "",
-		"run_error_details": [],
-		"outputs": []
+		"method_count": 0,
+		"errors": [],
+		"script": null,
+		"source": "",
+		"is_full_class": false,
 	}
 
 	if code.strip_edges() == "":
@@ -37,7 +40,6 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 		return result
 
 	var is_full_class = _is_full_class(code)
-
 	var source: String
 	if is_full_class:
 		source = _ensure_tool_annotation(code)
@@ -57,22 +59,66 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 		if captured_errors.size() > 0:
 			result.compile_error = "\n".join(captured_errors)
 			result.compile_error_details = compile_details
+			for detail in compile_details:
+				result.errors.append({
+					"line": detail.get("line", 0),
+					"column": 0,
+					"message": detail.get("message", ""),
+					"file": detail.get("file", "memory")
+				})
 		else:
 			result.compile_error = _error_code_to_string(compile_err)
-		script = null
+		return result
+
+	result.compile_success = true
+	result.method_count = script.get_script_method_list().size()
+	result.script = script
+	result.source = source
+	result.is_full_class = is_full_class
+	return result
+
+
+## 编译检查 — 编译 GDScript 但不执行，返回编译结果
+func compile_only(code: String) -> Dictionary:
+	var result = _compile_source(code)
+	result.erase("script")
+	result.erase("source")
+	result.erase("is_full_class")
+	return result
+
+
+func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin = null) -> Dictionary:
+	var result = {
+		"compile_success": false,
+		"compile_error": "",
+		"compile_error_details": [],
+		"run_success": false,
+		"run_error": "",
+		"run_error_details": [],
+		"outputs": []
+	}
+
+	var compile_result = _compile_source(code)
+	if not compile_result.compile_success:
+		result.compile_success = false
+		result.compile_error = compile_result.compile_error
+		result.compile_error_details = compile_result.compile_error_details
 		return result
 
 	result.compile_success = true
 
+	var script = compile_result.script as GDScript
+	var is_full_class = compile_result.is_full_class
+	var script_path = script.resource_path
+
 	if not script.can_instantiate():
 		result.compile_error = "Script compiled but cannot be instantiated"
 		result.compile_success = false
-		script = null
 		return result
 
 	_error_capturer.start_capture(script_path)
 	var instance = script.new()
-	captured_errors = _error_capturer.stop_capture()
+	var captured_errors = _error_capturer.stop_capture()
 	var instantiate_details = _error_capturer.get_captured_details()
 	script = null
 
@@ -122,34 +168,45 @@ func _wrap_snippet(code: String) -> String:
 
 
 func _capture_print_statements(code: String) -> String:
-	# 将独立的 print(...) 语句转换为 executeContext.output("print", str(...))
-	# 策略: 逐行扫描，每行独立判断。转换后用占位符避免对 output("print", ...) 重复扫描
+	# 将独立的 print/prints/printraw 语句转换为 executeContext.output(...)
+	# 策略: 逐行扫描，找最早出现的 print(/prints(/printraw(，逐个处理。
+	# 转换后用占位符避免对已替换内容重复扫描。
+	var patterns := ["printraw(", "prints(", "print("]
+	var tags := ["printraw", "prints", "print"]
 	var result = ""
-	var scan_from = 0  # 下一轮扫描的起始位置
+	var scan_from = 0
 	var length = code.length()
 
 	while scan_from < length:
-		# 在 [scan_from, length) 范围内找下一个 "print("
-		var next_print = _find_string(code, "print(", scan_from)
-		if next_print < 0:
-			# 没有更多 print 了，复制剩余并退出
+		# 找最早出现的 pattern
+		var best_idx := -1
+		var best_pat := ""
+		var best_tag := ""
+		var best_len := 0
+		for pi in range(patterns.size()):
+			var idx = code.find(patterns[pi], scan_from)
+			if idx >= 0 and (best_idx < 0 or idx < best_idx):
+				best_idx = idx
+				best_pat = patterns[pi]
+				best_tag = tags[pi]
+				best_len = patterns[pi].length()
+
+		if best_idx < 0:
 			result += code.substr(scan_from)
 			break
 
-		# 复制到 print 之前的内容
-		result += code.substr(scan_from, next_print - scan_from)
+		result += code.substr(scan_from, best_idx - scan_from)
 
-		# 验证这是独立的 print(（前面不是标识符字符）
-		if next_print > 0:
-			var prev = code[next_print - 1]
+		# 验证前面不是标识符字符（排除 myprint(、_print( 等）
+		if best_idx > 0:
+			var prev = code[best_idx - 1]
 			if (prev >= "a" and prev <= "z") or (prev >= "A" and prev <= "Z") or (prev >= "0" and prev <= "9") or prev == "_":
-				# 是嵌入的 print(...)，不替换，只复制
-				result += "print"
-				scan_from = next_print + 1
+				result += best_tag
+				scan_from = best_idx + 1
 				continue
 
-		# 找 print() 的参数
-		var arg_start = next_print + 6
+		# 找括号参数
+		var arg_start = best_idx + best_len
 		var depth = 1
 		var j = arg_start
 		var in_string = false
@@ -171,20 +228,18 @@ func _capture_print_statements(code: String) -> String:
 			j += 1
 
 		if depth != 0:
-			# 括号不匹配，原样复制
-			result += code.substr(next_print)
-			scan_from = next_print + 1
+			result += code.substr(best_idx)
+			scan_from = best_idx + 1
 			continue
 
 		var args = code.substr(arg_start, j - 1 - arg_start)
 
-		# 检查 print 后面：分号？还是换行/空白？
+		# 检查后面：分号？换行/空白？
 		var k = j
 		while k < length and (code[k] == " " or code[k] == "\t"):
 			k += 1
 
 		var has_semicolon = k < length and code[k] == ";"
-		# 找行尾（换行或文件末尾）
 		var line_end = k
 		while line_end < length and code[line_end] != "\n" and code[line_end] != "\r":
 			line_end += 1
@@ -193,25 +248,21 @@ func _capture_print_statements(code: String) -> String:
 		var is_line_end = remaining == "" or remaining == ";"
 
 		if has_semicolon or is_line_end:
-			# 独立 print 语句 → 替换（用占位符避免对参数内的 "print" 递归）
-			result += "executeContext.output(\"__PK__\", str(" + args + "))"
+			var placeholder = "__PK_RAW__" if best_tag == "printraw" else ("__PK_S__" if best_tag == "prints" else "__PK__")
+			result += "executeContext.output(\"" + placeholder + "\", str(" + args + "))"
 			if has_semicolon:
 				result += ";"
-			# 下一轮扫描从换行后开始
 			scan_from = k
 			if has_semicolon:
 				scan_from += 1
-			# 跳过该行剩余的空白和换行（保持原有结构）
 			while scan_from < length and (code[scan_from] == "\n" or code[scan_from] == "\r"):
 				result += code[scan_from]
 				scan_from += 1
 		else:
-			# 嵌入在表达式中的 print(...)，不替换
-			result += "print"
-			scan_from = next_print + 1
+			result += best_tag
+			scan_from = best_idx + 1
 
-	# 把占位符替换回 "print"
-	return result.replace("__PK__", "print")
+	return result.replace("__PK_RAW__", "printraw").replace("__PK_S__", "prints").replace("__PK__", "print")
 
 
 func _find_string(text: String, pattern: String, from: int) -> int:

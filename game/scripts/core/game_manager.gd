@@ -150,7 +150,7 @@ func get_formation_offset(slot_index: int) -> Vector2:
 ##   hide_hp_bar: bool（默认 false）
 func spawn_squad(parent: Node, center_pos: Vector2, config: Dictionary = {}) -> Dictionary:
 	var hero_registry: HeroRegistry = config.get("hero_registry")
-	var skill_registry = config.get("skill_registry", null)
+	var squad_skill_registry = config.get("skill_registry", null)
 	var max_hp: float = config.get("max_hp", 420.0)
 	var add_collision: bool = config.get("add_collision_to_first", false)
 	var add_shadow: bool = config.get("add_shadow", true)
@@ -177,7 +177,7 @@ func spawn_squad(parent: Node, center_pos: Vector2, config: Dictionary = {}) -> 
 		hero.position = center_pos + get_formation_offset(slot_index)
 		parent.add_child(hero)
 
-		hero.setup_hero(hero_def, max_hp, skill_registry)
+		hero.setup_hero(hero_def, max_hp, squad_skill_registry)
 
 		if hide_hp_bar:
 			if hero._hp_bar:

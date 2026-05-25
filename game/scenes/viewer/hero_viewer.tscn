@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://hero_viewer"]
+[gd_scene format=3 uid="uid://4xdcava5e8vh"]
 
-[ext_resource type="Script" path="res://scripts/ui/hero_viewer.gd" id="1_hero"]
+[ext_resource type="Script" uid="uid://bdxjxgo8yssps" path="res://scripts/ui/hero_viewer.gd" id="1_hero"]
 
-[node name="HeroViewer" type="Control"]
+[node name="HeroViewer" type="Control" unique_id=1829385427]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

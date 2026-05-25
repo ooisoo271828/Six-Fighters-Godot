@@ -58,7 +58,7 @@ static func generate_tileset() -> TileSet:
 
 	for tile_type in range(TILE_COUNT):
 		var col := tile_type % cols
-		var row := tile_type / cols
+		var row := int(tile_type) / cols
 		var origin := Vector2i(col * TILE_SIZE, row * TILE_SIZE)
 		var tile_img := _generate_tile(tile_type)
 		atlas_img.blit_rect(tile_img, Rect2i(Vector2i.ZERO, Vector2i(TILE_SIZE, TILE_SIZE)), origin)
@@ -72,7 +72,7 @@ static func generate_tileset() -> TileSet:
 	# 为每个瓦片创建 atlas 坐标
 	for tile_type in range(TILE_COUNT):
 		var col := tile_type % cols
-		var row := tile_type / cols
+		var row := int(tile_type) / cols
 		var atlas_coords := Vector2i(col, row)
 		source.create_tile(atlas_coords)
 

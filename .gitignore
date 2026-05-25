@@ -32,3 +32,10 @@ tmp_execute.json
 __pycache__/
 *.pyc
 *.pyo
+
+# Claude Code (contains auth tokens)
+/.claude/
+/.claude/*
+
+# Temp screenshot
+*.png

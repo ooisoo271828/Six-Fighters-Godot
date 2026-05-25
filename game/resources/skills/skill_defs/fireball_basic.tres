@@ -9,7 +9,6 @@ display_name = "火球术"
 damage_type = 1
 base_damage = 42.0
 cooldown = 4.0
-cast_range = 700.0
 telegraph_ms = 420
 hit_aoe_radius = 42.0
 description = "发射一颗火球，对目标造成火焰伤害"

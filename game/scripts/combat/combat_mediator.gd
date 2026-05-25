@@ -90,13 +90,11 @@ func _update_hero_combat(dt: float) -> void:
 			continue
 		if hero.status_effects.is_stunned():
 			continue
-		var target: Enemy = TargetSelector.find_nearest_alive_enemy(hero.position, enemies)
-		if not target:
+		var nearest_enemy: Enemy = TargetSelector.find_nearest_alive_enemy(hero.position, enemies)
+		if not nearest_enemy:
 			continue
-		var dist: float = hero.position.distance_to(target.position)
-		if dist > ATTACK_RANGE + 20:
-			continue
-		var pick: RoleAI.AutonomyPick = hero.tick_ai(dt, target, combat_params, rng_func)
+		# AI 决策仍需要一个参考目标
+		var pick: RoleAI.AutonomyPick = hero.tick_ai(dt, nearest_enemy, combat_params, rng_func)
 		if not pick:
 			continue
 
@@ -105,16 +103,17 @@ func _update_hero_combat(dt: float) -> void:
 		if skill_system and skill_system.has_method("get_skill_def"):
 			skill_def = skill_system.get_skill_def(pick.skill.skill_id)
 
-		# 始终调用 cast_skill（生成视觉投射物或即时效果）
+		# 目标选择由 SkillSystem 内部根据 SkillDef 配置完成
 		var alive_enemies := get_alive_enemies()
-		skill_system.cast_skill(hero, pick.skill.skill_id, target, [], alive_enemies)
+		skill_system.cast_skill(hero, pick.skill.skill_id, alive_enemies)
 
-		# 投送方式分流
+		# 即时伤害：用 SkillSystem 选出的目标（最近的）做结算
 		var delivery: String = skill_def.delivery_type if skill_def and skill_def.get("delivery_type") else "projectile"
-
 		if delivery == "instant":
-			# 即时伤害
-			_resolve_and_apply_damage(hero, target, pick.skill)
+			var cast_range: float = skill_def.cast_range if skill_def and skill_def.get("cast_range") else ATTACK_RANGE
+			var instant_target: Node2D = TargetSelector.find_nearest_in_range(hero.position, alive_enemies, cast_range)
+			if instant_target:
+				_resolve_and_apply_damage(hero, instant_target, pick.skill)
 
 
 ## 即时伤害结算

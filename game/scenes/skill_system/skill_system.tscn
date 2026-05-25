@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/skill_system/pools/executor_pool.gd" id="7_exec_pool"]
 [ext_resource type="Script" path="res://scripts/skill_system/vfx/skill_vfx_manager.gd" id="8_vfx"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/laser_beam_pool.gd" id="9_beam"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/evil_eye_pool.gd" id="10_eye"]
 
 [node name="SkillSystem" type="Node"]
 script = ExtResource("1_root")
@@ -36,3 +37,6 @@ script = ExtResource("8_vfx")
 
 [node name="LaserBeamPool" type="Node2D" parent="."]
 script = ExtResource("9_beam")
+
+[node name="EvilEyePool" type="Node2D" parent="."]
+script = ExtResource("10_eye")

@@ -20,6 +20,9 @@ extends Resource
 )
 var kind: int = 0
 
+## 执行延迟（秒），命中后等待指定时间再播放此层特效
+@export var delay: float = 0.0
+
 ## 类型特定参数（Dictionary，运行时由 VFXExecutor 读取）
 ## particle_burst: {count, speed_min, speed_max, size_min, size_max, color, lifetime, spread}
 ## sprite_burst:   {count, speed, size, texture_path, fade_time, jitter}

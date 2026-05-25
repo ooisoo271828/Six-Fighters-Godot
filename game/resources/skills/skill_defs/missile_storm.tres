@@ -8,7 +8,6 @@ skill_id = "missile_storm"
 display_name = "导弹风暴"
 base_damage = 30.0
 cooldown = 5.0
-cast_range = 560.0
 telegraph_ms = 220
 tracking_enabled = true
 turn_rate = 5.0

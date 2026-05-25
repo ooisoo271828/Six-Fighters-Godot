@@ -14,6 +14,7 @@ extends Node
 @onready var executor_pool: Node = $ExecutorPool
 @onready var skill_vfx_manager: Node = $SkillVFXManager
 @onready var laser_beam_pool: Node2D = $LaserBeamPool
+@onready var evil_eye_pool: Node2D = $EvilEyePool
 
 var _chain_id_counter: int = 0
 
@@ -29,6 +30,7 @@ func _initialize_subsystems() -> void:
 	executor_pool.initialize()
 	skill_vfx_manager.initialize()
 	laser_beam_pool.initialize()
+	evil_eye_pool.initialize()
 
 func _connect_signal_bus() -> void:
 	# VFX 监听伤害信号
@@ -55,6 +57,65 @@ func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extr
 	# ── 目标选择 ──
 	var target_mode: int = skill_def.target_mode if skill_def.get("target_mode") != null else 0
 	var cast_range: float = skill_def.cast_range if skill_def.get("cast_range") else 300.0
+
+	# MAX_COVERAGE 模式：计算最优角度，不需要单个目标
+	if target_mode == 6:  # MAX_COVERAGE
+		if skill_def.get("effect_type") == "emit_evil_eye_laser":
+			_cast_evil_eye_laser(caster, skill_def, skill_id, available_targets, extra_modifiers)
+			return
+
+		var beam_width: float = 90.0   # laser_beam.gd 中的 BEAM_WIDTH
+		var beam_length: float = 900.0 # laser_beam.gd 中的 BEAM_LENGTH
+		var optimal_angle: float = TargetSelector.find_max_coverage_angle(
+			caster.position, available_targets, beam_width, beam_length, cast_range
+		)
+		if optimal_angle == INF:
+			return  # 没有合法目标
+
+		var visual_def_ml: SkillVisualDef = skill_registry.get_skill_visual(skill_id)
+		var entity_modifier_ids_ml: Array[String] = []
+		if skill_def.get("base_modifier_ids"):
+			entity_modifier_ids_ml = skill_def.base_modifier_ids
+		var modifiers_ml: Array[SkillModifier] = modifier_registry.get_entity_modifiers(entity_modifier_ids_ml)
+		modifiers_ml.append_array(extra_modifiers)
+
+		var context_ml: SkillEffect.SkillExecutionContext = SkillEffect.SkillExecutionContext.new()
+		context_ml.caster = caster
+		context_ml.target = null
+		context_ml.target_pos = caster.global_position + Vector2(cos(optimal_angle), sin(optimal_angle)) * cast_range
+		context_ml.direction = Vector2(cos(optimal_angle), sin(optimal_angle))
+		context_ml.damage = skill_def.base_damage
+		context_ml.damage_type = _int_to_damage_type_string(skill_def.damage_type)
+		context_ml.skill_id = skill_id
+		context_ml.visual_def = visual_def_ml
+		context_ml.delivery_type = skill_def.delivery_type if skill_def.get("delivery_type") else "projectile"
+		context_ml.tracking_enabled = false
+		context_ml.turn_rate = 0.0
+		context_ml.hit_precision_radius = 0.0
+		context_ml.pierce_enabled = false
+		context_ml.pierce_count = 0
+		context_ml.bounce_remaining = 0
+		context_ml.bounce_type = 0
+		context_ml.bounce_damage_scale = 1.0
+		context_ml.hit_aoe_radius = 0.0
+		context_ml.secondary_damage_type = skill_def.secondary_damage_type if skill_def.get("secondary_damage_type") != null else -1
+		context_ml.secondary_damage_ratio = skill_def.secondary_damage_ratio if skill_def.get("secondary_damage_ratio") != null else 0.0
+		context_ml.available_targets = available_targets
+		context_ml.target_mode = target_mode
+		context_ml.cast_range = cast_range
+
+		skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+		var effect_ml: SkillEffect = skill_registry.create_effect_instance(skill_def.effect_type)
+		var chains_ml: Array[ExecutionChain] = modifier_processor.resolve(effect_ml, modifiers_ml, context_ml)
+		if chains_ml.is_empty():
+			return
+		skill_signal_bus.skill_cast_started.emit(caster, skill_id, context_ml.target_pos)
+		for chain in chains_ml:
+			if chain.behavior_state == "Destroyed":
+				continue
+			_execute_chain(chain, skill_def, visual_def_ml)
+		return
+
 	var target: Node2D = TargetSelector.select_target(caster.position, available_targets, target_mode, cast_range)
 	if not target:
 		return
@@ -116,6 +177,38 @@ func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extr
 		_execute_chain(chain, skill_def, visual_def)
 
 ## 执行单条叶子链
+
+## 魔眼激光施放
+func _cast_evil_eye_laser(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	var path_def := load('res://resources/skills/path_defs/evil_eye_path_s.tres') as LaserPathDef
+	if not path_def:
+		push_warning('[SkillSystem] Failed to load path def for evil_eye_laser')
+		return
+
+	var result := TargetSelector.find_optimal_laser_path(
+		caster.position, available_targets, skill_def.cast_range, path_def, 40.0, 15.0
+	)
+	if result.get('covered_count', 0) == 0:
+		return  # 没有合法目标
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, result.path_origin)
+
+	evil_eye_pool.spawn(
+		caster,
+		result.path_origin,
+		result.path_angle,
+		path_def,
+		skill_def.base_damage,
+		_int_to_damage_type_string(skill_def.damage_type),
+		skill_id,
+		skill_signal_bus,
+		available_targets
+	)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
 func _execute_chain(chain: ExecutionChain, skill_def: SkillDef, visual_def: SkillVisualDef) -> void:
 	# 激光柱直接走 LaserBeamPool
 	if chain.effect_id == "emit_laser_beam":

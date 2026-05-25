@@ -115,6 +115,7 @@ func _setup_effect_factory() -> void:
 		"emit_burst": "res://scripts/skill_system/core/effects/emit_burst.gd",
 		"emit_meteor": "res://scripts/skill_system/core/effects/emit_meteor.gd",
 		"emit_laser_beam": "res://scripts/skill_system/core/effects/emit_laser_beam.gd",
+			"emit_evil_eye_laser": "res://scripts/skill_system/core/effects/emit_evil_eye_laser.gd",
 	}
 
 func _load_all_skills() -> void:

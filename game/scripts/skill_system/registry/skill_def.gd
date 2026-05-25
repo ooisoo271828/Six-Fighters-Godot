@@ -36,7 +36,7 @@ var damage_type: int = 0
 @export var telegraph_ms: int = 350      # 预警时间（毫秒）
 
 # ── 目标选取 ──
-@export_enum("NEAREST:0", "FARTHEST:1", "LOWEST_HP:2", "HIGHEST_HP:3", "RANDOM:4", "ALL:5")
+@export_enum("NEAREST:0", "FARTHEST:1", "LOWEST_HP:2", "HIGHEST_HP:3", "RANDOM:4", "ALL:5", "MAX_COVERAGE:6")
 var target_mode: int = 0
 @export var max_targets: int = 1
 
@@ -261,4 +261,5 @@ func get_target_mode_name() -> String:
 		3: return "HIGHEST_HP"
 		4: return "RANDOM"
 		5: return "ALL"
+		6: return "MAX_COVERAGE"
 	return "NEAREST"

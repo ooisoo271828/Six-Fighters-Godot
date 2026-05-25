@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="LaserPathDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/laser_path_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+path_type = 0
+amplitude = 80.0
+frequency = 1.5
+total_length = 400.0

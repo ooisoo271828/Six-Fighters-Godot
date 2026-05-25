@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "evil_eye_laser"
+projectile_kind = 8
+telegraph_shape = 3
+speed = 0.0

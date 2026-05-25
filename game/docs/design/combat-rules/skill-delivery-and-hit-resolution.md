@@ -4,8 +4,8 @@ Status: Draft
 Version: v1.0
 Owner: Design
 Last Updated: 2026-05-23
-Scope: 战斗技能的投送方式、飞行运动、命中判定、穿透机制、弹射机制的完整规则定义。数值参数见 `values/skill-values.csv`。
-Related: `combat-attributes-resolution.md`; `projectile-v1-taxonomy.md`; `combat-core-baseline.md`; `skill-warning-zone-spec.md`
+Scope: 战斗技能的投送方式、飞行运动、命中判定、穿透机制、弹射机制的完整规则定义。数值参数见 `values/skill-values.csv`。目标选择规则见 `target-selection-rules.md`。
+Related: `combat-attributes-resolution.md`; `projectile-v1-taxonomy.md`; `combat-core-baseline.md`; `skill-warning-zone-spec.md`; `target-selection-rules.md`
 
 ---
 

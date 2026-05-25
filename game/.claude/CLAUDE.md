@@ -47,10 +47,6 @@ Tradeoff: these bias toward caution over speed. For trivial tasks, use judgment.
 - **Language**: GDScript (Tab indentation mandatory)
 - **AI integration**: HasturOperationGD plugin for remote GDScript execution
 
-## Behavioral Guidelines
-
-Tradeoff: these bias toward caution over speed. For trivial tasks, use judgment.
-
 ### 1. Think Before Coding
 
 Don't assume. Don't hide confusion. Surface tradeoffs.
@@ -117,7 +113,9 @@ Only triggers on ambiguous or complex tasks. Clear requests go straight to imple
 
 ---
 
-## HasturOperationGD Quick Reference
+## HasturOperationGD v0.5.0 — Your Bridge to the Running Editor
+
+**This is your primary tool for interacting with the Godot editor.** Use it proactively — don't wait for the user to suggest it.
 
 ```
 AI Agent ──HTTP──> broker-server (Node.js) ──TCP──> Godot Editor + HasturPlugin
@@ -126,16 +124,66 @@ AI Agent ──HTTP──> broker-server (Node.js) ──TCP──> Godot Editor
 
 **Start broker**: `cd broker/hastur-operation-plugin-main/broker-server && HASTUR_TOKEN=995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7 npm run dev`
 
-**Default Token**: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7` (overridable via `HASTUR_TOKEN` env var)
+**Token**: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7` (env: `HASTUR_TOKEN`)
 
-**Quick commands**:
+### WHEN to use Hastur (decision rules)
+
+| Situation | Tool | Why |
+|-----------|------|-----|
+| Verify code compiles | `POST /api/script/check` | Catch errors before executing |
+| Test/Debug code behavior | `POST /api/execute` | Run snippets in-editor, see output + errors |
+| Inspect node state (position, scale, etc.) | `GET .../scene/properties` | Faster than writing GDSnippet |
+| Find node paths in scene | `GET .../scene/tree` | Don't parse .tscn manually |
+| After creating .gd/.tres files externally | `POST /api/project/rescan` | Editor cache is stale without this |
+| Persist node changes to disk | `POST /api/scene/save` | Created nodes vanish on scene reload |
+| Check editor is alive | `GET /api/health` | Verify connection before other calls |
+
+### Quick commands
+
 ```bash
+# Health check
 curl -s http://localhost:5302/api/health
+
+# Execute code
 curl -s -X POST http://localhost:5302/api/execute \
   -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
   -H "Content-Type: application/json" \
   -d '{"code":"print(\"hello\")","project_name":"Six Fighter"}'
+
+# Compile check
+curl -s -X POST http://localhost:5302/api/script/check \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"code":"print(\"hello\")"}'
+
+# Get node properties
+curl -s "http://localhost:5302/api/executors/default/scene/properties?path=/root/SkillDemo/Caster&filter=position,visible" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Force rescan after external file changes
+curl -s -X POST http://localhost:5302/api/project/rescan -H "Authorization: Bearer $TOKEN"
+
+# Save scene
+curl -s -X POST http://localhost:5302/api/scene/save \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"force":false}'
 ```
+
+### CLI commands (`game/tools/hastur.py`)
+
+```bash
+python game/tools/hastur.py exec 'print("hello")'     # Execute code
+python game/tools/hastur.py check 'print("hello")'     # Compile check only
+python game/tools/hastur.py rescan                      # Force filesystem rescan
+python game/tools/hastur.py save                        # Save scene (force=false)
+python game/tools/hastur.py save --force                # Save scene (force=true)
+python game/tools/hastur.py props /root/Main/Caster     # Get node properties
+python game/tools/hastur.py props /root/Main/Caster --filter position,visible
+python game/tools/hastur.py scene-tree                  # Get scene tree
+python game/tools/hastur.py logs 10                     # Get last N log entries
+```
+
+### Output capture
+
+`print()`/`prints()`/`printraw()` in executed snippets: captured. `printerr()`/`push_warning()`/`push_error()` anywhere: captured. `print()` from non-executed code: NOT captured (Godot 4 limitation).
 
 **Rules**: Tab indentation only; modify `game/addons/hasturoperationgd/`, not broker source.
 

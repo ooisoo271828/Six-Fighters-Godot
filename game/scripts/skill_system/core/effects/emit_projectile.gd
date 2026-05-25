@@ -1,5 +1,5 @@
-## EmitProjectileEffect -- projectile spawning leaf effect
-## v2.3: per-skill trajectory control + tracking angle offset + configurable stagger
+## EmitProjectileEffect — projectile spawning leaf effect
+## v2.4: per-projectile target selection with avoidance support
 class_name EmitProjectileEffect
 extends SkillEffect
 
@@ -13,26 +13,33 @@ func execute(context: SkillEffect.SkillExecutionContext) -> Array[ExecutionChain
 	var count_max: int = visual_def.get("projectile_count_max") if visual_def and "projectile_count_max" in visual_def else 1
 	var count: int = randi_range(count_min, count_max)
 
-	# build target list for multi-target seeking
-	var targets: Array = []
-	if context.available_targets.size() > 1:
-		targets = context.available_targets.duplicate()
-		targets.shuffle()
-
 	var is_multi: bool = count > 1
 	var is_tracking: bool = context.tracking_enabled
+
+	# 每弹独立选目标，维护已选排除列表
+	var already_selected: Array = []
 
 	var chains: Array[ExecutionChain] = []
 	for i in range(count):
 		var chain := _create_chain(context)
 
-		# multi-target seeking: assign different targets
-		if targets.size() > 0:
-			var t = targets[i % targets.size()]
+		# 每弹独立调用目标选择策略（支持避弹排除）
+		if context.available_targets.size() > 0:
+			var t: Node2D = TargetSelector.select_target(
+				chain.position, context.available_targets,
+				context.target_mode, context.cast_range, already_selected
+			)
+			# 降级：排除后无目标，允许重复
+			if not t:
+				t = TargetSelector.select_target(
+					chain.position, context.available_targets,
+					context.target_mode, context.cast_range
+				)
 			if t and is_instance_valid(t):
 				chain.target = t
 				chain.target_pos = t.global_position
 				chain.direction = chain.position.direction_to(t.global_position)
+				already_selected.append(t)
 
 		# trajectory: use visual_def setting; add bezier variation for multi-projectile bezier skills
 		if is_multi and not is_tracking and chain.trajectory_type == 1:
@@ -45,7 +52,6 @@ func execute(context: SkillEffect.SkillExecutionContext) -> Array[ExecutionChain
 				chain.bezier_forward_ratio = forward_dist
 
 		# tracking angle offset: wide angles only, no frontal spread
-		# two ranges: +45..+115 deg and -115..-45 deg
 		if is_tracking and is_multi:
 			var offset_angle: float
 			if randf() < 0.5:

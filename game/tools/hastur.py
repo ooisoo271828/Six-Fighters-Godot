@@ -6,9 +6,13 @@ Usage:
   python hastur.py health              — Check broker health
   python hastur.py executors           — List connected executors
   python hastur.py exec '<code>'       — Execute GDScript code
+  python hastur.py check '<code>'      — Compile check (no execution)
   python hastur.py scene-tree          — Get current scene tree
   python hastur.py create-node <name> <type> [parent_path] — Create a node
   python hastur.py delete-node <path>  — Delete a node
+  python hastur.py props <path> [--filter prop1,prop2] — Get node properties
+  python hastur.py rescan              — Force editor filesystem rescan
+  python hastur.py save [--force]      — Save current scene
   python hastur.py logs [limit]        — Get executor logs
   python hastur.py start               — Start the broker-server
   python hastur.py stop                — Stop the broker-server
@@ -150,6 +154,49 @@ def cmd_logs(limit=20):
 
     print(f"== Logs (last {limit}) ==")
     resp = api("GET", f"/executors/{eid}/logs?limit={limit}")
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_check(code):
+    if not code:
+        print("[ERROR] Code is required")
+        print("Usage: hastur.py check 'print(42)'")
+        sys.exit(1)
+
+    print(f">> Compiling check...")
+    resp = api("POST", "/script/check", {"code": code})
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_rescan():
+    print(">> Rescanning project filesystem...")
+    resp = api("POST", "/project/rescan")
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_save(force=False):
+    print(">> Saving current scene...")
+    resp = api("POST", "/scene/save", {"force": force})
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_props(path, filter_str=None):
+    if not path:
+        print("[ERROR] Node path is required")
+        print("Usage: hastur.py props /root/Main/Caster [--filter position,visible]")
+        sys.exit(1)
+
+    eid = find_executor_id()
+    if not eid:
+        print("[WARN] No executor connected.")
+        return
+
+    endpoint = f"/executors/{eid}/scene/properties?path={path}"
+    if filter_str:
+        endpoint += f"&filter={filter_str}"
+
+    print(f">> Getting properties for: {path}")
+    resp = api("GET", endpoint)
     print(json.dumps(resp, indent=2, ensure_ascii=False))
 
 
@@ -295,6 +342,7 @@ def main():
         "status": cmd_status,
         "executors": cmd_executors,
         "exec": lambda: cmd_exec(" ".join(args)),
+        "check": lambda: cmd_check(" ".join(args)),
         "scene-tree": cmd_scene_tree,
         "scene_tree": cmd_scene_tree,
         "tree": cmd_scene_tree,
@@ -302,6 +350,9 @@ def main():
         "create_node": lambda: cmd_create_node(*args),
         "delete-node": lambda: cmd_delete_node(*args),
         "delete_node": lambda: cmd_delete_node(*args),
+        "props": lambda: cmd_props(args[0] if args else "", args[2] if len(args) > 2 and args[1] == "--filter" else None),
+        "rescan": cmd_rescan,
+        "save": lambda: cmd_save("--force" in args),
         "logs": lambda: cmd_logs(int(args[0]) if args else 20),
         "start": cmd_start,
         "stop": cmd_stop,

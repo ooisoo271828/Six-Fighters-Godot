@@ -7,7 +7,7 @@ extends VFXExecutorBase
 func get_kind() -> StringName:
 	return &"ground_explosion"
 
-func execute(layer: VFXLayerDef, world_pos: Vector2, pool: HitVFXPool, tex_manager: VFXTextureManager) -> void:
+func execute(layer: VFXLayerDef, world_pos: Vector2, _pool: HitVFXPool, tex_manager: VFXTextureManager) -> void:
 	var params: Dictionary = layer.params
 	var color: Color = params.get("color", Color(1.0, 0.4, 0.05, 1))
 	var radius: float = params.get("radius", 60.0)

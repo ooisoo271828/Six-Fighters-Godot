@@ -40,6 +40,9 @@ const HEARTBEAT_INTERVAL := 5.0  # 每 5 秒发送一次心跳
 
 var _editor_plugin_ref = null
 
+# 注册式路由 — 替代 match 块
+var _message_handlers: Dictionary = {}
+
 
 func _init(host: String, port: int, executor_type: String = "editor", editor_plugin = null) -> void:
 	_host = host
@@ -51,14 +54,35 @@ func _init(host: String, port: int, executor_type: String = "editor", editor_plu
 	_project_name = ProjectSettings.get_setting("application/config/name", "Unnamed")
 	_project_path = ProjectSettings.globalize_path("res://")
 	_editor_pid = OS.get_process_id()
-	_plugin_version = "0.4.0"
+	_plugin_version = "0.5.0"
 	var version_info = Engine.get_version_info()
 	_editor_version = str(version_info.get("major", 0)) + "." + str(version_info.get("minor", 0)) + "." + str(version_info.get("patch", 0))
+
+	# 初始化注册式路由
+	_init_handlers()
 
 	# 初始化日志捕获器
 	_init_log_catcher()
 
 	_try_connect()
+
+
+func _init_handlers() -> void:
+	_message_handlers = {
+		"register_result": _handle_register_result,
+		"execute": _handle_execute,
+		"get_scene_tree": _handle_get_scene_tree,
+		"create_node": _handle_create_node,
+		"delete_node": _handle_delete_node,
+		"ping": _handle_ping,
+		"pong": _handle_pong_msg,
+		"heartbeat_ack": _handle_heartbeat_ack,
+		# v0.5.0 新增
+		"rescan": _handle_rescan,
+		"script_check": _handle_script_check,
+		"get_properties": _handle_get_properties,
+		"scene_save": _handle_scene_save,
+	}
 
 
 func _init_log_catcher() -> void:
@@ -96,12 +120,15 @@ func _notification(what: int) -> void:
 				OS.remove_logger(_hastur_logger)
 				_logger_registered = false
 			_hastur_logger = null
+		# 清理 GDScriptExecutor（移除其 _CompileErrorCapturer OS logger）
+		if _executor != null:
+			_executor.dispose()
+			_executor = null
 		if _tcp != null:
 			_tcp.disconnect_from_host()
 		_connected = false
 		_executor_id = ""
 		_buffer = ""
-		_executor = null
 
 
 func disconnect_client() -> void:
@@ -113,14 +140,14 @@ func disconnect_client() -> void:
 			OS.remove_logger(_hastur_logger)
 			_logger_registered = false
 		_hastur_logger = null
+	if _executor != null:
+		_executor.dispose()
+		_executor = null
 	if _tcp:
 		_tcp.disconnect_from_host()
 	_connected = false
 	_executor_id = ""
 	_buffer = ""
-	if _executor != null:
-		_executor.dispose()
-		_executor = null
 
 
 func poll(delta: float) -> void:
@@ -246,23 +273,10 @@ func _handle_message(raw: String) -> void:
 	var type = msg.get("type", "")
 	var data = msg.get("data", {})
 
-	match type:
-		"register_result":
-			_handle_register_result(data)
-		"execute":
-			_handle_execute(data)
-		"get_scene_tree":
-			_handle_get_scene_tree(data)
-		"create_node":
-			_handle_create_node(data)
-		"delete_node":
-			_handle_delete_node(data)
-		"ping":
-			_send_message({"type": "pong"})
-		"pong":
-			_handle_pong()
-		"heartbeat_ack":
-			_handle_heartbeat_ack(data)
+	if _message_handlers.has(type):
+		_message_handlers[type].call(data)
+	else:
+		push_warning("BrokerClient: unknown message type '%s'" % type)
 
 
 func _handle_register_result(data: Dictionary) -> void:
@@ -525,7 +539,11 @@ func _send_message(msg: Dictionary) -> void:
 		push_warning("BrokerClient: put_data failed with error %d for message type: %s" % [err, msg.get("type", "unknown")])
 
 
-func _handle_pong() -> void:
+func _handle_ping(_data: Dictionary) -> void:
+	_send_message({"type": "pong"})
+
+
+func _handle_pong_msg(_data: Dictionary) -> void:
 	var now = Time.get_ticks_msec()
 	if _ping_sent_time > 0:
 		_rtt_ms = (now - _ping_sent_time) as float
@@ -620,3 +638,159 @@ func send_heartbeat() -> void:
 		return
 	_ping_sent_time = Time.get_ticks_msec()
 	_send_message({"type": "heartbeat", "data": {"rtt_ms": _rtt_ms}})
+
+
+# ============ v0.5.0 新增 handlers ============
+
+func _handle_rescan(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var editor_interface = _get_editor_interface()
+	if editor_interface == null:
+		_send_result("rescan_result", request_id, {"success": false, "error": "No editor plugin"})
+		return
+	editor_interface.get_resource_filesystem().scan()
+	_send_result("rescan_result", request_id, {"success": true, "scanned": true})
+
+
+func _handle_script_check(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var code = str(data.get("code", ""))
+	var result = _executor.compile_only(code)
+	result["request_id"] = request_id
+	_send_message({"type": "script_check_result", "data": result})
+
+
+func _handle_get_properties(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var node_path = str(data.get("node_path", ""))
+	var filter_str = str(data.get("filter", ""))
+
+	var editor_interface = _get_editor_interface()
+	if editor_interface == null:
+		_send_result("scene_properties_result", request_id, {"success": false, "error": "No editor plugin"})
+		return
+
+	var scene_root = editor_interface.get_edited_scene_root()
+	if scene_root == null:
+		_send_result("scene_properties_result", request_id, {"success": false, "error": "No scene open"})
+		return
+
+	# 解析节点路径
+	var node: Node = null
+	if node_path == "" or node_path == "/":
+		node = scene_root
+	else:
+		var search_path = node_path
+		if node_path.begins_with("/root/"):
+			search_path = node_path.substr(6)
+		if search_path.begins_with(scene_root.name + "/"):
+			search_path = search_path.substr(scene_root.name.length() + 1)
+		elif search_path == scene_root.name:
+			search_path = ""
+		if search_path == "":
+			node = scene_root
+		else:
+			node = scene_root.get_node_or_null(search_path)
+
+	if node == null:
+		_send_result("scene_properties_result", request_id, {"success": false, "error": "Node not found: " + node_path})
+		return
+
+	# 黑名单 — 始终排除
+	var blacklist := ["_meta", "_import_path", "script", "owner"]
+	# 解析白名单过滤器
+	var whitelist: Array = []
+	if filter_str.strip_edges() != "":
+		for part in filter_str.split(","):
+			var trimmed = part.strip_edges()
+			if trimmed != "":
+				whitelist.append(trimmed)
+
+	var properties := {}
+	var prop_list := node.get_property_list()
+	for prop in prop_list:
+		var prop_name: String = prop.get("name", "")
+		var usage: int = prop.get("usage", 0)
+		# 只返回有 STORAGE 或 EDITOR 标志的属性
+		if not (usage & PROPERTY_USAGE_STORAGE) and not (usage & PROPERTY_USAGE_EDITOR):
+			continue
+		# 排除黑名单
+		if prop_name.begins_with("_") or prop_name in blacklist:
+			continue
+		# 白名单过滤
+		if whitelist.size() > 0 and not (prop_name in whitelist):
+			continue
+		var value = node.get(prop_name)
+		properties[prop_name] = _serialize_value(value)
+
+	var result_data := {
+		"success": true,
+		"node_path": str(node.get_path()),
+		"node_type": node.get_class(),
+		"property_count": properties.size(),
+		"properties": properties
+	}
+	_send_result("scene_properties_result", request_id, result_data)
+
+
+func _handle_scene_save(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var editor_interface = _get_editor_interface()
+	if editor_interface == null:
+		_send_result("scene_save_result", request_id, {"success": false, "saved": false, "path": "", "error": "No editor plugin"})
+		return
+
+	var scene_root = editor_interface.get_edited_scene_root()
+	if scene_root == null:
+		_send_result("scene_save_result", request_id, {"success": false, "saved": false, "path": "", "error": "No scene open"})
+		return
+
+	var scene_path = scene_root.scene_file_path
+	if scene_path == "":
+		_send_result("scene_save_result", request_id, {"success": false, "saved": false, "path": "", "error": "Scene has no file path (unsaved scene?)"})
+		return
+
+	var err = editor_interface.save_scene()
+	if err == OK:
+		_send_result("scene_save_result", request_id, {"success": true, "saved": true, "path": scene_path})
+	else:
+		_send_result("scene_save_result", request_id, {"success": false, "saved": false, "path": scene_path, "error": "Save failed with error code: %d" % err})
+
+
+# ============ 辅助方法 ============
+
+func _send_result(type: String, request_id: String, data: Dictionary) -> void:
+	data["request_id"] = request_id
+	_send_message({"type": type, "data": data})
+
+
+func _serialize_value(value) -> Variant:
+	if value == null:
+		return null
+	if value is bool or value is int or value is float or value is String:
+		return value
+	if value is Vector2:
+		return {"x": value.x, "y": value.y}
+	if value is Vector3:
+		return {"x": value.x, "y": value.y, "z": value.z}
+	if value is Color:
+		return {"r": value.r, "g": value.g, "b": value.b, "a": value.a}
+	if value is Rect2:
+		return {"x": value.position.x, "y": value.position.y, "w": value.size.x, "h": value.size.y}
+	if value is Transform2D:
+		return {"origin": _serialize_value(value.origin), "x": _serialize_value(value.x), "y": _serialize_value(value.y)}
+	if value is Array:
+		var arr := []
+		for item in value:
+			arr.append(_serialize_value(item))
+		return arr
+	if value is Dictionary:
+		var dict := {}
+		for key in value:
+			dict[str(key)] = _serialize_value(value[key])
+		return dict
+	if value is Object:
+		if value.has_method("to_string"):
+			return "[%s: %s]" % [value.get_class(), value.to_string()]
+		return "[%s]" % value.get_class()
+	return str(value)

@@ -201,6 +201,9 @@ func _execute_layers(layers: Array[VFXLayerDef], world_pos: Vector2) -> void:
 	for layer in layers:
 		if layer == null:
 			continue
+		# 延迟执行
+		if layer.delay > 0.0:
+			await get_tree().create_timer(layer.delay).timeout
 		# 将 int kind 转换为 StringName
 		var kind_name: StringName = KIND_MAP.get(layer.kind, &"")
 		if kind_name == &"":

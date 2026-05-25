@@ -359,8 +359,15 @@ func _schedule_flush() -> void:
 	_internal_timer = Timer.new()
 	_internal_timer.one_shot = true
 	_internal_timer.timeout.connect(_on_internal_flush_timer)
-	root.add_child(_internal_timer)
-	_internal_timer.start(float(FLUSH_INTERVAL_MS) / 1000.0)
+	# call_deferred 避免场景树 blocked 状态下 add_child 报错
+	_add_timer_deferred.call_deferred(root, _internal_timer)
+
+
+func _add_timer_deferred(root: Node, timer: Timer) -> void:
+	if _is_shutting_down or not is_instance_valid(timer):
+		return
+	root.add_child(timer)
+	timer.start(float(FLUSH_INTERVAL_MS) / 1000.0)
 
 
 func _on_internal_flush_timer() -> void:

@@ -88,3 +88,44 @@ export interface LogStore {
 	logs: LogEntry[]
 	lastUpdated: string
 }
+
+export interface RescanResult {
+	request_id: string
+	success: boolean
+	scanned: boolean
+	error?: string
+}
+
+export interface ScriptCheckResult {
+	request_id: string
+	compile_success: boolean
+	method_count: number
+	errors: Array<{ line: number; column: number; message: string; file: string }>
+	compile_error?: string
+}
+
+export interface ScenePropertiesResult {
+	request_id: string
+	success: boolean
+	node_path: string
+	node_type: string
+	property_count: number
+	properties: Record<string, unknown>
+	error?: string
+}
+
+export interface SceneSaveResult {
+	request_id: string
+	success: boolean
+	saved: boolean
+	path: string
+	error?: string
+}
+
+export interface ExecuteSummary {
+	compile_ok: boolean
+	run_ok: boolean
+	error_count: number
+	first_error: { message: string; line: number | null } | null
+	output_count: number
+}

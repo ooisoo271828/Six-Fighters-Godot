@@ -1,7 +1,7 @@
 import * as net from 'net'
 import * as crypto from 'crypto'
 import { ExecutorManager } from './executor-manager.js'
-import type { ExecutorInfo, TcpMessage, ExecuteResult, Breakpoint, LogEntry } from './types.js'
+import type { ExecutorInfo, TcpMessage, ExecuteResult, Breakpoint, LogEntry, RescanResult, ScriptCheckResult, ScenePropertiesResult, SceneSaveResult } from './types.js'
 
 // ============ 配置常量 ============
 const MAX_LOG_ENTRIES = 1000           // 每个 executor 最多保存的日志条数
@@ -10,6 +10,12 @@ const MAX_PENDING_REQUESTS = 200       // 每个连接最大待处理请求数
 const SOCKET_KEEPALIVE = true          // 启用 TCP keep-alive
 const SOCKET_KEEPALIVE_INITIAL_DELAY = 30000  // 30秒后开始探测
 const MAX_LINE_LENGTH = 1024 * 1024    // 单行消息最大长度（1MB）
+
+const RESULT_TYPES = new Set([
+	'execute_result', 'scene_tree_result', 'create_node_result',
+	'delete_node_result', 'rescan_result', 'script_check_result',
+	'scene_properties_result', 'scene_save_result'
+])
 
 interface PendingRequest {
 	resolve: (result: Record<string, unknown>) => void
@@ -43,6 +49,47 @@ export class TcpServer {
 
 	constructor(executorManager: ExecutorManager) {
 		this.executorManager = executorManager
+	}
+
+	// Generic request sender — replaces 4 duplicate send* methods
+	async sendRequest<T = Record<string, unknown>>(
+		executorId: string,
+		type: string,
+		data: Record<string, unknown>,
+		timeoutMs: number = 10000
+	): Promise<T> {
+		for (const [, ctx] of this.connections) {
+			if (ctx.executorId === executorId) {
+				const requestId = crypto.randomUUID()
+				const message = JSON.stringify({
+					type,
+					data: { request_id: requestId, ...data },
+				}) + '\n'
+
+				return new Promise<T>((resolve, reject) => {
+					const timer = setTimeout(() => {
+						ctx.pendingRequests.delete(requestId)
+						reject(new Error('TIMEOUT'))
+					}, timeoutMs)
+					ctx.pendingRequests.set(requestId, { resolve: resolve as (value: Record<string, unknown>) => void, reject, timer })
+					ctx.socket.write(message)
+				})
+			}
+		}
+		return Promise.reject(new Error('Executor not connected'))
+	}
+
+	// Generic result handler — replaces 4 duplicate handle*Result methods
+	private handleResult(socketId: string, data: Record<string, unknown>): void {
+		const ctx = this.connections.get(socketId)
+		if (!ctx) return
+		const requestId = data.request_id as string
+		const pending = ctx.pendingRequests.get(requestId)
+		if (pending) {
+			clearTimeout(pending.timer)
+			ctx.pendingRequests.delete(requestId)
+			pending.resolve(data)
+		}
 	}
 
 	async start(host: string, port: number): Promise<void> {
@@ -91,62 +138,12 @@ export class TcpServer {
 	}
 
 	sendExecute(executorId: string, code: string, language: string, timeoutMs: number = 30000): Promise<ExecuteResult> {
-		for (const [, ctx] of this.connections) {
-			if (ctx.executorId === executorId) {
-				const requestId = crypto.randomUUID()
-				const message = JSON.stringify({
-					type: 'execute',
-					data: { request_id: requestId, code, language },
-				}) + '\n'
-
-				return new Promise((resolve, reject) => {
-					const timer = setTimeout(() => {
-						ctx.pendingRequests.delete(requestId)
-						reject(new Error('TIMEOUT'))
-					}, timeoutMs)
-
-					ctx.pendingRequests.set(requestId, { resolve, reject, timer })
-					ctx.socket.write(message)
-				})
-			}
-		}
-		return Promise.reject(new Error('Executor not connected'))
+		return this.sendRequest<ExecuteResult>(executorId, 'execute', { code, language }, timeoutMs)
 	}
 
 	// 场景树请求
 	sendSceneTreeRequest(executorId: string, timeoutMs: number = 10000): Promise<Record<string, unknown>> {
-		for (const [, ctx] of this.connections) {
-			if (ctx.executorId === executorId) {
-				const requestId = crypto.randomUUID()
-				const message = JSON.stringify({
-					type: 'get_scene_tree',
-					data: { request_id: requestId },
-				}) + '\n'
-
-				return new Promise((resolve, reject) => {
-					const timer = setTimeout(() => {
-						ctx.pendingRequests.delete(requestId)
-						reject(new Error('TIMEOUT'))
-					}, timeoutMs)
-
-					ctx.pendingRequests.set(requestId, {
-						resolve: (result: Record<string, unknown>) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							resolve(result)
-						},
-						reject: (error: Error) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							reject(error)
-						},
-						timer,
-					})
-					ctx.socket.write(message)
-				})
-			}
-		}
-		return Promise.reject(new Error('Executor not connected'))
+		return this.sendRequest(executorId, 'get_scene_tree', {}, timeoutMs)
 	}
 
 	// 创建节点请求
@@ -158,44 +155,12 @@ export class TcpServer {
 		scriptPath: string,
 		timeoutMs: number = 10000
 	): Promise<Record<string, unknown>> {
-		for (const [, ctx] of this.connections) {
-			if (ctx.executorId === executorId) {
-				const requestId = crypto.randomUUID()
-				const message = JSON.stringify({
-					type: 'create_node',
-					data: {
-						request_id: requestId,
-						parent_path: parentPath,
-						name: nodeName,
-						type: nodeType,
-						script: scriptPath,
-					},
-				}) + '\n'
-
-				return new Promise((resolve, reject) => {
-					const timer = setTimeout(() => {
-						ctx.pendingRequests.delete(requestId)
-						reject(new Error('TIMEOUT'))
-					}, timeoutMs)
-
-					ctx.pendingRequests.set(requestId, {
-						resolve: (result: Record<string, unknown>) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							resolve(result)
-						},
-						reject: (error: Error) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							reject(error)
-						},
-						timer,
-					})
-					ctx.socket.write(message)
-				})
-			}
-		}
-		return Promise.reject(new Error('Executor not connected'))
+		return this.sendRequest(executorId, 'create_node', {
+			parent_path: parentPath,
+			name: nodeName,
+			type: nodeType,
+			script: scriptPath,
+		}, timeoutMs)
 	}
 
 	// 删除节点请求
@@ -204,41 +169,7 @@ export class TcpServer {
 		nodePath: string,
 		timeoutMs: number = 10000
 	): Promise<Record<string, unknown>> {
-		for (const [, ctx] of this.connections) {
-			if (ctx.executorId === executorId) {
-				const requestId = crypto.randomUUID()
-				const message = JSON.stringify({
-					type: 'delete_node',
-					data: {
-						request_id: requestId,
-						node_path: nodePath,
-					},
-				}) + '\n'
-
-				return new Promise((resolve, reject) => {
-					const timer = setTimeout(() => {
-						ctx.pendingRequests.delete(requestId)
-						reject(new Error('TIMEOUT'))
-					}, timeoutMs)
-
-					ctx.pendingRequests.set(requestId, {
-						resolve: (result: Record<string, unknown>) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							resolve(result)
-						},
-						reject: (error: Error) => {
-							clearTimeout(timer)
-							ctx.pendingRequests.delete(requestId)
-							reject(error)
-						},
-						timer,
-					})
-					ctx.socket.write(message)
-				})
-			}
-		}
-		return Promise.reject(new Error('Executor not connected'))
+		return this.sendRequest(executorId, 'delete_node', { node_path: nodePath }, timeoutMs)
 	}
 
 	getConnectedCount(): number {
@@ -321,21 +252,15 @@ export class TcpServer {
 			return
 		}
 
+		// Generic result routing — replaces 4 duplicate handle*Result cases
+		if (RESULT_TYPES.has(message.type)) {
+			this.handleResult(socketId, message.data as Record<string, unknown>)
+			return
+		}
+
 		switch (message.type) {
 			case 'register':
 				this.handleRegister(socketId, message.data as Record<string, unknown>)
-				break
-			case 'execute_result':
-				this.handleExecuteResult(socketId, message.data as Record<string, unknown>)
-				break
-			case 'scene_tree_result':
-				this.handleSceneTreeResult(socketId, message.data as Record<string, unknown>)
-				break
-			case 'create_node_result':
-				this.handleCreateNodeResult(socketId, message.data as Record<string, unknown>)
-				break
-			case 'delete_node_result':
-				this.handleDeleteNodeResult(socketId, message.data as Record<string, unknown>)
 				break
 			case 'pong':
 				// 心跳响应 — 立即计算并存储 RTT
@@ -363,45 +288,6 @@ export class TcpServer {
 				// 日志消息
 				this.handleLogs(ctx, message.data as Record<string, unknown>)
 				break
-		}
-	}
-
-	private handleSceneTreeResult(socketId: string, data: Record<string, unknown>): void {
-		const ctx = this.connections.get(socketId)
-		if (!ctx) return
-
-		const requestId = data.request_id as string
-		const pending = ctx.pendingRequests.get(requestId)
-		if (pending) {
-			clearTimeout(pending.timer)
-			ctx.pendingRequests.delete(requestId)
-			pending.resolve(data)
-		}
-	}
-
-	private handleCreateNodeResult(socketId: string, data: Record<string, unknown>): void {
-		const ctx = this.connections.get(socketId)
-		if (!ctx) return
-
-		const requestId = data.request_id as string
-		const pending = ctx.pendingRequests.get(requestId)
-		if (pending) {
-			clearTimeout(pending.timer)
-			ctx.pendingRequests.delete(requestId)
-			pending.resolve(data)
-		}
-	}
-
-	private handleDeleteNodeResult(socketId: string, data: Record<string, unknown>): void {
-		const ctx = this.connections.get(socketId)
-		if (!ctx) return
-
-		const requestId = data.request_id as string
-		const pending = ctx.pendingRequests.get(requestId)
-		if (pending) {
-			clearTimeout(pending.timer)
-			ctx.pendingRequests.delete(requestId)
-			pending.resolve(data)
 		}
 	}
 
@@ -464,19 +350,6 @@ export class TcpServer {
 			type: 'register_result',
 			data: { success: true, id },
 		})
-	}
-
-	private handleExecuteResult(socketId: string, data: Record<string, unknown>): void {
-		const ctx = this.connections.get(socketId)
-		if (!ctx) return
-
-		const requestId = data.request_id as string
-		const pending = ctx.pendingRequests.get(requestId)
-		if (pending) {
-			clearTimeout(pending.timer)
-			ctx.pendingRequests.delete(requestId)
-			pending.resolve(data)
-		}
 	}
 
 	private handleDisconnection(socketId: string): void {

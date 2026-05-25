@@ -141,6 +141,78 @@ static func select_target(pos: Vector2, units: Array, target_mode: int, max_rang
 			return find_nearest_in_range(pos, filtered, max_range)
 
 
+## 最大覆盖角度选择：找到能让射线型技能覆盖最多敌方单位的角度
+## 返回最优角度（弧度），如果没有合法目标返回 INF
+## beam_width: 射线宽度（像素）
+## beam_length: 射线长度（像素）
+static func find_max_coverage_angle(caster_pos: Vector2, units: Array, beam_width: float, beam_length: float, max_range: float) -> float:
+	var candidates: Array = []
+	for u in units:
+		if not _is_valid_target(u):
+			continue
+		var dist: float = caster_pos.distance_to(u.position)
+		if dist <= max_range:
+			candidates.append(u)
+
+	if candidates.is_empty():
+		return INF
+
+	# 如果只有一个目标，直接朝向它
+	if candidates.size() == 1:
+		return caster_pos.angle_to_point(candidates[0].position)
+
+	# 将所有目标转换为相对于施法者的角度和距离
+	var target_data: Array = []
+	for u in candidates:
+		var offset: Vector2 = u.position - caster_pos
+		var angle: float = offset.angle()
+		var dist: float = offset.length()
+		target_data.append({"unit": u, "angle": angle, "dist": dist, "pos": u.position})
+
+	# 收集所有候选角度（每个目标的角度 + 边界角度）
+	var angles_to_test: Array = []
+	for td in target_data:
+		angles_to_test.append(td["angle"])
+
+	# 对于每个目标，计算激光柱能覆盖它的角度范围
+	# 激光柱是一个矩形：从施法者位置沿某个方向延伸 beam_length，宽度 beam_width
+	# 目标被覆盖的条件：目标到射线中心线的垂直距离 <= beam_width/2，且沿射线方向的距离 <= beam_length
+	for td in target_data:
+		var dist: float = td["dist"]
+		if dist > beam_length:
+			continue
+		# 计算能让激光柱覆盖此目标的角度偏移范围
+		var max_lateral: float = beam_width * 0.5
+		if dist > 0:
+			var half_angle: float = atan2(max_lateral, dist)
+			var base_angle: float = td["angle"]
+			angles_to_test.append(base_angle - half_angle)
+			angles_to_test.append(base_angle + half_angle)
+
+	# 对每个候选角度，计算覆盖的目标数量
+	var best_angle: float = 0.0
+	var best_count: int = 0
+
+	for test_angle in angles_to_test:
+		var count: int = 0
+		var dir: Vector2 = Vector2(cos(test_angle), sin(test_angle))
+		var perp: Vector2 = Vector2(-dir.y, dir.x)
+
+		for td in target_data:
+			var offset: Vector2 = td["pos"] - caster_pos
+			var along: float = offset.dot(dir)
+			var lateral: float = absf(offset.dot(perp))
+
+			if along >= 0 and along <= beam_length and lateral <= beam_width * 0.5:
+				count += 1
+
+		if count > best_count:
+			best_count = count
+			best_angle = test_angle
+
+	return best_angle
+
+
 ## 弹射目标选择：排除已命中目标，无射程限制
 ## target_mode: 0=NEAREST, 2=LOWEST_HP, 4=RANDOM
 static func select_for_bounce(pos: Vector2, units: Array, target_mode: int, exclude: Array) -> Node2D:
@@ -161,6 +233,76 @@ static func select_for_bounce(pos: Vector2, units: Array, target_mode: int, excl
 			return filtered[randi() % filtered.size()]
 		_:
 			return find_nearest(pos, filtered, func(_u): return true)
+
+
+## 魔眼激光最优路径放置
+## 找到能覆盖最多目标的轨迹位置和朝向
+## 返回 {path_origin, path_angle, eye_position, covered_count}
+static func find_optimal_laser_path(
+	caster_pos: Vector2,
+	units: Array,
+	cast_range: float,
+	path_def: LaserPathDef,
+	ellipse_a: float,
+	ellipse_b: float,
+	eye_height: float = 180.0
+) -> Dictionary:
+	var candidates: Array = []
+	for u in units:
+		if not _is_valid_target(u):
+			continue
+		if caster_pos.distance_to(u.position) <= cast_range:
+			candidates.append(u)
+
+	if candidates.is_empty():
+		return {"path_origin": Vector2(), "path_angle": 0.0, "eye_position": Vector2(), "covered_count": 0}
+
+	if candidates.size() == 1:
+		var origin: Vector2 = candidates[0].position
+		return {
+			"path_origin": origin,
+			"path_angle": 0.0,
+			"eye_position": origin + Vector2(0, -eye_height),
+			"covered_count": 1,
+		}
+
+	# 计算质心
+	var centroid: Vector2 = Vector2()
+	for u in candidates:
+		centroid += u.position
+	centroid /= candidates.size()
+
+	var best_angle: float = 0.0
+	var best_count: int = 0
+	var angles_to_try: int = 12
+
+	for ai in angles_to_try:
+		var angle: float = float(ai) / float(angles_to_try) * TAU
+		var count: int = 0
+
+		for u in candidates:
+			# 在轨迹上采样10个点，检查目标是否落入椭圆
+			for ti in range(10):
+				var t: float = float(ti) / 9.0
+				var local_pt: Vector2 = path_def.get_point(t).rotated(angle)
+				var world_pt: Vector2 = centroid + local_pt
+
+				var dx: float = absf(u.position.x - world_pt.x)
+				var dy: float = absf(u.position.y - world_pt.y)
+				if (dx * dx) / (ellipse_a * ellipse_a) + (dy * dy) / (ellipse_b * ellipse_b) <= 1.0:
+					count += 1
+					break  # 每个目标只计一次
+
+		if count > best_count:
+			best_count = count
+			best_angle = angle
+
+	return {
+		"path_origin": centroid,
+		"path_angle": best_angle,
+		"eye_position": centroid + Vector2(0, -eye_height),
+		"covered_count": best_count,
+	}
 
 
 ## 无射程限制的血量比例最低目标

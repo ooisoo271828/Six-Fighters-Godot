@@ -23,7 +23,7 @@ func set_log_catcher(catcher: EditorLogCatcher) -> void:
 func _log_message(message: String, error: bool) -> void:
 	# Godot Logger 机制：push_error → _log_message(msg, true)，push_warning → _log_message(msg, false)
 	# 统一通过 _log 路由，_log 会根据 level 分配到对应的日志方法
-	_log("error" if error else "info", message)
+	_log("error" if error else "warning", message)
 
 
 func _log_error(

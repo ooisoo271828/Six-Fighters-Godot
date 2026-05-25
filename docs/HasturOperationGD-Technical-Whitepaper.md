@@ -1,7 +1,7 @@
 # HasturOperationGD 插件技术蓝皮书
 
-> **版本**: v0.4.0（插件） / v0.1.0（broker-server）
-> **最后更新**: 2026-05-25
+> **版本**: v0.5.0（插件 + broker-server）
+> **最后更新**: 2026-05-25（新增第五章 + 编译阶段重构 + 全路由 asyncTcpRoute 迁移 + 激光束计数修复 + 死代码清理）
 > **适用对象**: 人类开发团队成员、AI 助理（Claude Code 等）
 > **状态**: 正式记录
 >
@@ -391,19 +391,21 @@ curl -s "http://localhost:5302/api/executors/<id>/logs/errors" \
 
 #### 3.2.1 HTTP API 端点一览
 
-| 端点 | 方法 | 功能 | 认证 |
-|------|------|------|------|
-| `/api/health` | GET | 健康检查 + executor 状态 | 否 |
-| `/api/executors` | GET | 列出所有 executor | Bearer |
-| `/api/executors/:id` | GET | 单个 executor 信息 | Bearer |
-| `/api/executors/:id/metrics` | GET | 连接指标 | Bearer |
-| **`/api/execute`** | **POST** | **执行 GDScript 代码** | Bearer |
-| `/api/scene/tree` | GET | 获取场景树 | Bearer |
-| `/api/scene/nodes` | POST | 创建节点 | Bearer |
-| `/api/scene/nodes?path=` | DELETE | 删除节点 | Bearer |
-| `/api/executors/:id/logs` | GET | 获取日志 | Bearer |
-
-> 注意：实际部署的 broker-server v0.1.0 仅实现了上述端点。断点相关端点和 `/api/executors/:id/logs/clear` 在运行时不可用。
+| 端点 | 方法 | 功能 | 认证 | 版本 |
+|------|------|------|------|------|
+| `/api/health` | GET | 健康检查 + executor 状态 | 否 | v0.1 |
+| `/api/executors` | GET | 列出所有 executor | Bearer | v0.1 |
+| `/api/executors/:id` | GET | 单个 executor 信息 | Bearer | v0.1 |
+| `/api/executors/:id/metrics` | GET | 连接指标 | Bearer | v0.1 |
+| **`/api/execute`** | **POST** | **执行 GDScript 代码**（v0.5.0 增加 summary） | Bearer | v0.1 |
+| `/api/scene/tree` | GET | 获取场景树 | Bearer | v0.1 |
+| `/api/scene/nodes` | POST | 创建节点 | Bearer | v0.1 |
+| `/api/scene/nodes?path=` | DELETE | 删除节点 | Bearer | v0.1 |
+| `/api/executors/:id/logs` | GET | 获取日志 | Bearer | v0.1 |
+| **`/api/project/rescan`** | **POST** | **强制编辑器刷新文件系统** | Bearer | v0.5.0 |
+| **`/api/script/check`** | **POST** | **编译检查（不执行）** | Bearer | v0.5.0 |
+| **`/api/executors/:id/scene/properties`** | **GET** | **获取节点属性**（支持 filter 参数） | Bearer | v0.5.0 |
+| **`/api/scene/save`** | **POST** | **保存当前场景到磁盘** | Bearer | v0.5.0 |
 
 #### 3.2.2 Execute API
 
@@ -429,7 +431,11 @@ python tools/editor_call.py --executors                 # 列出 executor
 python tools/hastur.py status          # 全状态概览
 python tools/hastur.py health          # 健康检查
 python tools/hastur.py exec '<code>'   # 执行 GDScript
+python tools/hastur.py check '<code>'  # 编译检查（不执行）  [v0.5.0]
 python tools/hastur.py scene-tree      # 获取场景树
+python tools/hastur.py props <path> [--filter p1,p2]  # 获取节点属性  [v0.5.0]
+python tools/hastur.py rescan          # 强制文件系统刷新  [v0.5.0]
+python tools/hastur.py save [--force]  # 保存当前场景  [v0.5.0]
 python tools/hastur.py logs [limit]    # 获取日志
 python tools/hastur.py start|stop|restart  # 管理 broker-server
 ```
@@ -582,9 +588,664 @@ code = '\n'.join([
 
 ---
 
-## 五、Godot 4.x 兼容性说明
+## 五、远程技能自动化测试指南
 
-### 5.1 Logger.ErrorType 枚举值
+> **v0.5.0 工作流** — 基于 2026-05-25 实测验证
+> **适用场景**: AI Agent 通过 Hastur 在游戏运行时中自动打开 SkillDemo 场景、选择技能、施放测试、验证结果的全流程
+
+### 5.1 双 Executor 架构
+
+Hastur 支持两类 executor，远程技能测试需要同时使用两者：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Claude Code / AI Agent                      │
+│                              │                                      │
+│                    POST /api/execute                                 │
+│                              │                                      │
+├──────────────────────────────┼──────────────────────────────────────┤
+│                    broker-server (Node.js)                           │
+│                              │                                      │
+│              ┌───────────────┼───────────────┐                      │
+│              │               │               │                      │
+│    ┌─────────▼─────────┐   │   ┌─────────▼─────────┐              │
+│    │  Editor Executor   │   │   │   Game Executor    │              │
+│    │  type: "editor"   │   │   │   type: "game"    │              │
+│    │  (TCP :5301)      │   │   │   (TCP :5301)     │              │
+│    │                   │   │   │                   │              │
+│    │  Godot Editor     │   │   │  Game Runtime     │              │
+│    │  + HasturPlugin   │   │   │  + GameExecutor   │              │
+│    │                   │   │   │  (autoload)       │              │
+│    └─────────┬─────────┘   │   └─────────┬─────────┘              │
+│              │             │             │                          │
+│  ┌───────────▼────────┐   │   ┌─────────▼───────────┐              │
+│  │ play_main_scene()  │   │   │ Engine.get_main_loop │              │
+│  │ stop_playing_scene()│  │   │ change_scene_to_file()│              │
+│  │ Ignore Error Breaks│   │   │ SkillDemo._do_cast() │              │
+│  └────────────────────┘   │   └───────────────────────┘              │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+| Executor 类型 | 用途 | 可用的 API |
+|-------------|------|-----------|
+| `editor` | 控制编辑器行为：启停游戏、设置调试器、修改项目设置 | `EditorInterface`, `executeContext.editor_plugin`, `EditorFileSystem` |
+| `game` | 控制游戏运行时：切换场景、操作场景节点、调用游戏内方法 | `SceneTree`, `Engine`, 游戏内所有类 |
+
+**两者必须配合使用**: editor executor 负责游戏的生命周期管理（启动/停止），game executor 负责游戏内的技能测试操作。
+
+### 5.2 前置条件
+
+#### 5.2.1 GameExecutor Autoload（必需）
+
+`game_executor.gd` 必须注册为项目 Autoload，否则游戏进程不会连接 broker-server。
+
+```
+[autoload]  (project.godot)
+
+GameExecutor="*res://addons/hasturoperationgd/game_executor.gd"
+```
+
+验证方法：
+
+```bash
+grep -n "GameExecutor\|game_executor" game/project.godot
+# 应输出: GameExecutor="*res://addons/hasturoperationgd/game_executor.gd"
+```
+
+如果缺失，通过 Hastur 添加：
+
+```gdscript
+# 在 editor executor 上执行
+executeContext.editor_plugin.add_autoload_singleton("GameExecutor", "res://addons/hasturoperationgd/game_executor.gd")
+executeContext.output("result", "done")
+```
+
+#### 5.2.2 broker-server 运行中
+
+```bash
+cd broker/hastur-operation-plugin-main/broker-server
+HASTUR_TOKEN=<token> npm run dev
+# 或已有 PM2/systemd 守护进程
+```
+
+#### 5.2.3 Godot 编辑器运行 + Hastur 插件启用
+
+Godot 4.x 打开项目，**Project → Project Settings → Plugins → HasturOperationGD → Enabled**
+
+验证连接：
+
+```bash
+curl -s http://localhost:5302/api/health
+# 确认 executors_connected >= 1
+```
+
+### 5.3 完整工作流
+
+```
+Step 1 ─ 确认 broker + editor executor
+Step 2 ─ 启动游戏 (editor executor)
+Step 3 ─ 等待 game executor 连接
+Step 4 ─ 启用 Ignore Error Breaks (editor executor)
+Step 5 ─ 导航到 SkillDemo (game executor)
+Step 6 ─ 列出可用技能 (game executor)
+Step 7 ─ 选择并施放技能 (game executor)
+Step 8 ─ 验证结果 (game executor)
+Step 9 ─ 截图验证 (game executor)
+Step 10 ─ 停止游戏 (editor executor)
+```
+
+#### Step 1: 确认连接
+
+```bash
+curl -s http://localhost:5302/api/executors \
+  -H "Authorization: Bearer $HASTUR_TOKEN"
+
+# 期望结果: 至少一个 type: "editor" 的 executor
+```
+
+#### Step 2: 启动游戏
+
+在 **editor executor** 上执行：
+
+```gdscript
+var ei = executeContext.editor_plugin.get_editor_interface()
+ei.play_main_scene()
+executeContext.output("started", "ok")
+```
+
+> **注意**: 不要用 `ei.play_current_scene()` — 它播放编辑器当前打开的脚本场景而非项目主场景。`play_main_scene()` 播放 `project.godot` 中 `run/main_scene` 指定的场景。
+
+#### Step 3: 等待 Game Executor
+
+游戏启动后约 3-5 秒，game executor 通过 GameExecutor autoload 连接 broker。轮询等待：
+
+```bash
+# 持续轮询（建议每 2 秒一次，最多等 15 秒）
+for i in $(seq 1 8); do
+  sleep 2
+  COUNT=$(curl -s http://localhost:5302/api/executors \
+    -H "Authorization: Bearer $HASTUR_TOKEN" | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for e in d.get('data',[]) if e.get('type')=='game'))")
+  echo "Game executors: $COUNT"
+  [ "$COUNT" -ge 1 ] && break
+done
+```
+
+#### Step 4: 启用 Ignore Error Breaks（关键）
+
+**每次向 game executor 发指令前必须执行。** 否则如果 GDScript 有运行时错误，Godot 调试器会冻结游戏进程，导致后续所有 API 调用超时。
+
+在 **editor executor** 上执行：
+
+```gdscript
+var ei = executeContext.editor_plugin.get_editor_interface()
+var base = ei.get_base_control()
+var stack = [[base, 0]]
+var toolbar = null
+while stack.size() > 0:
+	var pair = stack.pop_back()
+	var node = pair[0]
+	var depth = pair[1]
+	if toolbar != null:
+		break
+	if depth > 25:
+		continue
+	if node.name.find("Stack Trace") != -1 and node.get_class() == "VBoxContainer":
+		for child in node.get_children():
+			if child is HBoxContainer:
+				toolbar = child
+				break
+	for child in node.get_children():
+		stack.append([child, depth + 1])
+if toolbar != null:
+	for child in toolbar.get_children():
+		if child is Button and child.tooltip_text == "Ignore Error Breaks":
+			if child.button_pressed:
+				executeContext.output("ignore_error_breaks", "already_enabled")
+			else:
+				child.set_toggle_mode(true)
+				child.set_pressed(true)
+				child.emit_signal("pressed")
+				executeContext.output("ignore_error_breaks", "enabled")
+			break
+```
+
+> **为什么这么复杂？** Ignore Error Breaks 按钮的 `toggle_mode` 初始为 `false`。直接 `emit_signal("pressed")` 或 `set_pressed(true)` 无效。必须先 `set_toggle_mode(true)` 再 `set_pressed(true)` 再 `emit_signal("pressed")`。
+
+#### Step 5: 导航到 SkillDemo
+
+在 **game executor** 上执行：
+
+```gdscript
+var tree = Engine.get_main_loop() as SceneTree
+if tree:
+	tree.change_scene_to_file("res://scenes/dev/skill_demo.tscn")
+	executeContext.output("navigated", "skill_demo")
+else:
+	executeContext.output("error", "no scene tree")
+```
+
+> **重要**: 在 game executor 的 snippet 模式中，`get_tree()` 不可用（因为 `self` 是 `RefCounted` 而非 `Node`）。必须用 `Engine.get_main_loop() as SceneTree` 获取场景树。
+
+等待约 2 秒让 SkillDemo 完成初始化（`_ready()` 中有 `await get_tree().create_timer(0.3).timeout`）：
+
+```bash
+sleep 2
+```
+
+#### Step 6: 列出可用技能
+
+在 **game executor** 上执行：
+
+```gdscript
+var tree = Engine.get_main_loop() as SceneTree
+var demo = tree.root.get_node_or_null("SkillDemo")
+if demo:
+	var skill_sys = demo.get_node_or_null("SkillSystem")
+	if skill_sys:
+		var registry = skill_sys.get_node_or_null("SkillRegistry")
+		if registry and registry.has_method("get_all_skill_ids"):
+			var ids = registry.get_all_skill_ids()
+			for i in range(ids.size()):
+				executeContext.output("skill_" + str(i), ids[i])
+			executeContext.output("skill_count", str(ids.size()))
+```
+
+#### Step 7: 选择并施放技能
+
+在 **game executor** 上执行：
+
+```gdscript
+var tree = Engine.get_main_loop() as SceneTree
+var demo = tree.root.get_node_or_null("SkillDemo")
+if demo and demo.has_method("_do_cast"):
+	# 选择技能（直接设 skill_id）
+	demo._selected_skill = "fireball_basic"
+	# 设置速度倍率（0=0.5×, 1=1×, 2=2×）
+	demo._speed_idx = 1
+	Engine.time_scale = 1.0
+	# 设置目标模式（0=pentagon, 1=single, 2=dual, 3=triangle, 4=scatter, 5=line）
+	demo._current_mode_idx = 0
+	demo._update_targets()
+	# 施放技能
+	demo._do_cast()
+	executeContext.output("skill", demo._selected_skill)
+	executeContext.output("is_casting", str(demo._is_casting))
+```
+
+**可选配置**:
+
+```gdscript
+# 启用循环模式（施放完成后自动重放）
+demo._looping = true
+if demo._loop_check:
+	demo._loop_check.button_pressed = true
+
+# 二倍速
+demo._speed_idx = 2
+Engine.time_scale = 2.0
+
+# 切换为目标模式
+demo._current_mode_idx = 1  # single
+demo._update_targets()
+```
+
+#### Step 8: 验证结果
+
+等待投射物结束（约 2-5 秒，取决于技能时长和速度倍率），然后检查状态：
+
+```gdscript
+var tree = Engine.get_main_loop() as SceneTree
+var demo = tree.root.get_node_or_null("SkillDemo")
+if demo:
+	executeContext.output("is_casting", str(demo._is_casting))
+	executeContext.output("status", demo._status_label.text if demo._status_label else "?")
+	
+	# 检查普通投射物
+	var pool = demo._skill_system.get_node_or_null("ProjectilePool")
+	if pool and pool.has_method("get_active_count"):
+		executeContext.output("active_projectiles", str(pool.get_active_count()))
+	
+	# 检查激光池（激光术专用）
+	var lb_pool = demo._skill_system.get_node_or_null("LaserBeamPool")
+	if lb_pool and lb_pool.has_method("get_active_count"):
+		executeContext.output("active_lasers", str(lb_pool.get_active_count()))
+```
+
+**状态标签含义**:
+
+| 状态文本 | 含义 |
+|---------|------|
+| `施放完成` | 技能执行完毕，所有投射物已结束 |
+| `施放: <skill_id>` | 技能正在播放中 |
+| `射程<range>内无合法目标` | 目标不在技能射程内，或目标模式不匹配 |
+| `已暂停` | 用户或代码设置了 `Engine.time_scale = 0` |
+| `就绪 — N 个技能` | SkillDemo 初始化完成，N 个技能可测试 |
+
+#### Step 9: 截图验证
+
+在 **game executor** 上执行：
+
+```gdscript
+var tree = Engine.get_main_loop() as SceneTree
+var img = tree.root.get_texture().get_image()
+var dict = Time.get_datetime_dict_from_system()
+var date_str = "%04d-%02d-%02d" % [dict["year"], dict["month"], dict["day"]]
+var time_str = "%02d-%02d-%02d" % [dict["hour"], dict["minute"], dict["second"]]
+var rel_path = ".temp/" + date_str + "-" + time_str + "-game.png"
+var abs_path = ProjectSettings.globalize_path("res://" + rel_path)
+var dir_abs = ProjectSettings.globalize_path("res://.temp")
+if not DirAccess.dir_exists_absolute(dir_abs):
+	DirAccess.make_dir_recursive_absolute(dir_abs)
+var err = img.save_png(abs_path)
+executeContext.output("path", rel_path)
+executeContext.output("result", "OK" if err == 0 else "Error: " + str(err))
+```
+
+截图文件保存至 `game/.temp/<date>-<time>-game.png`。
+
+#### Step 10: 停止游戏
+
+在 **editor executor** 上执行：
+
+```gdscript
+var ei = executeContext.editor_plugin.get_editor_interface()
+ei.stop_playing_scene()
+executeContext.output("stopped", "ok")
+```
+
+---
+
+### 5.4 SkillDemo 内部结构参考
+
+#### 5.4.1 场景树
+
+```
+SkillDemo (Node2D)                     ← res://scripts/dev/skill_demo.gd
+├── Background (Node2D)                ← res://scripts/dev/demo_bg.gd
+├── Caster (Node2D)                    ← res://scripts/dev/demo_caster.gd
+│   └── position = (0, 190)
+├── CameraAnchor (Node2D)              ← res://scripts/dev/camera_anchor.gd
+│   └── Camera2D
+├── SkillSystem (Node)                 ← res://scenes/skill_system/skill_system.tscn
+│   ├── SkillRegistry
+│   ├── ModifierRegistry
+│   ├── ModifierProcessor
+│   ├── SkillSignalBus
+│   ├── ProjectilePool
+│   ├── ExecutorPool
+│   ├── SkillVFXManager
+│   └── LaserBeamPool
+├── VFX (Node2D)                       ← 运行时创建
+├── Target_* (Node2D)                  ← 运行时创建（具体数量由目标模式决定）
+└── CanvasLayer (CanvasLayer)
+    └── ControlPanel (PanelContainer)  ← UI 控制栏（底部）
+```
+
+#### 5.4.2 关键方法
+
+| 方法 | 功能 | 参数 |
+|------|------|------|
+| `_do_cast()` | 执行技能施放（核心入口） | 无参数，使用 `_selected_skill` 和 `_targets` |
+| `_on_play_pressed()` | 按钮事件 → 设置 `Engine.time_scale` → 调用 `_do_cast()` | 无 |
+| `_on_pause_pressed()` | 切换 0 倍速 / 恢复原速 | 无 |
+| `_on_stop_pressed()` | 清理所有投射物，重置状态 | 无 |
+| `_on_speed_pressed()` | 循环切换 0.5× / 1× / 2× | 无 |
+| `_on_mode_pressed()` | 循环切换目标模式 | 无 |
+| `_update_targets()` | 根据 `_current_mode_idx` 重建靶标 | 无 |
+| `_count_active_projectiles()` | 返回 `ProjectilePool` 中活跃投射物数 | 返回 `int` |
+| `_clear_all_projectiles()` | 清空 `ProjectilePool` 中所有投射物 | 无 |
+
+#### 5.4.3 关键变量
+
+| 变量名 | 类型 | 说明 |
+|--------|------|------|
+| `_selected_skill` | `String` | 当前选中技能的 ID |
+| `_targets` | `Array[Node2D]` | 当前靶标列表（由 `_current_mode_idx` 决定） |
+| `_current_mode_idx` | `int` | 目标模式索引 (0-5) |
+| `_speed_idx` | `int` | 速度索引 (0-2) |
+| `_looping` | `bool` | 是否循环播放 |
+| `_is_casting` | `bool` | 是否正在施放中 |
+| `_is_frozen` | `bool` | 是否已暂停 |
+| `_caster` | `Node2D` | 施法者节点（位置 Vector2(0, 190)） |
+| `_skill_system` | `Node` | SkillSystem 根节点引用 |
+| `_status_label` | `Label` | 底部状态栏文本 |
+| `_skill_option` | `OptionButton` | 技能选择下拉框 |
+
+#### 5.4.4 目标模式
+
+| 索引 | 模式名称 | 靶标数 | 布局说明 |
+|------|---------|--------|---------|
+| 0 | pentagon（五目标） | 5 | 五边形排列 |
+| 1 | single（单受体） | 1 | 单一中心靶标 |
+| 2 | dual（双目标） | 2 | 水平并列 |
+| 3 | triangle（三角阵） | 3 | 倒三角排列 |
+| 4 | scatter（散开群） | 5 | 随机散布 |
+| 5 | line（一字排） | 5 | 水平一排 |
+
+施法者位于 `(0, 190)`，所有靶标位于 Y 轴负方向（施法者上方），距离施法者 80-400 像素。
+
+#### 5.4.5 直接控制（不依赖 UI）
+
+通过直接设置变量和方法调用，可绕过 UI 操作，实现完全编程控制：
+
+```gdscript
+# 设置技能
+demo._selected_skill = "fireball_basic"
+
+# 设置目标模式
+demo._current_mode_idx = 0  # pentagon
+demo._update_targets()       # 重建靶标
+
+# 设置速度
+demo._speed_idx = 1          # 1×
+Engine.time_scale = 1.0
+
+# 施放
+demo._do_cast()
+
+# 等待后检查结果
+var active = demo._count_active_projectiles()
+var status_text = demo._status_label.text
+```
+
+---
+
+### 5.5 通过 curl 一步到位（完整脚本模板）
+
+以下是一个完整的 bash 脚本，执行全部技能测试流程：
+
+```bash
+#!/bin/bash
+# skill_test.sh — 通过 Hastur 远程测试指定技能
+# 用法: ./skill_test.sh <skill_id> [target_mode_idx] [speed_idx]
+
+TOKEN="${HASTUR_TOKEN:-995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7}"
+HOST="${HASTUR_HOST:-localhost}"
+PORT="${HASTUR_PORT:-5302}"
+BASE="http://${HOST}:${PORT}/api"
+SKILL="${1:-fireball_basic}"
+MODE="${2:-0}"
+SPEED="${3:-1}"
+PROJECT="Six Fighter"
+
+# 1. 健康检查
+echo "== 1. Health Check =="
+curl -s "$BASE/health" | python3 -m json.tool
+
+# 2. 启动游戏（通过 editor executor）
+echo "== 2. Starting game =="
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\":\"var ei = executeContext.editor_plugin.get_editor_interface()\\nei.play_main_scene()\\nexecuteContext.output(\\\"started\\\", \\\"ok\\\")\",\"project_name\":\"$PROJECT\",\"type\":\"editor\"}"
+
+# 3. 等待 game executor 连接
+echo "== 3. Waiting for game executor =="
+for i in $(seq 1 8); do
+  sleep 2
+  COUNT=$(curl -s "$BASE/executors" -H "Authorization: Bearer $TOKEN" | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for e in d.get('data',[]) if e.get('type')=='game'))")
+  echo "  Game executors: $COUNT"
+  [ "$COUNT" -ge 1 ] && break
+done
+
+# 4. 启用 Ignore Error Breaks
+echo "== 4. Enabling Ignore Error Breaks =="
+# [此处插入 Step 4 的 GDScript 代码]
+
+# 5. 导航到 SkillDemo
+echo "== 5. Navigating to SkillDemo =="
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\":\"var tree = Engine.get_main_loop() as SceneTree\\ntree.change_scene_to_file(\\\"res://scenes/dev/skill_demo.tscn\\\")\\nexecuteContext.output(\\\"nav\\\", \\\"ok\\\")\",\"type\":\"game\",\"project_name\":\"$PROJECT\"}"
+sleep 2
+
+# 6. 施放技能
+echo "== 6. Casting skill: $SKILL =="
+CODE=$(cat <<'GDS'
+var tree = Engine.get_main_loop() as SceneTree
+var demo = tree.root.get_node_or_null("SkillDemo")
+if demo and demo.has_method("_do_cast"):
+	demo._selected_skill = "<SKILL>"
+	demo._current_mode_idx = <MODE>
+	demo._update_targets()
+	demo._speed_idx = <SPEED>
+	Engine.time_scale = [1.0, 0.5, 1.0, 2.0][<SPEED>]
+	demo._do_cast()
+	executeContext.output("skill", demo._selected_skill)
+	executeContext.output("is_casting", str(demo._is_casting))
+GDS
+)
+CODE="${CODE//<SKILL>/$SKILL}"
+CODE="${CODE//<MODE>/$MODE}"
+CODE="${CODE//<SPEED>/$SPEED}"
+
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 -c "import json; print(json.dumps({'code': '''$CODE''', 'type': 'game', 'project_name': '$PROJECT'}))")"
+
+# 7. 等待后验证
+sleep 4
+echo "== 7. Result =="
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\":\"var tree = Engine.get_main_loop() as SceneTree\\nvar demo = tree.root.get_node_or_null(\\\"SkillDemo\\\")\\nif demo:\\n\\texecuteContext.output(\\\"is_casting\\\", str(demo._is_casting))\\n\\texecuteContext.output(\\\"status\\\", demo._status_label.text if demo._status_label else \\\"?\\\")\",\"type\":\"game\",\"project_name\":\"$PROJECT\"}"
+
+# 8. 停止游戏
+echo "== 8. Stopping game =="
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\":\"var ei = executeContext.editor_plugin.get_editor_interface()\\nei.stop_playing_scene()\\nexecuteContext.output(\\\"stopped\\\", \\\"ok\\\")\",\"project_name\":\"$PROJECT\",\"type\":\"editor\"}"
+
+echo "== Done =="
+```
+
+---
+
+### 5.6 测试过的技能列表
+
+截至 v0.5.0，SkillRegistry 中注册了以下技能：
+
+| 技能 ID | 伤害类型 | 目标模式 | 效果类型 | 交付方式 |
+|---------|---------|---------|---------|---------|
+| `fireball_basic` | 火焰 | 单目标 | 投射物 | projectile |
+| `ice_arrow` | 冰霜 | 单目标 | 投射物 | projectile |
+| `falling_meteor` | 物理+火焰 | AoE | 投射物 | projectile |
+| `laser_beam` | 火焰 | MAX_COVERAGE(6) | emit_laser_beam | instant |
+| `missile_storm` | 物理 | 多目标 | 投射物群 | projectile |
+| `water_wave` | 物理 | 扇形 | 投射物 | projectile |
+
+#### 目标模式兼容性
+
+| 技能 | 单受体 | 五目标 | 三角阵 | 散开群 | 一字排 | 备注 |
+|------|--------|--------|--------|--------|--------|------|
+| fireball_basic | ✅ | ✅ | ✅ | ✅ | ✅ | |
+| ice_arrow | ✅ | ✅ | ✅ | ✅ | ✅ | 多重发射 |
+| falling_meteor | ✅ | ⚠️ | ✅ | ✅ | ✅ | AoE 技能 |
+| laser_beam | ✅ | ✅ | ✅ | ✅ | ✅ | MAX_COVERAGE 自动选角度 |
+| missile_storm | ✅ | ✅ | ✅ | ✅ | ✅ | 散射型 |
+| water_wave | ✅ | ✅ | ✅ | ✅ | ✅ | 扇形技能 |
+
+---
+
+### 5.7 已知问题与注意事项
+
+#### 5.7.1 ~~激光束计数缺陷~~ 已修复（2026-05-25）
+
+> **历史**: `_count_active_projectiles()` 原只检查 `ProjectilePool`，不检查 `LaserBeamPool`。激光术通过 `LaserBeamPool` 发射（走 `skill_root.gd` 的 MAX_COVERAGE 独立分支），导致：
+> - 施放激光术后 `_count_active_projectiles()` 始终返回 0
+> - `_do_cast()` 误判为"射程内无合法目标"
+> - `_process()` 中 `_had_projectiles` 永远 false，`_is_casting` 永远 true
+
+**当前状态**: 已修复。`_count_active_projectiles()` 和 `_clear_all_projectiles()` 同时检查两个池：
+
+```gdscript
+func _count_active_projectiles() -> int:
+	var count := 0
+	var pool = _skill_system.get_node_or_null("ProjectilePool")
+	if pool and pool.has_method("get_active_count"):
+		count += pool.get_active_count()
+	var lb_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	if lb_pool and lb_pool.has_method("get_active_count"):
+		count += lb_pool.get_active_count()
+	return count
+
+func _clear_all_projectiles() -> void:
+	var pool = _skill_system.get_node_or_null("ProjectilePool")
+	if pool and pool.has_method("clear_all"):
+		pool.clear_all()
+	var lb_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	if lb_pool and lb_pool.has_method("clear_all"):
+		lb_pool.clear_all()
+```
+
+> **根因**: MAX_COVERAGE 模式（target_mode=6）是激光术特有的目标选择逻辑，走 `skill_root.gd:60-111` 的独立分支，直接调用 `laser_beam_pool.spawn()`。旧的项目池计数逻辑未覆盖此分支。
+
+#### 5.7.2 Snippet 模式的 RefCounted 限制
+
+在 game executor 的 snippet 模式中：
+
+| 不可用 | 替代方案 |
+|--------|---------|
+| `get_tree()` | `Engine.get_main_loop() as SceneTree` |
+| `get_node(path)` | `tree.root.get_node_or_null(path)` |
+| `get_viewport()` | `tree.root` |
+
+#### 5.7.3 远程代码环境 vs 本地执行
+
+| 方面 | 远程（Hastur） | 本地（Godot 内） |
+|------|---------------|-----------------|
+| `self` | RefCounted（snippet） | Node（SkillDemo） |
+| 调用私有方法 | ✅ 可调用 `_do_cast()` | ✅ 同 |
+| 访问私有变量 | ✅ 可读写 `_is_casting` | ✅ 同 |
+| `@tool` | 自动添加（snippet） | 手动标签 |
+| 缩进 | Tab 字符 | Tab 字符 |
+
+#### 5.7.4 时间缩放对远程调用的影响
+
+`Engine.time_scale = 0`（暂停）会使 `POST /api/execute` 请求超时（30s），因为游戏主循环不再处理 TCP 消息。如果在暂停状态下发送了指令，需要用 editor executor 恢复：
+
+```gdscript
+# 在 editor executor 上执行
+var ei = executeContext.editor_plugin.get_editor_interface()
+ei.stop_playing_scene()  # 停止游戏进程
+# 然后重新启动
+```
+
+#### 5.7.5 调试器冻结恢复
+
+如果 game executor 请求超时（HTTP 504），游戏很可能已被调试器冻结：
+
+1. 在 editor executor 上点击"Continue"按钮恢复：
+
+```gdscript
+var ei = executeContext.editor_plugin.get_editor_interface()
+var base = ei.get_base_control()
+# [同上 Step 4 的搜索逻辑，但找 tooltip_text == "Continue" 的按钮]
+# 对非 toggle button，直接 emit_signal("pressed") 即可
+```
+
+2. 启用 Ignore Error Breaks（见 Step 4）
+3. 重新发送 game executor 指令
+
+#### 5.7.6 curl 中 GDScript 转义规则
+
+在 bash 的 curl 命令中嵌入 GDScript 时，陷阱很多：
+
+| 场景 | 方法 | 缩进 |
+|------|------|------|
+| 单行代码 | `-d '{"code":"print(1)"}'` | 无缩进 |
+| 多行代码（内联） | 用 `\n` 分隔，`\t` 缩进 | `\t` |
+| 多行代码（heredoc） | 先构造变量再 JSON 编码 | 真实 Tab |
+| 复杂代码 | 用 Python 辅助构造 JSON | Tab 或 `\t` |
+
+**推荐做法**: 用 Python 脚本生成 JSON payload，避免 bash 转义问题：
+
+```bash
+CODE=$(cat <<'GDS'
+var tree = Engine.get_main_loop() as SceneTree
+var demo = tree.root.get_node_or_null("SkillDemo")
+if demo:
+	demo._selected_skill = "fireball_basic"
+	demo._do_cast()
+GDS
+)
+curl -s -X POST "$BASE/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(python3 -c "import json,sys; print(json.dumps({'code': sys.stdin.read(), 'type': 'game', 'project_name': '$PROJECT'}))" <<< "$CODE")"
+```
+
+---
+
+## 六、Godot 4.x 兼容性说明
+
+### 6.1 Logger.ErrorType 枚举值
 
 Godot 4.6 没有 `ERROR_TYPE_RUNTIME` 常量：
 
@@ -594,13 +1255,13 @@ const _ERROR_TYPE_WARNING: int = 1
 const _ERROR_TYPE_SCRIPT: int = 2
 ```
 
-### 5.2 RefCounted 生命周期
+### 6.2 RefCounted 生命周期
 
 `GDScriptExecutor` 继承 `RefCounted`，必须显式调用 `dispose()` 清理 Logger 资源。
 
 > **v0.4.0 注意**: `RefCounted` 不应有 `_notification()` 方法（会导致空实例崩溃），已在 `gdscript_executor.gd` 中移除。`disconnect_client()` 现在会显式调用 `_executor.dispose()`。
 
-### 5.3 其他迁移注意事项
+### 6.3 其他迁移注意事项
 
 | 旧语法/方法 | 新语法/方法 | 说明 |
 |------------|------------|------|
@@ -610,9 +1271,89 @@ const _ERROR_TYPE_SCRIPT: int = 2
 | `str(null)` | 返回 `"null"` | 不是空字符串 |
 | `reload_current_scene()` | 返回 void | 不能链式调用 |
 
+### 6.4 GDScript Resource Reload 机制（热重载可行性分析）
+
+> **v0.5.0 新增 — 基于 2026-05-25 实测验证**
+
+AI Agent 工作流中频繁遇到"修改 `.gd` 文件后编辑器使用旧缓存"的问题。本节记录 Godot 4 中 `GDScript.reload()` 的实际行为，以及热重载的可行性结论。
+
+#### 实测环境
+
+- Godot 4.6.2-stable
+- 通过 Hastur 插件 `POST /api/execute` 执行 Full Class 模式 GDScript
+- 测试脚本：`res://scripts/dev/_hot_reload_test.gd`（运行时创建）
+
+#### 测试矩阵
+
+| 测试场景 | `load()` 获取缓存 | 修改 `source_code` | `reload()` 返回值 | 效果 |
+|----------|-------------------|-------------------|-------------------|------|
+| 无实例存在 | ✅ 返回 GDScript Resource | ✅ 可写入 | `OK (0)` | ✅ 方法数 1→2，新方法可调用，返回值正确 |
+| 有实例存在 | ✅ 同一 Resource 对象 | ✅ 可写入 | `ERR_ALREADY_IN_USE (22)` | ❌ 引擎拒绝，抛出 `"Cannot reload script while instances exist."` |
+
+#### 关键发现
+
+**1. `load()` 返回缓存的 GDScript Resource**
+
+```gdscript
+var script_res = load("res://path/to/script.gd")
+# script_res 指向引擎内部缓存的同一个 Resource 对象
+# 多次 load() 返回同一个 instance_id
+```
+
+**2. `source_code` 可直接修改**
+
+```gdscript
+script_res.source_code = "extends Node2D\n\nfunc new_code():\n\treturn 42\n"
+# 修改立即生效于 Resource 对象，但不会自动触发重编译
+```
+
+**3. `reload()` 受实例生命周期约束**
+
+```gdscript
+var err = script_res.reload()
+# 无实例时: OK (0) — 重新编译，新方法立即可用
+# 有实例时: ERR_ALREADY_IN_USE (22) — 引擎拒绝重编译
+```
+
+引擎在 `modules/gdscript/gdscript.cpp:756` 硬编码了此检查。任何对象（Node、RefCounted 等）引用了该 GDScript Resource，`reload()` 就会失败。这是引擎级安全机制，无法绕过。
+
+**4. `CACHE_MODE_IGNORE` 创建新 Resource 对象**
+
+```gdscript
+var new_script = ResourceLoader.load(path, "GDScript", ResourceLoader.CACHE_MODE_IGNORE)
+# new_script 是全新的 Resource 对象，与缓存中的不同
+# 旧实例仍引用旧 Resource，不受影响
+```
+
+#### 热重载不可行的原因
+
+| 方案 | 问题 |
+|------|------|
+| 修改 `source_code` + `reload()` | 有实例时返回 ERR_ALREADY_IN_USE |
+| `CACHE_MODE_IGNORE` 加载新脚本 | 旧实例不更新，需要 `set_script()` 替换（丢失状态） |
+| `reload_scene_from_path()` | 销毁运行时状态，等于 stop → replay |
+| `EditorFileSystem.update_file()` | 只通知编辑器文件系统刷新，不触发脚本重编译 |
+
+#### 替代方案
+
+v0.5.0 提供以下端点缓解此问题（非热重载）：
+
+- `POST /api/project/rescan` — 强制编辑器刷新文件系统缓存
+- `POST /api/script/check` — 编译检查但不执行（验证代码正确性）
+- `POST /api/script/hot-reload` — **已删除** — Godot 4 无可行的热重载路径
+
+#### 对 AI Agent 工作流的影响
+
+修改 `.gd` 文件后，AI 应：
+1. 调用 `POST /api/project/rescan` 通知编辑器刷新
+2. 调用 `POST /api/script/check` 验证编译通过
+3. 如需生效：停止游戏 → 重新运行（`stop → replay`）
+
+不要尝试通过 API 修改 `source_code` 并 `reload()` — 在有实例的场景中必然失败。
+
 ---
 
-## 六、常见问题排查
+## 七、常见问题排查
 
 | 症状 | 最可能原因 | 解决方案 |
 |------|-----------|---------|
@@ -669,15 +1410,15 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 
 ---
 
-## 七、版本对照表
+## 八、版本对照表
 
 | 组件 | 源码仓库版本 | 生产版本 | 说明 |
 |------|------------|---------|------|
-| 插件 | v0.1 | **v0.4.0** | `game/addons/hasturoperationgd/` 下为生产版本 |
-| broker-server | v0.1.0 | **v0.1.0** | 运行中 API 返回 version 0.3.0 |
+| 插件 | v0.1 | **v0.5.0** | `game/addons/hasturoperationgd/` 下为生产版本 |
+| broker-server | v0.1.0 | **v0.5.0** | 运行中 API 返回 version 0.5.0 |
 | CLI 工具 | 无 | **Python 3.x** | `game/tools/hastur.py` + `game/tools/editor_call.py` |
 
-### 功能演进：v0.1 → v0.4.0
+### 功能演进：v0.1 → v0.5.0
 
 | 特性 | v0.1 | v0.4.0 | 状态 |
 |------|------|--------|------|
@@ -709,10 +1450,25 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 | 日志缓冲扩容 200→500 | ❌ | ✅ | 2026-05-25 — 降低高频日志丢弃概率 |
 | CLI 跨平台 | ❌ | ✅ | 2026-05-25 — Windows tasklist + Unix ps aux 双路径 |
 | `_notification` 空实例崩溃 | ❌ | ✅ | 2026-05-25 修复 — RefCounted 不应有 _notification |
+| 注册式路由（broker-server） | ❌ | ✅ | v0.5.0 — `sendRequest<T>` + `handleResult` 替代 4 个重复 send/handle 方法 |
+| 注册式路由（broker_client.gd） | ❌ | ✅ | v0.5.0 — `_message_handlers` 字典替代 match 块 |
+| `resolveExecutor` + `asyncTcpRoute` | ❌ | ✅ | v0.5.0 — http-server.ts 辅助函数消除重复代码 |
+| `POST /api/project/rescan` | ❌ | ✅ | v0.5.0 — 强制编辑器刷新文件系统 |
+| `POST /api/script/check` | ❌ | ✅ | v0.5.0 — 编译检查（不执行），返回 compile_success + errors |
+| `GET /api/executors/:id/scene/properties` | ❌ | ✅ | v0.5.0 — 获取节点属性，支持黑名单 + 白名单过滤 |
+| `POST /api/scene/save` | ❌ | ✅ | v0.5.0 — 保存当前场景到磁盘 |
+| `POST /api/execute` summary 增强 | ❌ | ✅ | v0.5.0 — 响应增加 summary 字段（compile_ok/run_ok/error_count/first_error/output_count） |
+| CLI `check`/`rescan`/`save`/`props` | ❌ | ✅ | v0.5.0 — 4 个新 CLI 命令 |
+| GDScript Resource Reload 测试 | ❌ | ✅ | v0.5.0 — 验证 `reload()` 在有实例时返回 ERR_ALREADY_IN_USE，确认 hot-reload 不可行 |
+| 编译阶段提取 `_compile_source()` | ❌ | ✅ | 2026-05-25 — `compile_only()` 和 `execute_code()` 共享编译逻辑，消除 30 行重复代码 |
+| 激光束计数修复（`_count_active_projectiles`） | ❌ | ✅ | 2026-05-25 — 同时检查 `LaserBeamPool`，修复 `_is_casting` 卡死 |
+| `asyncTcpRoute` 全覆盖 6 条旧路由 | ❌ | ✅ | 2026-05-25 — scene tree / create / delete 路由从手动 try/catch 迁移 |
+| `scene/save` force 参数支持 | ❌ | ✅ | 2026-05-25 — `force=true` 时服务端日志记录，数据传递给 executor |
+| `_executor.dispose()` 死代码清理 | ❌ | ✅ | 2026-05-25 — `disconnect_client()` 中移除 4 行无法到达的代码 |
 
 ---
 
-## 八、安全提醒
+## 九、安全提醒
 
 > **⚠️ 重要**: 本插件会在编辑器中执行任意代码。Broker Server 通过 Bearer Token 进行访问控制，但仍需注意以下事项：
 >
@@ -723,7 +1479,7 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 
 ---
 
-## 九、参考文档
+## 十、参考文档
 
 | 文档 | 位置 | 内容 |
 |------|------|------|
@@ -733,4 +1489,4 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 
 ---
 
-*本蓝皮书于 2026-05-25 更新，反映插件 v0.4.0、Python 工具链、以及 Token/心跳/RTT/跨平台等改进的完整状态。*
+*本蓝皮书于 2026-05-25 更新。涵盖 v0.5.0 全部功能：注册式路由重构、4 个新端点（rescan/script-check/properties/save）、execute summary 增强、CLI 新命令、GDScript Resource Reload 测试结论、编译阶段重构消除重复、全路由 asyncTcpRoute 迁移、激光束计数修复、以及技能自动化测试指南。*

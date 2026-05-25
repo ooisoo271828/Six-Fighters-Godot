@@ -9,6 +9,18 @@ const MAX_REQUEST_BODY_SIZE = '10mb'  // 请求体大小限制（安全）
 const MAX_CONNECTIONS = 100           // 最大并发连接数
 const REQUEST_TIMEOUT = 60000         // 请求超时（毫秒）
 
+// 从 Godot 错误字符串中提取行号
+function extractLine(error: string): number | null {
+	if (!error) return null
+	// 匹配 "at line N" 模式
+	const lineMatch = error.match(/at line (\d+)/i)
+	if (lineMatch) return parseInt(lineMatch[1])
+	// 匹配 "(N:M)" 模式
+	const colMatch = error.match(/\((\d+):\d+\)/)
+	if (colMatch) return parseInt(colMatch[1])
+	return null
+}
+
 export function createHttpApp(
 	executorManager: ExecutorManager,
 	tcpServer: TcpServer,
@@ -63,7 +75,7 @@ export function createHttpApp(
 			success: true,
 			data: {
 				status: 'ok',
-				version: '0.3.0',
+				version: '0.5.0',
 				tcp_port: tcpPort,
 				http_port: httpPort,
 				executors_connected: executors.length,
@@ -81,6 +93,34 @@ export function createHttpApp(
 		authMiddleware(req, res, next)
 	})
 
+	// Helper: resolve executor by :id param, returns null if not found (sends 404)
+	function resolveExecutor(req: Request, res: Response): import('./types.js').ExecutorInfo | null {
+		const executor = executorManager.findById(req.params.id)
+		if (!executor) {
+			res.status(404).json({
+				success: false,
+				error: 'Executor not found',
+				hint: 'Use GET /api/executors to list all available executors.',
+			})
+			return null
+		}
+		return executor
+	}
+
+	// Helper: wrap a TCP request with standard error handling
+	function asyncTcpRoute(handler: () => Promise<Record<string, unknown>>, res: Response, errorMsg: string): void {
+		handler()
+			.then(result => res.json({ success: true, data: result }))
+			.catch((err: unknown) => {
+				const error = err as Error
+				const status = error.message === 'TIMEOUT' ? 504 : 500
+				res.status(status).json({
+					success: false,
+					error: error.message || errorMsg,
+				})
+			})
+	}
+
 	app.get('/api/executors', (_req: Request, res: Response) => {
 		const executors = executorManager.getAll()
 		const response: ApiResponse = {
@@ -94,15 +134,8 @@ export function createHttpApp(
 	})
 
 	app.get('/api/executors/:id', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-				hint: 'Use GET /api/executors to list all available executors.',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 		const metrics = tcpServer.getConnectionMetrics(executor.id)
 		res.json({
 			success: true,
@@ -188,7 +221,24 @@ export function createHttpApp(
 
 		try {
 			const result = await tcpServer.sendExecute(executor.id, code, 'gdscript', timeout)
-			res.json({ success: true, data: result })
+			// Execute summary — 让 AI/CLI 快速判断成功/失败
+			const compileOk = (result as Record<string, unknown>).compile_success as boolean
+			const runOk = (result as Record<string, unknown>).run_success as boolean
+			const compileErr = (result as Record<string, unknown>).compile_error as string
+			const runErr = (result as Record<string, unknown>).run_error as string
+			const outputs = (result as Record<string, unknown>).outputs as unknown[]
+			const summary = {
+				compile_ok: compileOk,
+				run_ok: runOk,
+				error_count: (compileErr ? 1 : 0) + (runErr ? 1 : 0),
+				first_error: compileErr
+					? { message: compileErr, line: extractLine(compileErr) }
+					: runErr
+					? { message: runErr, line: extractLine(runErr) }
+					: null,
+				output_count: outputs?.length || 0,
+			}
+			res.json({ success: true, data: result, summary })
 		} catch (err: unknown) {
 			const error = err as Error
 			if (error.message === 'TIMEOUT') {
@@ -209,29 +259,15 @@ export function createHttpApp(
 
 	// 断点管理 API
 	app.get('/api/executors/:id/breakpoints', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-				hint: 'Use GET /api/executors to list all available executors.',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 		const breakpoints = tcpServer.listBreakpoints(executor.id)
 		res.json({ success: true, data: breakpoints })
 	})
 
 	app.post('/api/executors/:id/breakpoints', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-				hint: 'Use GET /api/executors to list all available executors.',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const { file, line, condition, enabled } = req.body
 		if (!file || line === undefined) {
@@ -262,14 +298,8 @@ export function createHttpApp(
 	})
 
 	app.delete('/api/executors/:id/breakpoints/:bpId', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const removed = tcpServer.removeBreakpoint(executor.id, req.params.bpId)
 		if (!removed) {
@@ -284,14 +314,8 @@ export function createHttpApp(
 	})
 
 	app.patch('/api/executors/:id/breakpoints/:bpId', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const bp = tcpServer.updateBreakpoint(executor.id, req.params.bpId, req.body)
 		if (!bp) {
@@ -306,29 +330,16 @@ export function createHttpApp(
 	})
 
 	app.delete('/api/executors/:id/breakpoints', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
-
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 		tcpServer.clearBreakpoints(executor.id)
 		res.json({ success: true, data: { cleared: true } })
 	})
 
 	// 获取变量（需要在 executor 上执行）
 	app.post('/api/executors/:id/variables', async (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const { expression } = req.body
 		if (!expression) {
@@ -375,94 +386,31 @@ export function createHttpApp(
 			executorId = editorExecutor.id
 		}
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendSceneTreeRequest(executorId, 10000)
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						tree: result.tree,
-						executor_id: executorId,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to get scene tree',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Scene tree request timed out',
-					hint: 'The Godot editor may be busy. Try again.',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to get scene tree',
-				})
-			}
-		}
+			if (!result.success) throw new Error(String(result.error || 'Failed to get scene tree'))
+			return { tree: result.tree, executor_id: executorId }
+		}, res, 'Failed to get scene tree')
 	})
 
 	// 获取场景树（通过 executor ID）
 	app.get('/api/executors/:id/scene/tree', async (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendSceneTreeRequest(executor.id, 10000)
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						tree: result.tree,
-						executor_id: executor.id,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to get scene tree',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Scene tree request timed out',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to get scene tree',
-				})
-			}
-		}
+			if (!result.success) throw new Error(String(result.error || 'Failed to get scene tree'))
+			return { tree: result.tree, executor_id: executor.id }
+		}, res, 'Failed to get scene tree')
 	})
 
 	// ============ 创建节点 API ============
 
 	// 创建节点（通过 executor_id）
 	app.post('/api/executors/:id/scene/nodes', async (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const { parent_path, name, type, script } = req.body
 		if (!name) {
@@ -473,7 +421,7 @@ export function createHttpApp(
 			return
 		}
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendCreateNodeRequest(
 				executor.id,
 				parent_path || '',
@@ -482,34 +430,9 @@ export function createHttpApp(
 				script || '',
 				10000
 			)
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						node_path: result.node_path,
-						executor_id: executor.id,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to create node',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Create node request timed out',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to create node',
-				})
-			}
-		}
+			if (!result.success) throw new Error(String(result.error || 'Failed to create node'))
+			return { node_path: result.node_path, executor_id: executor.id }
+		}, res, 'Failed to create node')
 	})
 
 	// 创建节点（自动选择 editor executor）
@@ -534,7 +457,7 @@ export function createHttpApp(
 			return
 		}
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendCreateNodeRequest(
 				editorExecutor.id,
 				parent_path || '',
@@ -543,48 +466,17 @@ export function createHttpApp(
 				script || '',
 				10000
 			)
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						node_path: result.node_path,
-						executor_id: editorExecutor.id,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to create node',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Create node request timed out',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to create node',
-				})
-			}
-		}
+			if (!result.success) throw new Error(String(result.error || 'Failed to create node'))
+			return { node_path: result.node_path, executor_id: editorExecutor.id }
+		}, res, 'Failed to create node')
 	})
 
 	// ============ 删除节点 API ============
 
 	// 删除节点（通过 executor_id）
 	app.delete('/api/executors/:id/scene/nodes', async (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const nodePath = req.query.path as string
 		if (!nodePath) {
@@ -595,36 +487,11 @@ export function createHttpApp(
 			return
 		}
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendDeleteNodeRequest(executor.id, nodePath, 10000)
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						node_path: nodePath,
-						executor_id: executor.id,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to delete node',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Delete node request timed out',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to delete node',
-				})
-			}
-		}
+			if (!result.success) throw new Error(String(result.error || 'Failed to delete node'))
+			return { node_path: nodePath, executor_id: executor.id }
+		}, res, 'Failed to delete node')
 	})
 
 	// 删除节点（自动选择 editor executor）
@@ -649,49 +516,18 @@ export function createHttpApp(
 			return
 		}
 
-		try {
+		asyncTcpRoute(async () => {
 			const result = await tcpServer.sendDeleteNodeRequest(editorExecutor.id, nodePath, 10000)
+			if (!result.success) throw new Error(String(result.error || 'Failed to delete node'))
 			console.log(`[HTTP] Delete node result for "${nodePath}":`, JSON.stringify(result).substring(0, 500))
-			if (result.success) {
-				res.json({
-					success: true,
-					data: {
-						node_path: nodePath,
-						executor_id: editorExecutor.id,
-					},
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: result.error || 'Failed to delete node',
-				})
-			}
-		} catch (err: unknown) {
-			const error = err as Error
-			if (error.message === 'TIMEOUT') {
-				res.status(504).json({
-					success: false,
-					error: 'Delete node request timed out',
-				})
-			} else {
-				res.status(500).json({
-					success: false,
-					error: error.message || 'Failed to delete node',
-				})
-			}
-		}
+			return { node_path: nodePath, executor_id: editorExecutor.id }
+		}, res, 'Failed to delete node')
 	})
 
 	// 日志 API
 	app.get('/api/executors/:id/logs', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const limit = parseInt(req.query.limit as string) || 100
 		const type = req.query.type as string | undefined
@@ -708,14 +544,8 @@ export function createHttpApp(
 	})
 
 	app.get('/api/executors/:id/logs/errors', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 
 		const limit = parseInt(req.query.limit as string) || 50
 		const logs = tcpServer.getErrorLogs(executor.id).slice(-limit)
@@ -730,15 +560,8 @@ export function createHttpApp(
 	})
 
 	app.delete('/api/executors/:id/logs', (req: Request, res: Response) => {
-		const executor = executorManager.findById(req.params.id)
-		if (!executor) {
-			res.status(404).json({
-				success: false,
-				error: 'Executor not found',
-			})
-			return
-		}
-
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
 		tcpServer.clearLogs(executor.id)
 		res.json({
 			success: true,
@@ -746,11 +569,88 @@ export function createHttpApp(
 		})
 	})
 
+	// ============ v0.5.0 新增路由 ============
+
+	// 强制编辑器刷新文件系统
+	app.post('/api/project/rescan', (_req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({
+				success: false,
+				error: 'No editor executor connected',
+			})
+			return
+		}
+		asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'rescan', {}, 10000), res, 'Failed to rescan')
+	})
+
+	// 编译检查（不执行）
+	app.post('/api/script/check', async (req: Request, res: Response) => {
+		const { code, executor_id } = req.body
+		if (!code) {
+			res.status(400).json({
+				success: false,
+				error: 'Missing required field: code',
+			})
+			return
+		}
+
+		let executor
+		if (executor_id) {
+			executor = executorManager.findById(executor_id)
+		} else {
+			const executors = executorManager.getAll()
+			executor = executors.find((ex) => ex.type === 'editor')
+		}
+		if (!executor) {
+			res.status(404).json({
+				success: false,
+				error: 'No editor executor connected',
+			})
+			return
+		}
+
+		asyncTcpRoute(() => tcpServer.sendRequest(executor.id, 'script_check', { code }, 15000), res, 'Script check failed')
+	})
+
+	// 获取节点属性
+	app.get('/api/executors/:id/scene/properties', (req: Request, res: Response) => {
+		const executor = resolveExecutor(req, res)
+		if (!executor) return
+
+		const nodePath = (req.query.path as string) || ''
+		const filter = (req.query.filter as string) || ''
+
+		asyncTcpRoute(() => tcpServer.sendRequest(executor.id, 'get_properties', {
+			node_path: nodePath,
+			filter,
+		}, 10000), res, 'Failed to get properties')
+	})
+
+	// 保存当前场景
+	app.post('/api/scene/save', (req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({
+				success: false,
+				error: 'No editor executor connected',
+			})
+			return
+		}
+			const force = req.body?.force === true
+			if (force) {
+				console.log(`[SCENE_SAVE] Force save requested`)
+			}
+			asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'scene_save', { force }, 10000), res, 'Failed to save scene')
+	})
+
 	app.use((_req: Request, res: Response) => {
 		res.status(404).json({
 			success: false,
 			error: 'Route not found',
-			hint: 'Available endpoints: GET /api/executors - List connected Hastur Executors, POST /api/execute - Execute code on a Hastur Executor',
+			hint: 'Available endpoints: GET /api/executors, POST /api/execute, POST /api/project/rescan, POST /api/script/check, GET /api/executors/:id/scene/properties, POST /api/scene/save',
 		})
 	})
 

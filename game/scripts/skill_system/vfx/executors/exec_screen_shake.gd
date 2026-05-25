@@ -8,7 +8,7 @@ func get_kind() -> StringName:
 	return &"screen_shake"
 
 
-func execute(layer: VFXLayerDef, world_pos: Vector2, _pool: HitVFXPool, _tex_manager: VFXTextureManager) -> void:
+func execute(layer: VFXLayerDef, _world_pos: Vector2, _pool: HitVFXPool, _tex_manager: VFXTextureManager) -> void:
 	var params := layer.params
 	var strength: float = params.get("strength", 1.0)
 

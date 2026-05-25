@@ -1,4 +1,5 @@
-- [写文件必须确认存在性](file-operations.md) — cat> 覆盖 1641 行文档的血训
-- [技能系统集成陷阱](skill-system-integration.md) — skill_demo 池检查 / reset 互逆 / Effect 路由
-- [GDScript 运行时陷阱](gdscript-runtime-pitfalls.md) — set_script / Tween / GPUParticles2D 纹理 / 编译检测
-- [Sprite 渲染顺序与 alpha 策略](sprite-rendering-order.md) — 宽段在上层 / 递缩正相关 alpha
+# Memory Index
+
+- [UI Popup Positioning Rule](feedback_ui_popup_positioning.md) — All popup/dialog/overlay must be viewport-centered, manually set anchors to 0.5, slightly below center for mobile
+- [Squad Formation Single Source](project_squad_formation_rule.md) — Formation data + spawn logic centralized in GameManager. All scenes use GameManager.spawn_squad(). No more per-scene duplication.
+- [Use Hastur Proactively](feedback_use_hastur_proactively.md) — Always consider Hastur first for debugging, inspection, verification. Don't wait for user to suggest it.

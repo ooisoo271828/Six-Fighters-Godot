@@ -1869,6 +1869,193 @@ scale.y = w / tex_height      # 纹理高度 -> w 像素
 
 ---
 
-*版本更新：v4.2 — 新增技能系统集成陷阱、多层 Sprite 渲染陷阱、Sprite2D 定位陷阱，补充 GDScript/引擎/粒子条目。*
+---
 
-*本指南将持续更新。每次遇到新的系统性陷阱后，在此追加记录。*
+## 十七、GDScript 类型映射陷阱
+
+### 17.1 `ParticleProcessMaterial.color_ramp` 需要 `GradientTexture2D` 而非 `Gradient`
+
+**症状**：`Parse Error: Value of type "Gradient" cannot be assigned to a variable of type "Texture2D".`
+
+**根因**：Godot 4 中 `ParticleProcessMaterial.color_ramp` 的类型是 `Texture2D`，期望的是 `GradientTexture2D` 对象，而非裸 `Gradient`。
+
+```gdscript
+# ❌ 错误：Gradient 不能直接赋值给 Texture2D 类型的属性
+var g := Gradient.new()
+g.colors = [Color(1.0, 0.95, 0.5, 0.95), Color(1.0, 0.5, 0.08, 0.7), Color(0.6, 0.02, 0.02, 0.0)]
+m.color_ramp = g
+
+# ✅ 正确：用 GradientTexture2D 包装
+var g := Gradient.new()
+g.colors = [Color(1.0, 0.95, 0.5, 0.95), Color(1.0, 0.5, 0.08, 0.7), Color(0.6, 0.02, 0.02, 0.0)]
+var gt := GradientTexture2D.new()
+gt.gradient = g
+m.color_ramp = gt
+```
+
+**同类陷阱历史**：此问题与 2.3 节 `Line2D.width_curve` 需要 `Curve` 而非 `CurveTexture` 是镜像关系。Godot 4 中多个属性的"实际期望类型"和"表面上的类型"不一致：
+
+| 属性 | 声明类型 | 实际需要 |
+|------|---------|---------|
+| `Line2D.width_curve` | `Curve` | `Curve`（直接赋 Curve 对象） |
+| `ParticleProcessMaterial.color_ramp` | `Texture2D` | `GradientTexture2D`（用 Gradient 包装） |
+| `ParticleProcessMaterial.scale_curve` | `Texture2D` | `CurveTexture`（用 Curve 包装） |
+
+**排查思路**：遇到 `cannot be assigned to a variable of type X` 时，先查 Godot 文档确认该属性实际期望的类型，不要凭直觉。同一个"纹理类"属性在不同节点上需要的包装类型可能完全不同。
+
+---
+
+## 十八、编辑器 GDScript 缓存陷阱
+
+### 18.1 `load()` 返回的是内存缓存，不是磁盘文件
+
+**症状**：反复用 `load()` + `reload()` 加载同一个 `.gd` 文件，但 `source_code` 始终是旧版本内容，即使磁盘文件已经更新。
+
+**根因**：Godot 4 的 GDScript 缓存分两层：
+1. **资源缓存**（`ResourceLoader` 管理的 cache）— `CACHE_MODE_REPLACE` 可以绕过
+2. **GDScript 编译缓存**（内存中的 `GDScript` 对象的 `source_code` 属性）— `load()` 创建 GDScript 对象后，其 `source_code` 属性是创建时的快照。`reload()` 从 `source_code` 属性读取内容重新编译，**不从磁盘重新读取文件**。所以即使磁盘文件已更新，只要 GDScript 对象内存中的 `source_code` 还是旧的，`reload()` 就编译旧代码。
+
+```gdscript
+# ❌ 错误假设：reload() 会从磁盘重读文件
+var ns = load("res://script.gd")
+ns.reload()  # 实际编译的是 ns.source_code（内存快照），不是磁盘文件！
+
+# ✅ 正确：用 FileAccess 从磁盘读取后赋值给 source_code
+var f := FileAccess.open("res://script.gd", FileAccess.READ)
+var disk_src := f.get_as_text()
+f.close()
+
+var ns := ResourceLoader.load("res://script.gd", "", ResourceLoader.CACHE_MODE_REPLACE)
+ns.source_code = disk_src     # ← 关键：用磁盘内容覆盖内存快照
+ns.reload()                   # 现在加载的是最新内容
+```
+
+**诊断方法**：
+```gdscript
+# 检查加载的脚本是否和磁盘一致
+var ns = load("res://script.gd")
+var lines = ns.source_code.split("\n")
+# 检查关键行是否包含预期的修改
+print("Line 415: " + lines[414])
+```
+
+**触发场景**：
+- 用 `Write` 工具 / Python 脚本修改了 `.gd` 文件后，通过 Hastur 执行 `load()` + `reload()` 测试
+- Godot 编辑器长时间运行后，多次热重载同一脚本
+- 外部工具（Git、Python 脚本）修改了文件，但编辑器未检测到变化
+
+**预防**：
+- 在 Hastur 中测试脚本编译时，用 `FileAccess.open()` 读取磁盘文件覆盖 `source_code`
+- 修改脚本后，在编辑器内触发文件系统扫描：`ei.get_resource_filesystem().scan()`
+- 如果仍无效，**完整关闭并重启 Godot 编辑器**（唯一可靠的办法）
+
+---
+
+### 18.2 `preload` 编译成功 ≠ 脚本本身无错误
+
+**症状**：`evil_eye_pool.gd`（包含 `preload("evil_eye_node.gd")`）能够成功编译，但 `evil_eye_node.gd` 自身用 `load()` + `reload()` 时报编译错误。
+
+**根因**：GDScript 的 `preload()` 在编译期解析，如果目标脚本有编译错误，`preload` 也会失败。但如果目标脚本的 GDScript 对象之前已经被成功创建过（即使是旧版本），`preload` 可能解析到**内存中的旧 GDScript 对象**，而非磁盘上的新文件。
+
+**诊断**：分别单独加载两个脚本检查：
+```gdscript
+# 验证 pool 能加载
+var ps = load("res://pool.gd")
+ps.reload()
+var ok_ps = (ps.get_script_method_list().size() > 0)
+
+# 验证 node 自身能加载
+var ns = load("res://node.gd")
+ns.reload()
+var ok_ns = (ns.get_script_method_list().size() > 0)
+# ok_ps == true 但 ok_ns == false → pool 用的是旧缓存！
+```
+
+**修复**：强制 node 脚本使用磁盘源重新加载（见 18.1），然后重新编译 pool 脚本。
+
+---
+
+## 十九、数组引用共享与可变性陷阱
+
+### 19.1 数组传递是引用共享——`clear()` 会污染调用方的数组
+
+**症状**：技能第一次能正常释放，第二次点击播放按钮无响应。对象池中的节点看起来正常，但没有目标可攻击。
+
+**根因**：`initialize()` 中直接将传入的 `targets` 数组赋值给成员变量，是**引用赋值**而非拷贝：
+
+```gdscript
+# ❌ 错误：引用共享
+func initialize(targets: Array) -> void:
+    _targets = targets  # _targets 和调用方的数组是同一个对象！
+
+func _destroy() -> void:
+    _targets.clear()    # 调用方 skill_demo._targets 也被清空了！
+```
+
+第二次施放时，`skill_demo._targets` 已经是空数组 → `TargetSelector.find_optimal_laser_path()` 收到空数组 → `covered_count = 0` → 技能不释放。
+
+```gdscript
+# ✅ 正确：创建独立副本
+func initialize(targets: Array) -> void:
+    _targets = targets.duplicate()  # 不共享引用
+
+func _destroy() -> void:
+    _targets.clear()  # 只清除自己的副本，不影响调用方
+```
+
+**排查思路**：
+- 技能第一次能放、第二次不能放 → 检查是否有数组/字典在 `_destroy()`/`reset_for_pool()` 中被 `clear()`
+- 检查 `initialize()` 中是引用赋值还是 `.duplicate()`
+- 从调用方一路追踪到被调用方，确认数组对象是否被意外修改
+
+**规律**：GDScript 中 `Array` 和 `Dictionary` 是**引用类型**。赋值操作不创建副本。`clear()`、`append()`、索引修改等操作会直接影响所有持有同一引用的代码。
+
+**预防清单**：
+- 用 `Array.duplicate()` 或 `Dictionary.duplicate()` 创建独立副本，除非你有意共享数据
+- 在 `initialize()` 中接收外部数组时，默认用 `.duplicate()`
+- `clear()` 前确认该数组是"自己独有的"还是"共享的"
+- 同一个陷阱也适用于 `Dictionary`——`clear()`、`erase()`、`merge()` 都会影响所有引用者
+
+---
+
+## 二十、类型错误引发误导性解析器报错
+
+### 20.1 一个类型错误可以产生完全不相关的"Indent"报错
+
+**症状**：报 `Expected statement, found "Indent" instead.` 在 A 行，但真正的错误是 B 行的类型不匹配。修复 B 行的类型错误后，A 行的缩进报错自动消失。
+
+**根因**：GDScript 解析器遇到类型错误时进入**错误恢复模式**。在此模式下，解析器对后续语句的解析不再可靠——它可能跳过一些 token、误判缩进层级、或报告完全错误的错误位置。
+
+**案例**：魔眼激光开发中：
+```
+实际错误:  line 414  m.color_ramp = g   ← Gradient 不能赋给 Texture2D
+显示报错:  line 99   Expected statement, found "Indent" instead.
+          line 115  Expected end of file.
+```
+
+解析器在 line 99 处被类型错误干扰，错误恢复模式导致它错误地判断了后续的缩进层级和语句边界，最终在第 115 行报告 "Expected end of file"。
+
+**应对策略**：
+
+1. **不要把第一个错误当作唯一错误**——如果报错是缩进相关但看起来代码没问题，往**文件后半部分**找类型不匹配
+2. **从文件末尾的错误开始排查**——"Expected end of file" 往往是前面某个错误的连锁反应
+3. **用二分法定位**：注释掉文件后半部分，看前半部分能否编译通过。如果前半部分能过，错误在后半部分
+4. **检查 `const`、`@export`、属性赋值的类型**——类型不匹配（如 `Gradient → Texture2D`）是最常见的"上游真实错误"
+
+```gdscript
+# 排查流程：
+# 1. 文件报 "Expected statement" + "Expected end of file"
+# 2. 注释掉文件后半部分测编译
+# 3. 前半部分通过 → 错误在后半部分
+# 4. 在后半部分找类型不匹配的赋值语句
+# 5. 修复类型后，所有缩进相关报错自动消失
+```
+
+**预防**：
+- 不要被"Indent"、"end of file"等解析器错误迷惑——它们往往是下游症状而非真实病因
+- 类型错误的典型特征是**一条真实错误 + 多条不相关的解析错误**
+- 排错时先扫一遍所有变量赋值，找类型不匹配
+
+---
+
+*版本更新：v4.3 — 新增 GDScript 类型映射陷阱（color_ramp→GradientTexture2D）、编辑器 GDScript 缓存陷阱（source_code 不从磁盘重读）、数组引用共享陷阱、类型错误误导性报错。*

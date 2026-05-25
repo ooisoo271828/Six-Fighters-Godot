@@ -9,7 +9,6 @@ display_name = "冰箭术"
 damage_type = 2
 base_damage = 28.0
 cooldown = 3.5
-cast_range = 500.0
 telegraph_ms = 300
 tracking_enabled = false
 turn_rate = 4.0
