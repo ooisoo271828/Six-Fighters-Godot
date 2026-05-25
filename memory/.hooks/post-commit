@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# Git post-commit hook: sync Claude Code memory files to project directory.
+#
+# Dynamically computes the project slug from the repo root path,
+# so it works on any machine without hardcoded paths.
+#
+# Install:
+#   cp .githooks/post-commit .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+SLUG=$(echo "$PROJECT_ROOT" | sed 's/[^a-zA-Z0-9]/-/g')
+MEMORY_SOURCE="$HOME/.claude/projects/$SLUG/memory"
+MEMORY_TARGET="$PROJECT_ROOT/memory"
+
+if [ -d "$MEMORY_SOURCE" ]; then
+    cp "$MEMORY_SOURCE"/*.md "$MEMORY_TARGET/" 2>/dev/null
+    echo "[memory-sync] Synced memory files to project"
+fi
