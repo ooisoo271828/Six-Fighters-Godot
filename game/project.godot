@@ -63,6 +63,10 @@ move_right={
 
 3d/physics_engine="Jolt Physics"
 
+[plugins]
+
+hasturoperationgd/enabled=true
+
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0

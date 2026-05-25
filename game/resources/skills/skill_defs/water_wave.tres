@@ -10,6 +10,7 @@ damage_type = 0
 base_damage = 35.0
 cooldown = 5.0
 telegraph_ms = 350
+cast_range = 500.0
 target_mode = 2
 tracking_enabled = false
 turn_rate = 4.0

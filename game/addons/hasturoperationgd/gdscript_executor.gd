@@ -21,13 +21,6 @@ func dispose() -> void:
 		_error_capturer = null
 
 
-func _notification(what: int) -> void:
-	# 只有 Node 子类才会收到 NOTIFICATION_PREDELETE
-	# 对于 RefCounted，只能依赖显式调用 dispose() 或等待引用计数归零
-	if what == NOTIFICATION_PREDELETE:
-		dispose()
-
-
 func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin = null) -> Dictionary:
 	var result = {
 		"compile_success": false,

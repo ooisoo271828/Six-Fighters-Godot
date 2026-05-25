@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://cxkqwerty1234"]
+[gd_scene load_steps=10 format=3 uid="uid://cxkqwerty1234"]
 
 [ext_resource type="Script" path="res://scripts/skill_system/skill_root.gd" id="1_root"]
 [ext_resource type="Script" path="res://scripts/skill_system/registry/skill_registry.gd" id="2_reg"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/skill_system/pools/projectile_pool.gd" id="6_pool"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/executor_pool.gd" id="7_exec_pool"]
 [ext_resource type="Script" path="res://scripts/skill_system/vfx/skill_vfx_manager.gd" id="8_vfx"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/laser_beam_pool.gd" id="9_beam"]
 
 [node name="SkillSystem" type="Node"]
 script = ExtResource("1_root")
@@ -32,3 +33,6 @@ script = ExtResource("7_exec_pool")
 
 [node name="SkillVFXManager" type="Node" parent="."]
 script = ExtResource("8_vfx")
+
+[node name="LaserBeamPool" type="Node2D" parent="."]
+script = ExtResource("9_beam")

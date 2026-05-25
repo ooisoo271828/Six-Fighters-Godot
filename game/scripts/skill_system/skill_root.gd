@@ -13,6 +13,7 @@ extends Node
 @onready var projectile_pool: Node2D = $ProjectilePool
 @onready var executor_pool: Node = $ExecutorPool
 @onready var skill_vfx_manager: Node = $SkillVFXManager
+@onready var laser_beam_pool: Node2D = $LaserBeamPool
 
 var _chain_id_counter: int = 0
 
@@ -27,6 +28,7 @@ func _initialize_subsystems() -> void:
 	projectile_pool.initialize()
 	executor_pool.initialize()
 	skill_vfx_manager.initialize()
+	laser_beam_pool.initialize()
 
 func _connect_signal_bus() -> void:
 	# VFX 监听伤害信号
@@ -115,6 +117,19 @@ func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extr
 
 ## 执行单条叶子链
 func _execute_chain(chain: ExecutionChain, skill_def: SkillDef, visual_def: SkillVisualDef) -> void:
+	# 激光柱直接走 LaserBeamPool
+	if chain.effect_id == "emit_laser_beam":
+		laser_beam_pool.spawn(
+			chain.caster,
+			chain.direction,
+			chain.damage,
+			chain.damage_type,
+			chain.skill_id,
+			skill_signal_bus
+		)
+		skill_signal_bus.skill_cast_finished.emit(chain.caster, skill_def.skill_id if skill_def else "")
+		return
+
 	var executor = executor_pool.acquire()
 	if not executor:
 		push_warning("[SkillSystem] No available executor")

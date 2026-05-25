@@ -13,7 +13,7 @@ extends RefCounted
 ## 3. 堆栈清理：统一使用 _sanitize_stack_trace 规范化堆栈格式
 ## 4. 错误统计：_total_error_count 包含所有错误类型，_last_error_time_ms 记录最后时间
 
-const MAX_BUFFER_SIZE := 200          # 最大缓冲条数
+const MAX_BUFFER_SIZE := 500          # 最大缓冲条数
 const FLUSH_INTERVAL_MS := 100        # 刷新间隔（毫秒）
 const MAX_MESSAGE_LENGTH := 2000       # 最大单条消息长度
 const MAX_BATCH_SIZE := 50
@@ -177,7 +177,9 @@ func flush() -> Array[Dictionary]:
 		var batch_end = mini(i + MAX_BATCH_SIZE, entries.size())
 		var batch: Array[Dictionary] = entries.slice(i, batch_end)
 
-		var result = _on_log_ready.call(batch)
+		var result
+		if _on_log_ready.is_valid():
+			result = _on_log_ready.call(batch)
 		if result is Dictionary and result.get("dropped", false):
 			dropped = true
 		i = batch_end

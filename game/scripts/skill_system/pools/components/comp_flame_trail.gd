@@ -76,7 +76,7 @@ func _setup_crest_mode(chain: ExecutionChain) -> void:
 
 	var parent = _particles.get_parent()
 	var count: int = _config.count
-	var half_w: float = _config.crest_width * 0.5
+	var _half_w: float = _config.crest_width * 0.5
 	var fwd = chain.direction if chain.direction.length() > 0 else Vector2.RIGHT
 	var perp = Vector2(-fwd.y, fwd.x)
 	var offset = fwd * _config.forward_offset

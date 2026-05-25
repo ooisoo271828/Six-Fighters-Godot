@@ -23,6 +23,7 @@ interface ConnectionContext {
 	lastMessageTime: number
 	lastHeartbeatSent: number | null
 	lastHeartbeatReceived: number | null
+	lastRttMs: number | null
 	pingSent: boolean
 	pingSentTime: number | null
 	buffer: string
@@ -264,6 +265,7 @@ export class TcpServer {
 			lastMessageTime: Date.now(),
 			lastHeartbeatSent: null,
 			lastHeartbeatReceived: null,
+			lastRttMs: null,
 			pingSent: false,
 			pingSentTime: null,
 			buffer: '',
@@ -336,16 +338,26 @@ export class TcpServer {
 				this.handleDeleteNodeResult(socketId, message.data as Record<string, unknown>)
 				break
 			case 'pong':
-				// 心跳响应
+				// 心跳响应 — 立即计算并存储 RTT
 				if (ctx.pingSent) {
-					ctx.lastHeartbeatReceived = Date.now()
+					const now = Date.now()
+					ctx.lastHeartbeatReceived = now
+					if (ctx.pingSentTime) {
+						ctx.lastRttMs = now - ctx.pingSentTime
+					}
 					ctx.pingSent = false
 					ctx.pingSentTime = null
 				}
 				break
 			case 'heartbeat':
-				// 客户端主动心跳
-				this.sendToSocket(socketId, { type: 'heartbeat_ack', data: { timestamp: Date.now() } })
+				// 客户端主动心跳 — 提取 Godot 端计算的 RTT
+				if (message.data?.rtt_ms != null) {
+					ctx.lastRttMs = message.data.rtt_ms as number
+				}
+				this.sendToSocket(socketId, {
+					type: 'heartbeat_ack',
+					data: { timestamp: Date.now() },
+				})
 				break
 			case 'logs':
 				// 日志消息
@@ -533,9 +545,7 @@ export class TcpServer {
 					last_heartbeat_received: ctx.lastHeartbeatReceived ? new Date(ctx.lastHeartbeatReceived).toISOString() : '',
 					idle_seconds: Math.floor((now - ctx.lastMessageTime) / 1000),
 					reconnect_count: ctx.reconnectCount,
-					rtt_ms: ctx.pingSentTime && ctx.lastHeartbeatReceived
-						? ctx.lastHeartbeatReceived - ctx.pingSentTime
-						: null,
+					rtt_ms: ctx.lastRttMs,
 				}
 			}
 		}

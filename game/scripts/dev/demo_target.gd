@@ -2,6 +2,8 @@
 ## 简单箭靶/训练假人视觉效果
 extends Node2D
 
+var is_alive: bool = true
+
 const RADIUS: float = 14.0
 const RING_WIDTH: float = 3.0
 

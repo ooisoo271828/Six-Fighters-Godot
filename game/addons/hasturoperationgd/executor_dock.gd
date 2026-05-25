@@ -49,7 +49,7 @@ func _ready() -> void:
 
 	# 添加版本标签（调试用）
 	var version_label = Label.new()
-	version_label.text = "v0.3.1"
+	version_label.text = "v0.4.0"
 	version_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
 	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	vbox.add_child(version_label)

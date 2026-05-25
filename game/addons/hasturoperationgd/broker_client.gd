@@ -35,6 +35,8 @@ const LOG_FLUSH_INTERVAL := 0.5  # 每 0.5 秒尝试发送日志
 var _rtt_ms: float = 0.0
 var _ping_sent_time: int = 0
 var _last_pong_time: int = 0
+var _heartbeat_timer: float = 0.0
+const HEARTBEAT_INTERVAL := 5.0  # 每 5 秒发送一次心跳
 
 var _editor_plugin_ref = null
 
@@ -49,7 +51,7 @@ func _init(host: String, port: int, executor_type: String = "editor", editor_plu
 	_project_name = ProjectSettings.get_setting("application/config/name", "Unnamed")
 	_project_path = ProjectSettings.globalize_path("res://")
 	_editor_pid = OS.get_process_id()
-	_plugin_version = "0.3.1"
+	_plugin_version = "0.4.0"
 	var version_info = Engine.get_version_info()
 	_editor_version = str(version_info.get("major", 0)) + "." + str(version_info.get("minor", 0)) + "." + str(version_info.get("patch", 0))
 
@@ -116,6 +118,9 @@ func disconnect_client() -> void:
 	_connected = false
 	_executor_id = ""
 	_buffer = ""
+	if _executor != null:
+		_executor.dispose()
+		_executor = null
 
 
 func poll(delta: float) -> void:
@@ -154,6 +159,13 @@ func poll(delta: float) -> void:
 		if _log_flush_timer >= LOG_FLUSH_INTERVAL:
 			_log_flush_timer = 0.0
 			_log_catcher.flush()
+
+	# 主动心跳（使 broker 端 RTT 追踪生效）
+	if _connected:
+		_heartbeat_timer += delta
+		if _heartbeat_timer >= HEARTBEAT_INTERVAL:
+			_heartbeat_timer = 0.0
+			send_heartbeat()
 
 
 func get_rtt_ms() -> float:
@@ -607,4 +619,4 @@ func send_heartbeat() -> void:
 	if not _connected:
 		return
 	_ping_sent_time = Time.get_ticks_msec()
-	_send_message({"type": "heartbeat"})
+	_send_message({"type": "heartbeat", "data": {"rtt_ms": _rtt_ms}})

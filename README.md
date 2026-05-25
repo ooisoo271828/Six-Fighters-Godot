@@ -23,26 +23,7 @@ A vertical (9:16 portrait) top-down 2D tactical fighter game built with Godot 4.
 
 ## Architecture
 
-```
-┌─────────────┐   HTTP 5302   ┌─────────────────┐   TCP 5301   ┌──────────────────┐
-│ AI Agent    │ ◄───────────► │ broker-server   │ ◄──────────► │ Godot Editor     │
-│ (Claude Code)│               │ (Node.js/TS)    │              │ + HasturPlugin   │
-└──────┬──────┘               └─────────────────┘              └────────┬─────────┘
-       │                                                               │
-       │  Structured error response                                    │ Structured error
-       │  (file/line/stack via _details fields)                        │  capture via
-       │                                                               │  OS.add_logger()
-       │                                                               │  + ScriptBacktrace
-       │                                                               ▼
-       │                                                     ┌──────────────────┐
-       │                                                     │  Game Runtime     │
-       └─────────────────────────────────────────────────────┤  (error log       │
-                                                             │   streaming via   │
-                                                             │   TCP logs chan)  │
-                                                             └──────────────────┘
-```
-
-### Game Systems
+The project uses a **three-layer architecture**: AI Agent ↔ broker-server ↔ Godot Editor (see [HasturOperationGD Technical Whitepaper](docs/HasturOperationGD-Technical-Whitepaper.md) for details), with a POE-style skill modifier system.
 
 ```
 Hub Scene → Hero Selection → Arena Battle (wave-based)
@@ -128,7 +109,6 @@ Six-Fighters-Godot/
 │   │   ├── editor_call.py              # Inline GDScript executor
 │   │   └── hastur.py                   # Full CLI for broker-server management
 │   └── docs/                           # Design docs, handoff, references
-│       ├── claude-ref-hastur.md        # HasturOperationGD full reference
 │       ├── claude-ref-camera.md        # Camera system reference
 │       ├── claude-ref-skill-demo.md    # SkillDemo scene reference
 │       ├── camera_system_design.md     # Camera system design doc
@@ -136,7 +116,9 @@ Six-Fighters-Godot/
 │       └── handoff-*.md                # Session handoff documents
 ├── broker/hastur-operation-plugin-main/
 │   └── broker-server/                  # Node.js broker (TCP 5301 / HTTP 5302)
-└── docs/                               # Plugin whitepaper, pitfall guide
+└── docs/                               # Whitepaper, pitfall guide
+    ├── HasturOperationGD-Technical-Whitepaper.md  # Hastur main doc
+    └── godot-ai-pitfall-guide.md       # AI programming pitfalls
 ```
 
 ---
@@ -216,11 +198,10 @@ Each projectile is rendered by `ProjectileNode` with up to **11 visual layers**:
 ### Verify Connection
 
 ```bash
-cd game
-python tools/editor_call.py --health       # Check broker + editor status
-python tools/editor_call.py --executors    # List connected Godot editor
-python tools/editor_call.py 'print("Hello from Godot!")'  # Execute GDScript remotely
+curl -s http://localhost:5302/api/health
+curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors
 ```
+See the [HasturOperationGD Technical Whitepaper](docs/HasturOperationGD-Technical-Whitepaper.md) for the full API reference.
 
 ### Structured Error Capture (v0.3.1+)
 

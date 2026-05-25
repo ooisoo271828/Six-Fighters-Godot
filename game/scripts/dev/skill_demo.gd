@@ -30,8 +30,16 @@ const TARGET_POSITIONS: Dictionary = {
 		"positions": [Vector2(-180, -260), Vector2(-90, -260),
 			Vector2(0, -260), Vector2(90, -260), Vector2(180, -260)],
 	},
+	"formation": {
+		"name": "三排列",
+		"positions": [
+			Vector2(0, -200),
+			Vector2(-100, -260), Vector2(0, -260), Vector2(100, -260),
+			Vector2(0, -320),
+		],
+	},
 }
-const TARGET_MODE_KEYS: Array[String] = ["single", "dual", "triangle", "scatter", "line"]
+const TARGET_MODE_KEYS: Array[String] = ["single", "dual", "triangle", "scatter", "line", "formation"]
 const SPEEDS: Array[float] = [0.5, 1.0, 2.0]
 ## 速度倍率按钮标签
 const SPEED_LABELS: Array[String] = ["0.5×", "1×", "2×"]
@@ -94,7 +102,7 @@ func _setup_caster() -> void:
 	_caster.set_script(preload("res://scripts/dev/demo_caster.gd"))
 	add_child(_caster)
 	# 施法者位置：锚点 + 阵型偏移
-	_caster.position = Vector2(0, 170)
+	_caster.position = Vector2(0, 150)
 
 ## ── 技能系统 ──
 
@@ -234,19 +242,25 @@ func _do_cast() -> void:
 	_pause_btn.text = "⏸"
 	_status_label.text = "施放: %s" % _selected_skill
 
-	var primary_target: Node2D = _targets[0]
-	_skill_system.cast_skill(_caster, _selected_skill, primary_target)
+	_skill_system.cast_skill(_caster, _selected_skill, _targets)
 
 func _count_active_projectiles() -> int:
 	var pool = _skill_system.get_node_or_null("ProjectilePool")
+	var beam_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	var count := 0
 	if pool and pool.has_method("get_active_count"):
-		return pool.get_active_count()
-	return 0
+		count += pool.get_active_count()
+	if beam_pool and beam_pool.has_method("get_active_count"):
+		count += beam_pool.get_active_count()
+	return count
 
 func _clear_all_projectiles() -> void:
 	var pool = _skill_system.get_node_or_null("ProjectilePool")
 	if pool and pool.has_method("clear_all"):
 		pool.clear_all()
+	var beam_pool = _skill_system.get_node_or_null("LaserBeamPool")
+	if beam_pool and beam_pool.has_method("clear_all"):
+		beam_pool.clear_all()
 
 func _process(dt: float) -> void:
 	if not _is_casting:
@@ -270,6 +284,11 @@ func _process(dt: float) -> void:
 		else:
 			Engine.time_scale = 1.0
 			_status_label.text = "施放完成"
+	elif _cast_timer > 10.0:
+		# 安全超时：防止因特殊技能（如持续激光柱）卡死 UI
+		_is_casting = false
+		Engine.time_scale = 1.0
+		_status_label.text = "施放完成（超时）"
 
 func _input(event: InputEvent) -> void:
 	# 空格键：播放/停止快捷操作

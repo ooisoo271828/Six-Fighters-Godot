@@ -1,6 +1,6 @@
 # 🛡 Godot AI 编程避坑指南
 
-> **版本**: v4.1 | 创建: 2026-04-28 | 更新: 2026-05-25 | 状态: 持续更新
+> **版本**: v4.2 | 创建: 2026-04-28 | 更新: 2026-05-25 | 状态: 持续更新
 >
 > 本指南汇总了 Six-Fighters-Godot 项目开发过程中反复出现的错误、隐蔽陷阱和系统性教训。
 > 目标：避免团队在同一个坑里跌倒两次。
@@ -772,6 +772,57 @@ replacement = 'if xxx:\n\t\t\tbody'
 - 每次修改前检查目标文件中是否已存在同名变量/函数
 - 用 `grep "变量名" 文件名` 验证后再写入
 - 合并多个修改到同一个脚本中执行，避免分散操作
+
+### 6.6 未经确认就覆盖已有文件（高危）
+
+**症状**：想要"创建"一个文件，实际覆盖了已有的大量历史内容。原 1641 行文档被截断为 ~250 行。
+
+**根因**：对工具行为的三个错误假设叠加。
+
+**错误一：误读 Write 工具的错误信息**
+
+```
+Write 工具报错: "File has not been read yet. Read it first before writing to it."
+AI 的解读: "文件不存在，需要先创建"
+实际含义: "你在本对话中还没有 Read() 过这个文件，无法 Write。不是文件不存在。"
+```
+
+Write 工具的 "has not been read yet" 指的是**本对话的 Read 操作历史**，不是文件在磁盘上的存在状态。文件可能早已存在。
+
+**错误二：盲目使用 `cat >` 覆盖写入**
+
+```bash
+# 危险：cat > 无条件截断目标文件
+cat > "docs/guide.md" << "EOF"
+...新内容...
+EOF
+# 如果 guide.md 已有 1641 行内容，全部丢失！
+```
+
+Bash 的 `>` 重定向在写入前会**清空目标文件**。不管原文件多大、有多少重要历史，`cat > file` 都会先把它切成 0 字节，再写入新内容。
+
+**错误三：用户提到"汇总到某文件"时没有先验证文件是否存在**
+
+用户说"汇总到 XXX 文件"时，这个文件很可能早已存在并已有丰富内容。正确的反应是：
+1. 先用 `git log --oneline -- 文件` 检查 git 历史
+2. 再用 `ls -l 文件` 检查文件大小
+3. 然后 Read 文件了解现有内容
+4. 最后才决策：是追加、合并，还是覆盖
+
+**预防流程**：
+
+```bash
+# 写文件前的标准检查
+git log --oneline -- docs/target-file.md   # 查历史
+ls -l docs/target-file.md                    # 查大小
+test -f docs/target-file.md && echo "存在"   # 查是否存在
+```
+
+**硬性规则**：
+- **绝对禁止用 `cat >` 覆盖可能已存在的文件**
+- 用户说"汇总到 XXX"时，**默认文件已存在**，先验证
+- Write 报 "not read yet" **不等于** "file not exists"
+- 写文件前先 `git log` 和 `ls -l` 检查文件状态
 
 ---
 
@@ -1637,5 +1688,187 @@ for i in range(count):
 - [ ] 区分了 `Sprite2D.scale`（像素倍数）和 `GPUParticles2D` 的粒子缩放（相对值）
 
 ---
+
+
+## 十四、技能系统集成陷阱
+
+### 14.1 skill_demo 必须检查所有对象池
+
+**症状**：技能在技能查看器中只能释放一次，点击第二次播放按钮无响应。
+
+**根因**：`skill_demo.gd` 的 `_count_active_projectiles()` 只检查了 `ProjectilePool`，忽略了自定义池（如 `LaserBeamPool`）。导致 `_had_projectiles` 始终为 false，`_is_casting` 永远无法被重置为 false，播放按钮被锁死。
+
+```gdscript
+# 错误：只检查 ProjectilePool
+func _count_active_projectiles() -> int:
+    var pool = _skill_system.get_node_or_null("ProjectilePool")
+    return pool.get_active_count() if pool else 0
+
+# 正确：检查所有活跃池
+func _count_active_projectiles() -> int:
+    var count := 0
+    for pname in ["ProjectilePool", "LaserBeamPool"]:
+        var p = _skill_system.get_node_or_null(pname)
+        if p and p.has_method("get_active_count"):
+            count += p.get_active_count()
+    return count
+```
+
+**关联修复**：同步更新 `_clear_all_projectiles()` + 添加安全超时防止 UI 卡死。
+
+### 14.2 非投射物 Effect 的执行链路由
+
+**症状**：创建了自定义 Effect（如激光柱），系统尝试用 ProjectilePool 处理它。
+
+**根因**：`skill_root.gd:_execute_chain()` 默认把所有 chain 交给 `ProjectilePool`。自定义 Effect 返回的 chain 需要特殊路由。
+
+```gdscript
+func _execute_chain(chain, skill_def, visual_def) -> void:
+    if chain.effect_id == "emit_laser_beam":
+        laser_beam_pool.spawn(chain.caster, chain.direction, ...)
+        skill_signal_bus.skill_cast_finished.emit(...)
+        return
+    var executor = executor_pool.acquire()
+    ...
+```
+
+### 14.3 对象池 reset 不完整导致第二次播放异常
+
+**症状**：技能在查看器中第一次播放正常，第二次播放视觉效果不同或消失。
+
+**根因**：`reset_for_pool()` 没有恢复所有在 `initialize()` 中修改的状态。
+
+```gdscript
+# 不完整的 reset
+func reset_for_pool() -> void:
+    _initialized = false
+    _elapsed = 0.0
+    # 漏了 scale、modulate、子节点 position
+
+# 完整的 reset：覆盖 initialize() 中修改的每一条状态
+func reset_for_pool() -> void:
+    _initialized = false
+    _fading = false
+    _elapsed = 0.0
+    _caster = null
+    _signal_bus = null
+    _muzzle_particles.emitting = false
+    _sprite_outer.modulate.a = OUTER_COLOR.a
+    _sprite_outer.scale = Vector2(init_sx, ...)
+    # ... 所有子节点
+    set_process(false)
+```
+
+**原则**：`reset_for_pool()` 中每一条赋值语句，都应该能在 `initialize()` 中找到对应的一条。
+
+---
+
+## 十五、多层 Sprite 渲染与视觉层次陷阱
+
+### 15.1 后添加的子节点渲染在上层
+
+**症状**：多层 Sprite 叠加时，宽段的可见部分被窄段遮盖，所有段看起来一样宽。
+
+**根因**：Godot 中节点的渲染顺序由树中位置决定：**后添加的子节点渲染在上层**。
+
+```gdscript
+# 错误：宽段先添加，被窄段遮盖
+add_child(wider_sprite)     # 下层
+add_child(narrower_sprite)  # 上层遮盖 wider 中心
+
+# 正确：窄段先添加，宽段全宽可见
+add_child(narrower_sprite)  # 下层
+add_child(wider_sprite)     # 上层全宽可见
+```
+
+### 15.2 分段递缩的透明度策略
+
+**症状**：基座段看起来一样宽，或过渡效果生硬。
+
+**根因**：每段的 alpha 值与宽度不匹配：
+
+```
+正确：最宽段 alpha 最高，最窄段 alpha 最低
+  段1 80% -> alpha 0.84（清晰可见）
+  段2 60% -> alpha 0.66
+  段3 40% -> alpha 0.48
+  段4 20% -> alpha 0.30（自然淡出）
+
+错误：反了 -> 宽段看不见，全一样窄
+```
+
+### 15.3 光束扩展区的覆盖位置
+
+**症状**：光束扩展区出现在光柱体外部。
+
+**根因**：扩展区 Sprite 定位在光柱体末端之外，而不是覆盖在体内。
+
+```
+正确：扩展区覆盖在光柱体末端内部
+  光柱体：x=(0, 900)
+  扩展区：x=(820, 900)
+
+错误：扩展到体外
+  光柱体：x=(0, 900)
+  扩展区：x=(900, 980)
+```
+
+---
+
+## 十六、Sprite2D 定位与坐标系陷阱
+
+### 16.1 centered=false 的定位法则
+
+**症状**：用了复杂的 position/scale 计算，但 Sprite 出现在错误位置。
+
+**要点**：
+- `centered = false` 时 `position` 是 Sprite 左上角
+- Sprite 向右（+X）和向下（+Y）延伸
+- `scale = (sx, sy)` 将纹理拉伸到 `(sx*tex_w, sy*tex_h)` 像素
+
+让 Sprite 居中于 y=0，宽度为 w：
+```gdscript
+position.y = -w * 0.5         # 左上角 y
+scale.y = w / tex_height      # 纹理高度 -> w 像素
+# Sprite 覆盖 y in (-w/2, +w/2)
+```
+
+### 16.2 纹理方向映射（centered=false）
+
+```
+纹理 (0,0) -> Sprite.position（左上角）
+纹理 X 轴 -> Sprite 局部 +X
+纹理 Y 轴 -> Sprite 局部 +Y
+```
+
+旋转后局部坐标系也随之旋转。
+
+---
+
+## 附录补充项
+
+在现有附录中追加以下检查项：
+
+**技能系统**：
+- [ ] 新技能 skill_demo 的 `_count_active_projectiles` 已更新
+- [ ] `_clear_all_projectiles` 已更新，添加了安全超时
+- [ ] 特殊 effect 类型在 `_execute_chain` 中有路由
+- [ ] `reset_for_pool()` 覆盖 initialize() 中修改的每一条状态
+
+**多层 Sprite 渲染**：
+- [ ] 宽段是否在窄段之后添加（宽段在上层）
+- [ ] 递缩段的 alpha 是否递减（宽段 alpha 最高）
+
+**通用**：
+- [ ] 脚本 `get_script_method_list().size() > 0` 验证编译成功
+- [ ] Tween 用 `create_tween()` 而非 `Tween.new()`
+- [ ] 成员变量集中在文件顶部声明，不在函数之间插入
+- [ ] GPUParticles2D 设置了 texture（非 null）
+- [ ] 用 `Script.new()` 或 PackedScene 替代 `Node2D.new() + set_script()`
+- [ ] centered=false Sprite 的 position.y = -width/2 居中
+
+---
+
+*版本更新：v4.2 — 新增技能系统集成陷阱、多层 Sprite 渲染陷阱、Sprite2D 定位陷阱，补充 GDScript/引擎/粒子条目。*
 
 *本指南将持续更新。每次遇到新的系统性陷阱后，在此追加记录。*

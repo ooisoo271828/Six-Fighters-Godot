@@ -1,7 +1,7 @@
 # HasturOperationGD 插件技术蓝皮书
 
-> **版本**: v0.3.1（插件） / v0.1.0（broker-server）
-> **最后更新**: 2026-05-22
+> **版本**: v0.4.0（插件） / v0.1.0（broker-server）
+> **最后更新**: 2026-05-25
 > **适用对象**: 人类开发团队成员、AI 助理（Claude Code 等）
 > **状态**: 正式记录
 >
@@ -27,49 +27,47 @@ HasturOperationGD 是一个 Godot 编辑器插件，将 Godot 编辑器变身为
 
 - **TCP 端口 5301**: Godot 插件与 broker-server 的长连接通道
 - **HTTP 端口 5302**: 外部客户端（AI Agent）调用 REST API 的入口
-- **默认认证 Token**: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7`
+- **默认认证 Token**: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7`（v0.4.0 起支持 `HASTUR_TOKEN` 环境变量覆盖）
 
 ### 1.3 目录结构
 
 ```
-工作区根目录/
-├── six-fighter-gd/                          # Godot 项目（插件实际加载位置）
-│   ├── addons/hasturoperationgd/            # ⭐ 插件运行位置（v0.3.1）
-│   │   ├── broker_client.gd                  # TCP 通信 + 场景树/节点操作
-│   │   ├── gdscript_executor.gd             # GDScript 代码编译执行引擎
-│   │   ├── execution_context.gd             # 执行上下文（output 方法）
-│   │   ├── editor_log_catcher.gd            # 编辑器日志捕获（缓冲+批处理）
-│   │   ├── hastur_logger.gd                 # 全局日志捕获器
-│   │   ├── runtime_error_capture.gd         # 运行时错误安全包装
-│   │   ├── executor_backend.gd              # 执行后端（连接管理）
-│   │   ├── executor_dock.gd                 # 编辑器面板 UI（4 标签页）
-│   │   ├── executor_dock.tscn               # UI 场景文件
-│   │   ├── game_executor.gd                # 游戏运行时代码执行（仅 debug）
-│   │   ├── hasturoperationgd.gd            # 插件主入口
+项目根目录/                                     # e.g. Six-Fighters-Godot/
+├── game/                                       # ⭐ Godot 项目目录
+│   ├── addons/hasturoperationgd/               # ⭐ 插件运行位置（v0.4.0）
+│   │   ├── broker_client.gd                    # TCP 通信 + 场景树/节点操作
+│   │   ├── gdscript_executor.gd                # GDScript 代码编译执行引擎
+│   │   ├── execution_context.gd                # 执行上下文（output 方法）
+│   │   ├── editor_log_catcher.gd               # 编辑器日志捕获（缓冲+批处理）
+│   │   ├── hastur_logger.gd                    # 全局日志捕获器
+│   │   ├── runtime_error_capture.gd            # 运行时错误安全包装
+│   │   ├── executor_backend.gd                 # 执行后端（连接管理）
+│   │   ├── executor_dock.gd                    # 编辑器面板 UI（4 标签页）
+│   │   ├── executor_dock.tscn                  # UI 场景文件
+│   │   ├── game_executor.gd                    # 游戏运行时代码执行（仅 debug）
+│   │   ├── hasturoperationgd.gd                # 插件主入口
 │   │   ├── hastur_operation_gd_plugin_settings.gd  # 设置管理（host/port/输出长度）
-│   │   └── plugin.cfg                       # 插件清单
-│   ├── tools/                               # ⭐ CLI 工具集
-│   │   ├── editor_call.py                   # 主推：GDScript 执行器（Python 3.12+）
-│   │   ├── editor_call.js                   # 备选：GDScript 执行器（Node.js）
-│   │   ├── hastur.py                        # 主推：全功能 CLI（Python 3.12+）
-│   │   └── hastur.sh                        # 兼容包装：委托给 hastur.py
-│   ├── .claude/CLAUDE.md                    # 项目指南（单一起源）
-│   └── scenes/scripts/...                   # 游戏源码
+│   │   └── plugin.cfg                          # 插件清单
+│   ├── .claude/CLAUDE.md                       # 项目指南（单一起源）
+│   └── <游戏源码>                               # scenes/scripts/resources/...
 │
-├── hastur-operation-plugin-main/           # 插件源码仓库（参考/备份）
-│   ├── addons/hasturoperationgd/            # v0.1 源码
-│   └── broker-server/                       # broker-server 源码
+├── broker/hastur-operation-plugin-main/        # broker-server 源码
+│   └── broker-server/
 │       ├── src/
-│       │   ├── index.ts                     # 启动入口（CLI args）
-│       │   ├── tcp-server.ts                # TCP 消息路由（5301）
-│       │   ├── http-server.ts               # HTTP REST API（5302）
-│       │   ├── executor-manager.ts          # 执行器状态管理
-│       │   ├── auth.ts                      # Bearer Token 认证
-│       │   └── types.ts                     # TypeScript 类型定义
+│       │   ├── index.ts                        # 启动入口（CLI args）
+│       │   ├── tcp-server.ts                   # TCP 消息路由（5301）
+│       │   ├── http-server.ts                  # HTTP REST API（5302）
+│       │   ├── executor-manager.ts             # 执行器状态管理
+│       │   ├── auth.ts                         # Bearer Token 认证
+│       │   └── types.ts                        # TypeScript 类型定义
 │       └── package.json
+│
+└── docs/
+    ├── HasturOperationGD-Technical-Whitepaper.md  # ⬅ 本文档
+    └── godot-ai-pitfall-guide.md                  # AI 避坑指南
 ```
 
-> **⚠️ 关键警告**: Godot 4.x 只会加载 `six-fighter-gd/addons/hasturoperationgd/` 下的插件源码，**绝不会**加载 `hastur-operation-plugin-main/addons/` 下的源码。所有开发修改必须在 `six-fighter-gd/addons/` 目录下进行。
+> **⚠️ 关键警告**: Godot 4.x 只会加载 `game/addons/hasturoperationgd/` 下的插件源码，**绝不会**加载 `broker/hastur-operation-plugin-main/addons/` 下的源码。所有开发修改必须在 `game/addons/` 目录下进行。
 
 ---
 
@@ -77,8 +75,7 @@ HasturOperationGD 是一个 Godot 编辑器插件，将 Godot 编辑器变身为
 
 ### 2.1 前置条件
 
-- Python 3.12+（推荐，主推工具链）
-- Node.js >= 18.x（备选，仅运行 broker-server 需要）
+- Node.js >= 18.x（运行 broker-server 需要）
 - Godot 4.x 编辑器（当前项目使用 4.6.2-stable）
 - Git Bash 或类似 Unix 风格终端
 
@@ -86,11 +83,18 @@ HasturOperationGD 是一个 Godot 编辑器插件，将 Godot 编辑器变身为
 
 **Step 1: 启动 broker-server**
 
+设置认证 Token（建议通过环境变量，避免硬编码）：
+
 ```bash
-cd hastur-operation-plugin-main/broker-server
+# 设置认证 Token（默认值可用，也可自定义）
+export HASTUR_TOKEN="995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7"
+
+cd broker/hastur-operation-plugin-main/broker-server
 npm install
 npm run dev
 ```
+
+> v0.4.0 起 `HASTUR_TOKEN` 环境变量会被 broker-server 自动读取。未设置时自动生成随机 Token 并打印到控制台。
 
 验证 broker-server 是否运行：
 
@@ -101,7 +105,7 @@ curl http://localhost:5302/api/health
 
 **Step 2: 在 Godot 编辑器中启用插件**
 
-1. 用 Godot 打开 `six-fighter-gd/` 项目
+1. 用 Godot 打开 `game/` 项目
 2. 进入 **Project → Project Settings → Plugins**
 3. 将 **HasturOperationGD** 设为 **Enabled**
 4. 在编辑器右侧面板应看到 **Executor** 面板（显示 Connected）
@@ -109,18 +113,19 @@ curl http://localhost:5302/api/health
 **Step 3: 验证连接**
 
 ```bash
-# 使用 Python CLI（主推）
-python tools/editor_call.py --health
-python tools/editor_call.py --executors
-
-# 或使用全功能 CLI
-python tools/hastur.py status
+# 检查 broker API 是否返回已连接的 executor
+curl -s -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  http://localhost:5302/api/executors
+# 应返回 executor 列表，包含 id、project_name、status 等
 ```
 
 **Step 4: 执行第一条代码**
 
 ```bash
-python tools/editor_call.py 'print("Hello from Godot!")'
+curl -s -X POST http://localhost:5302/api/execute \
+  -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"print(\"Hello from Godot!\")","project_name":"Six Fighter"}'
 ```
 
 ---
@@ -142,21 +147,21 @@ python tools/editor_call.py 'print("Hello from Godot!")'
 | **接收** | `get_scene_tree` | 获取场景树 |
 | **接收** | `create_node` | 创建场景节点 |
 | **接收** | `delete_node` | 删除场景节点 |
-| **接收** | `ping` | 心跳请求 |
+| **接收** | `ping` | 心跳请求（broker 发起） |
 | **发送** | `execute_result` | 代码执行结果 |
 | **发送** | `scene_tree_result` | 场景树数据 |
 | **发送** | `create_node_result` | 节点创建结果 |
 | **发送** | `delete_node_result` | 节点删除结果 |
 | **发送** | `logs` | 日志流数据 |
-| **发送** | `heartbeat` | 主动心跳（每 5 秒） |
+| **发送** | `heartbeat` + `data.rtt_ms` | 主动心跳（**v0.4.0 新增** — 每 5 秒由 `poll()` 驱动，之前定义但从未被调用） |
 
 **关键设计**:
 
-- 自动重连（指数退避 1s → 30s 上限）
-- RTT 追踪（通过 ping/pong 测量）
+- 自动重连（指数退避 1s → 30s 上限），断线时 `disconnect_client()` 会清理 `_executor`（v0.4.0 修复）
+- RTT 追踪：Godot 端通过 heartbeat → heartbeat_ack 计算 RTT 并附带在下次心跳中发送；Broker 端 ping → pong 时也独立计算（**v0.4.0 修复** — 之前 rtt_ms 始终为 null）
 - EditorInterface 通过 BrokerClient 持有 EditorPlugin 引用间接访问
 - 日志系统：HasturLogger（全局）→ EditorLogCatcher（缓冲 + 每 100ms 批量发送）
-- 缓冲区最大 200 条，每批发送最大 50 条，Mutex 线程安全
+- 缓冲区最大 **500** 条（v0.4.0 从 200 提升），每批发送最大 50 条，Mutex 线程安全
 
 #### 3.1.2 `gdscript_executor.gd` — 代码执行引擎
 
@@ -189,6 +194,8 @@ func run(_ec: RefCounted):
 ```
 
 **`print()` 自动捕获算法**: 逐字符扫描代码，匹配独立 `print(...)` 语句（表达式嵌入的 print 不转换），替换为 `executeContext.output("print", str(...))`。
+
+> **v0.4.0**: 移除了 `_notification()` 方法（RefCounted 不应有 `_notification`，会导致空实例崩溃）。`dispose()` 必须显式调用。
 
 #### 3.1.3 `execution_context.gd` — 执行上下文
 
@@ -234,7 +241,7 @@ OS.print() / push_error() / push_warning()
         ↓
   HasturLogger（全局 Logger，通过 OS.add_logger() 注册）
         ↓
-  EditorLogCatcher（缓冲 + 批处理，200 条上限）
+  EditorLogCatcher（缓冲 + 批处理，500 条上限）
         ↓
   BrokerClient._on_logs_ready() → TCP → broker-server → REST API
 ```
@@ -400,6 +407,37 @@ curl -s "http://localhost:5302/api/executors/<id>/logs/errors" \
 
 #### 3.2.2 Execute API
 
+---
+
+### 3.3 Python 工具链
+
+`game/tools/` 下提供两个 Python CLI 工具，封装了 broker-server 的 REST API：
+
+#### `editor_call.py` — 轻量级执行器
+
+```bash
+python tools/editor_call.py 'print("hello")'           # 执行单行 GDScript
+python tools/editor_call.py --file script.gd            # 从文件执行
+python tools/editor_call.py --scene-tree                # 获取场景树
+python tools/editor_call.py --health                    # 健康检查
+python tools/editor_call.py --executors                 # 列出 executor
+```
+
+#### `hastur.py` — 完整 CLI 工具
+
+```bash
+python tools/hastur.py status          # 全状态概览
+python tools/hastur.py health          # 健康检查
+python tools/hastur.py exec '<code>'   # 执行 GDScript
+python tools/hastur.py scene-tree      # 获取场景树
+python tools/hastur.py logs [limit]    # 获取日志
+python tools/hastur.py start|stop|restart  # 管理 broker-server
+```
+
+> 另提供 `editor_call.js` 和 `hastur.sh` 作为兼容性包装，功能已被 Python 版本取代。
+
+#### 3.2.2 Execute API
+
 **请求**:
 
 ```json
@@ -453,46 +491,32 @@ executor_id 通过 SHA-256 哈希 `project_name|project_path|editor_pid` 生成�
 
 ---
 
-## 四、CLI 工具集
+## 四、与编辑器交互方式
 
-### 4.1 主推：Python 工具链
+### 4.1 方式一：通过 curl 直接调用 HTTP API（推荐）
 
-| 工具 | 用途 | 命令 |
-|------|------|------|
-| `tools/editor_call.py` | 轻量 GDScript 执行 + 场景树查询 | `python tools/editor_call.py 'print("hi")'` |
-| `tools/hastur.py` | 全功能 CLI 管理 | `python tools/hastur.py status` |
-
-**`editor_call.py` 用法**:
+所有操作通过 broker-server 的 REST API 完成。认证 Token: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7`
 
 ```bash
-python tools/editor_call.py 'print("hello")'              # 执行单行
-python tools/editor_call.py --file script.gd               # 从文件执行
-python tools/editor_call.py --executors                    # 列出编辑器
-python tools/editor_call.py --health                       # 健康检查
-python tools/editor_call.py --scene-tree                   # 场景树
+# 健康检查
+curl -s http://localhost:5302/api/health
+
+# 列出已连接的编辑器
+curl -s -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  http://localhost:5302/api/executors
+
+# 执行 GDScript
+curl -s -X POST http://localhost:5302/api/execute \
+  -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"print(\"hello\")","project_name":"Six Fighter"}'
+
+# 获取最近错误日志
+curl -s -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  http://localhost:5302/api/executors/<executor_id>/logs/errors?limit=20
 ```
 
-**`hastur.py` 用法**:
-
-```bash
-python tools/hastur.py status       # 当前状态总览（健康检查+连接状态）
-python tools/hastur.py health       # 健康检查
-python tools/hastur.py executors    # 已连接编辑器列表
-python tools/hastur.py exec '<code>' # 执行 GDScript
-python tools/hastur.py scene-tree   # 场景树
-python tools/hastur.py logs [N]     # 获取最近 N 条日志
-python tools/hastur.py start        # 启动 broker-server
-python tools/hastur.py stop         # 停止 broker-server
-```
-
-### 4.2 备选方案
-
-| 工具 | 用途 | 命令 |
-|------|------|------|
-| `tools/editor_call.js` | Node.js 版 GDScript 执行 | `node tools/editor_call.js 'print("hi")'` |
-| `tools/hastur.sh` | Shell 版 CLI（委托给 hastur.py） | `bash tools/hastur.sh status` |
-
-### 4.3 GDScript 缩进规则（致命）
+### 4.2 GDScript 缩进规则（致命）
 
 **缩进必须使用 Tab 字符**，绝对不能用空格。在 Python 字符串中：
 
@@ -505,6 +529,24 @@ code = 'if ei:\n    ctx.output("k", "v")'
 
 # ❌ 错误：在 shell heredoc 中嵌入 GDScript（PowerShell 自动转 Tab 为空格）
 ```
+
+### 4.3 方式二：通过 Python CLI 工具调用
+
+Python 工具（详见 [3.3 Python 工具链](#33-python-工具链)）封装了相同的 REST API，适合日常开发快速操作：
+
+```bash
+# 健康检查
+python tools/hastur.py health
+
+# 执行 GDScript
+python tools/hastur.py exec 'print("hello")'
+
+# 轻量级替代 — editor_call.py
+python tools/editor_call.py 'print("hello")'
+python tools/editor_call.py --scene-tree
+```
+
+> 两种方式等价，curl 适合脚本化和精确控制，Python CLI 适合交互式使用。
 
 ### 4.4 GDScript 执行快速参考
 
@@ -556,6 +598,8 @@ const _ERROR_TYPE_SCRIPT: int = 2
 
 `GDScriptExecutor` 继承 `RefCounted`，必须显式调用 `dispose()` 清理 Logger 资源。
 
+> **v0.4.0 注意**: `RefCounted` 不应有 `_notification()` 方法（会导致空实例崩溃），已在 `gdscript_executor.gd` 中移除。`disconnect_client()` 现在会显式调用 `_executor.dispose()`。
+
 ### 5.3 其他迁移注意事项
 
 | 旧语法/方法 | 新语法/方法 | 说明 |
@@ -581,22 +625,47 @@ const _ERROR_TYPE_SCRIPT: int = 2
 | 连接断开不重连 | 网络短暂中断 | BrokerClient 指数退避自动重连（1s→30s） |
 | `print()` 输出为空 | print 未被自动捕获 | 检查代码是否包含合法的独立 `print()` 语句，或用 `executeContext.output()` |
 | broker-server 无法启动 | Node.js 版本或依赖问题 | 确认 Node >= 18，`npm install` 已执行 |
+| RTT 始终 null（v0.4.0 前） | 心跳定义但从未在 `poll()` 中调用 | v0.4.0 已修复 — `poll()` 每 5s 自动 `send_heartbeat()` |
+| Token 不匹配 | 使用了环境变量但 broker 未读取 | v0.4.0 起 `HASTUR_TOKEN` env var 会被 broker-server 自动读取；CLI 也从此变量获取 |
 
 ### 诊断流程
 
 ```bash
 # 1. broker 是否运行？
-python tools/editor_call.py --health
+curl -s http://localhost:5302/api/health
 
 # 2. Godot 是否连接？
-python tools/editor_call.py --executors
+curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors
 
-# 3. 查看最近日志排查错误
-python tools/hastur.py logs 20
+# 3. 查看最近错误日志
+curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<id>/logs/errors?limit=20
 
 # 4. 如果编译错误 → 检查 Tab 缩进
 # 5. 如果运行时错误 → 检查日志中的详细 stack trace
 ```
+
+### 能力决策树
+
+| 任务 | 方法 |
+|------|------|
+| 查看场景结构 | Snippet 模式, `get_node(path)` |
+| 调用 EditorInterface API | Snippet 模式 via `executeContext.editor_plugin.get_editor_interface()` |
+| 获取/设置节点属性 | Snippet 模式, `get_node(path).property = value` |
+| 创建节点 | Snippet 模式, `var n = NodeType.new()` → `add_child(n)` |
+| 删除节点 | Snippet 模式, `node.queue_free()` |
+| 查看编辑器日志 | `GET /api/executors/:id/logs` |
+| 复杂多步操作 | Full Class 模式, 用 `executeContext.output()` 通信 |
+| 检查项目设置 | Snippet 模式, `ProjectSettings.get_setting()` |
+| 获取编辑器选中节点 | Snippet 模式, `ei.get_selection().get_selected_nodes()` |
+
+### 调试检查清单
+
+- [ ] broker-server 是否运行？ → `curl http://localhost:5302/api/health`
+- [ ] Executor 是否连接？ → `curl -H "Authorization: Bearer <token>" http://localhost:5302/api/executors`
+- [ ] Godot 插件是否启用？ → 右侧面板应显示 **Executor** Dock，绿色指示灯
+- [ ] 代码是否使用 Tab 缩进？ （空格会导致编译错误）
+- [ ] 编译错误 → 检查 Tab 缩进（最常见原因）→ 检查 `@tool` 注解 → 检查 `extends`
+- [ ] 运行时错误 → 检查 `GET /api/executors/:id/logs` → 检查 `@tool` → 检查 `_editor_plugin_ref`
 
 ---
 
@@ -604,13 +673,13 @@ python tools/hastur.py logs 20
 
 | 组件 | 源码仓库版本 | 生产版本 | 说明 |
 |------|------------|---------|------|
-| 插件 | v0.1 | **v0.3.1** | `six-fighter-gd/addons/` 下为生产版本 |
+| 插件 | v0.1 | **v0.4.0** | `game/addons/hasturoperationgd/` 下为生产版本 |
 | broker-server | v0.1.0 | **v0.1.0** | 运行中 API 返回 version 0.3.0 |
-| CLI 工具 | 无 | **Python 3.12+** | `editor_call.py` + `hastur.py` |
+| CLI 工具 | 无 | **Python 3.x** | `game/tools/hastur.py` + `game/tools/editor_call.py` |
 
-### 功能演进：v0.1 → v0.3.1
+### 功能演进：v0.1 → v0.4.0
 
-| 特性 | v0.1 | v0.3.1 | 状态 |
+| 特性 | v0.1 | v0.4.0 | 状态 |
 |------|------|--------|------|
 | TCP 通信 | ✅ | ✅ | 稳定 |
 | 远程代码执行 | ✅ | ✅ | 稳定 |
@@ -633,6 +702,13 @@ python tools/hastur.py logs 20
 | `_log_message` 空操作（丢错误） | ❌ | ✅ | 2026-05-22 修复 |
 | `ScriptBacktrace` 帧数据未提取 | ❌ | ✅ | 2026-05-22 修复 |
 | 日志通道栈帧丢失 | ❌ | ✅ | 2026-05-22 修复 |
+| 主动心跳 + RTT 追踪修复 | ❌ | ✅ | 2026-05-25 — 之前 RTT 始终 null，心跳定义但从未调用 |
+| `HASTUR_TOKEN` 环境变量 | ❌ | ✅ | 2026-05-25 — 替代硬编码 Token，broker/CLI/插件统一读取 |
+| `disconnect_client()` 未清理 Executor | ❌ | ✅ | 2026-05-25 修复 — 断开连接时未 dispose GDScriptExecutor |
+| `flush()` 防御性保护 | ❌ | ✅ | 2026-05-25 — 增加二次 is_valid() 检查 |
+| 日志缓冲扩容 200→500 | ❌ | ✅ | 2026-05-25 — 降低高频日志丢弃概率 |
+| CLI 跨平台 | ❌ | ✅ | 2026-05-25 — Windows tasklist + Unix ps aux 双路径 |
+| `_notification` 空实例崩溃 | ❌ | ✅ | 2026-05-25 修复 — RefCounted 不应有 _notification |
 
 ---
 
@@ -641,7 +717,7 @@ python tools/hastur.py logs 20
 > **⚠️ 重要**: 本插件会在编辑器中执行任意代码。Broker Server 通过 Bearer Token 进行访问控制，但仍需注意以下事项：
 >
 > - **切勿将 broker server 暴露至公网。** 默认绑定 `localhost`，请保持不变。
-> - **妥善保管认证 token。** 这是一个 64 位随机十六进制字符串，本质上等同于密码。
+> - **妥善保管认证 token。** 这是一个 64 位随机十六进制字符串，本质上等同于密码。v0.4.0 起建议用 `HASTUR_TOKEN` 环境变量设置，而非硬编码在 CLI 命令或文档中。
 > - **确保 AI Agent 来源可信。** 它能执行 GDScript 所能做的一切操作，能力范围相当于"有编辑器完整权限"。
 > - **`.claude/CLAUDE.md` 和 `CLAUDE.md` 应视为敏感文件。** 其中包含 Token、API 地址等连接信息。
 
@@ -651,12 +727,10 @@ python tools/hastur.py logs 20
 
 | 文档 | 位置 | 内容 |
 |------|------|------|
-| 项目指南（单一起源） | `six-fighter-gd/.claude/CLAUDE.md` | 所有操作流程、决策树、快速参考 |
-| 插件能力全参考 | AI memory: `plugin_capability_reference.md` | REST API、TCP 消息、执行引擎完整目录 |
-| 编辑器操作守则 | AI memory: `godot_operation_rules.md` | 已验证的 16 条规则和陷阱 |
-| 标准调用方式 | AI memory: `editor_call_standard.md` | Python 工具链用法 |
-| Python 环境 | AI memory: `python_environment.md` | 环境安装和 shell 配置 |
+| 项目指南（单一起源） | `game/.claude/CLAUDE.md` | 所有操作流程、决策树、快速参考 |
+| 插件技术蓝皮书 | `docs/HasturOperationGD-Technical-Whitepaper.md` | 完整架构、API、排错（即本文档） |
+| AI 避坑指南 | `docs/godot-ai-pitfall-guide.md` | 常见陷阱与解决方案 |
 
 ---
 
-*本蓝皮书于 2026-05-22 更新，反映插件 v0.3.1 和 Python 工具链的完整状态。*
+*本蓝皮书于 2026-05-25 更新，反映插件 v0.4.0、Python 工具链、以及 Token/心跳/RTT/跨平台等改进的完整状态。*

@@ -18,10 +18,15 @@ const tcpPort = parseInt(options.tcpPort as string, 10)
 const httpPort = parseInt(options.httpPort as string, 10)
 const host = options.host as string
 
-const authToken = (options.authToken as string) || crypto.randomBytes(32).toString('hex')
+const authToken = (options.authToken as string) || process.env.HASTUR_TOKEN || crypto.randomBytes(32).toString('hex')
 
-if (!options.authToken) {
+if (options.authToken) {
+	console.log(`Using auth token from --auth-token CLI argument`)
+} else if (process.env.HASTUR_TOKEN) {
+	console.log(`Using auth token from HASTUR_TOKEN env var`)
+} else {
 	console.log(`Auto-generated auth token: ${authToken}`)
+	console.log(`Set HASTUR_TOKEN env var for a fixed token`)
 }
 
 const executorManager = new ExecutorManager()

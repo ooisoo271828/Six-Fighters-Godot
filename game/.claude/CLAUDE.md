@@ -1,6 +1,45 @@
 # Six Fighter GD
 
-## Project Overview
+## ⚠️ Critical Rules (每次会话最先阅读)
+
+以下规则来自项目累积的血泪教训。违反其中任何一条都会导致严重问题。
+
+### 规则 1：写文件前先确认文件是否存在
+用 `cat >` 或 Write 工具覆盖文件前，先执行：
+```bash
+git log --oneline -- <file>   # 检查 git 历史
+ls -l <file>                  # 检查文件大小
+```
+Write 工具报 "File has not been read yet" **不等于文件不存在**。绝对不用 `cat >` 覆盖可能已有内容的文件。
+
+### 规则 2：GPUParticles2D 必须设置 texture
+GPUParticles2D 的 `texture` 默认值为 `null`，粒子**不可见且不报错**。创建后立即赋值纹理。
+
+### 规则 3：新技能必须同步更新 skill_demo
+新增自定义对象池（如 `LaserBeamPool`）时，同步修改 `skill_demo.gd`：
+- `_count_active_projectiles()` → 加入新池的统计
+- `_clear_all_projectiles()` → 加入新池的清理
+- 漏了会导致 UI 播放按钮卡死
+
+### 规则 4：运行时创建节点用 Script.new() 而非 set_script()
+`Node2D.new()` + `set_script(script)` 在运行时不可靠。用：
+```gdscript
+var script = load("res://script.gd")
+return script.new() as Node2D
+# 或
+return load("res://node.tscn").instantiate()
+```
+
+### 规则 5：reset_for_pool() 必须覆盖 initialize() 的全部修改
+池复用时 `reset_for_pool()` 中每一条赋值，都应能在 `initialize()` 中找到对应的一条。两个函数是互逆操作。**任何遗漏都会导致第二次使用该对象时表现异常。**
+
+完整陷阱参考：[`../../docs/godot-ai-pitfall-guide.md`](../../docs/godot-ai-pitfall-guide.md)
+
+---
+
+## Behavioral Guidelines
+
+Tradeoff: these bias toward caution over speed. For trivial tasks, use judgment.
 
 - **Engine**: Godot 4.x (config_version=5)
 - **Resolution**: Portrait 540x960
@@ -80,53 +119,27 @@ Only triggers on ambiguous or complex tasks. Clear requests go straight to imple
 
 ## HasturOperationGD Quick Reference
 
-AI agent executes GDScript in Godot Editor via REST API.
-
 ```
 AI Agent ──HTTP──> broker-server (Node.js) ──TCP──> Godot Editor + HasturPlugin
   :5302                    :5301
 ```
 
-**Start broker**: `cd broker/hastur-operation-plugin-main/broker-server && npm run dev`
+**Start broker**: `cd broker/hastur-operation-plugin-main/broker-server && HASTUR_TOKEN=995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7 npm run dev`
 
-**Verify connection**:
+**Default Token**: `995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7` (overridable via `HASTUR_TOKEN` env var)
+
+**Quick commands**:
 ```bash
-python tools/hastur.py status        # all-in-one check
-# or individually:
-python tools/editor_call.py --health
-python tools/editor_call.py --executors
+curl -s http://localhost:5302/api/health
+curl -s -X POST http://localhost:5302/api/execute \
+  -H "Authorization: Bearer 995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"print(\"hello\")","project_name":"Six Fighter"}'
 ```
 
-**Execute GDScript** (Tab indentation only, never spaces):
-```bash
-python tools/editor_call.py 'print("hello")'
-python tools/editor_call.py --scene-tree
-python tools/editor_call.py --file script.gd
-```
+**Rules**: Tab indentation only; modify `game/addons/hasturoperationgd/`, not broker source.
 
-**Auth Token**: see `broker/hastur-operation-plugin-main/broker-server/.env` or `HASTUR_TOKEN` env var.
-
-**Critical rules**:
-- GDScript indentation must use **Tab** (`\t`), never spaces
-- Plugin source: `game/addons/hasturoperationgd/` (modify here, not broker source)
-- Full reference: `docs/claude-ref-hastur.md`
-
-**Structured error details (v0.3.1+)**:
-When executing GDScript via Hastur, runtime errors now include full location info:
-
-```json
-{
-  "run_error": "索引超出范围",
-  "run_error_details": [{
-    "file": "res://scripts/arena/arena_scene.gd",
-    "line": 142,
-    "function": "_process_enemy_spawning",
-    "frames": [{"file": "...", "function": "...", "line": N}, ...]
-  }]
-}
-```
-
-**Always check `run_error_details` / `compile_error_details` first** when debugging — they contain the exact file, line number, and call stack. The old flat `run_error` string alone is no longer the primary error signal.
+Full reference: [`../docs/HasturOperationGD-Technical-Whitepaper.md`](../docs/HasturOperationGD-Technical-Whitepaper.md)
 
 ---
 
@@ -235,7 +248,6 @@ game/
 ```
 
 **Detailed references**:
-- HasturOperationGD full guide: `docs/claude-ref-hastur.md`
-- Camera system: `docs/claude-ref-camera.md`
-- SkillDemo scene: `docs/claude-ref-skill-demo.md`
-- GDScript conventions & code examples: `docs/claude-ref-hastur.md#gdscript-code-conventions`
+- HasturOperationGD technical whitepaper: `../docs/HasturOperationGD-Technical-Whitepaper.md` (project root, single source of truth)
+- Camera system: `docs/claude-ref-camera.md` (in-game docs)
+- SkillDemo scene: `docs/claude-ref-skill-demo.md` (in-game docs)

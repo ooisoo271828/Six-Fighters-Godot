@@ -27,7 +27,7 @@ import urllib.error
 TOKEN = os.environ.get("HASTUR_TOKEN", "995e7c3f6fabc40a1bcd8a6f94dcad0106959c26c5827d2d3b261e1969109bd7")
 HOST = os.environ.get("HASTUR_HOST", "localhost")
 PORT = os.environ.get("HASTUR_PORT", "5302")
-BROKER_DIR = "/e/VibeCoding/hastur-operation-plugin-main/broker-server"
+BROKER_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../broker/hastur-operation-plugin-main/broker-server"))
 PROJECT_NAME = "Six Fighter"
 BASE_URL = f"http://{HOST}:{PORT}/api"
 HEADERS = {
@@ -192,18 +192,37 @@ def cmd_start():
 
 def cmd_stop():
     print(">> Stopping broker-server...")
+    import signal
     try:
-        result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, timeout=5
-        )
-        for line in result.stdout.split("\n"):
-            if "tsx src/index.ts" in line and "--auth-token" in line:
-                parts = line.split()
-                pid = parts[1] if len(parts) > 1 else ""
-                if pid:
-                    subprocess.run(["kill", pid], capture_output=True)
-                    print(f"[OK] Stopped (PID: {pid})")
-                    return
+        if sys.platform == "win32":
+            # Windows: use tasklist + taskkill
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.split("\n"):
+                if "tsx" in line.lower() or "node" in line.lower():
+                    parts = line.strip().split('","')
+                    if len(parts) >= 2:
+                        pid_str = parts[1].strip('"')
+                        try:
+                            os.kill(int(pid_str), signal.SIGTERM)
+                            print(f"[OK] Stopped (PID: {pid_str})")
+                            return
+                        except (OSError, ValueError):
+                            continue
+        else:
+            # Unix: use ps aux + kill
+            result = subprocess.run(
+                ["ps", "aux"], capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.split("\n"):
+                if "tsx src/index.ts" in line and "--auth-token" in line:
+                    parts = line.split()
+                    pid = parts[1] if len(parts) > 1 else ""
+                    if pid:
+                        os.kill(int(pid), signal.SIGTERM)
+                        print(f"[OK] Stopped (PID: {pid})")
+                        return
         print("[WARN] No broker-server process found.")
     except Exception as e:
         print(f"[WARN] Could not stop broker: {e}")
