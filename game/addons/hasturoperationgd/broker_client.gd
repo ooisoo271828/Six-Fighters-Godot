@@ -54,7 +54,7 @@ func _init(host: String, port: int, executor_type: String = "editor", editor_plu
 	_project_name = ProjectSettings.get_setting("application/config/name", "Unnamed")
 	_project_path = ProjectSettings.globalize_path("res://")
 	_editor_pid = OS.get_process_id()
-	_plugin_version = "0.5.0"
+	_plugin_version = "0.6.0"
 	var version_info = Engine.get_version_info()
 	_editor_version = str(version_info.get("major", 0)) + "." + str(version_info.get("minor", 0)) + "." + str(version_info.get("patch", 0))
 
@@ -82,6 +82,12 @@ func _init_handlers() -> void:
 		"script_check": _handle_script_check,
 		"get_properties": _handle_get_properties,
 		"scene_save": _handle_scene_save,
+		# v0.6.0 新增
+		"get_scene_inspect": _handle_scene_inspect,
+		"get_signal_connections": _handle_get_signal_connections,
+		"get_compile_errors": _handle_get_compile_errors,
+		"get_console_stream": _handle_get_console_stream,
+		"script_reload": _handle_script_reload,
 	}
 
 
@@ -293,8 +299,14 @@ func _handle_register_result(data: Dictionary) -> void:
 func _handle_execute(data: Dictionary) -> void:
 	var request_id = str(data.get("request_id", ""))
 	var code = str(data.get("code", ""))
+	var execution_mode = str(data.get("execution_mode", "snippet"))
+	var context_path = str(data.get("context_path", ""))
 	var start_time = Time.get_ticks_msec()
-	var result = _executor.execute_code(code, {}, _editor_plugin_ref)
+	var result
+	if execution_mode == "in_scene":
+		result = _executor.execute_in_scene(code, context_path, {}, _editor_plugin_ref)
+	else:
+		result = _executor.execute_code(code, {}, _editor_plugin_ref)
 	var end_time = Time.get_ticks_msec()
 	var duration_ms = end_time - start_time
 
@@ -758,6 +770,218 @@ func _handle_scene_save(data: Dictionary) -> void:
 
 
 # ============ 辅助方法 ============
+
+
+
+func _handle_scene_inspect(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var path = str(data.get("path", "/root"))
+	var depth = int(data.get("depth", 2))
+	var include_children = bool(data.get("include_children", true))
+	var include_properties = bool(data.get("include_properties", true))
+	var include_signals = bool(data.get("include_signals", false))
+	var property_filter = str(data.get("property_filter", ""))
+	var filter_arr = property_filter.split(",") if property_filter != "" else []
+
+	var editor_interface = _get_editor_interface()
+	if editor_interface == null:
+		_send_result("scene_inspect_result", request_id, {"success": false, "node": null, "error": "No editor plugin"})
+		return
+
+	var root_node = editor_interface.get_edited_scene_root()
+	if root_node == null:
+		_send_result("scene_inspect_result", request_id, {"success": false, "node": null, "error": "No scene open"})
+		return
+
+	var target = _resolve_scene_path(root_node, path)
+	if target == null:
+		_send_result("scene_inspect_result", request_id, {"success": false, "node": null, "error": "Node not found: " + path})
+		return
+
+	var snapshot = _inspect_node(target, depth, include_children, include_properties, include_signals, filter_arr)
+	_send_result("scene_inspect_result", request_id, {"success": true, "node": snapshot})
+
+
+func _inspect_node(node: Node, depth: int, include_children: bool, include_properties: bool, include_signals: bool, filter_arr: Array) -> Dictionary:
+	var result := {"name": node.name, "type": node.get_class()}
+	var script = node.get_script()
+	if script:
+		result["script"] = script.resource_path if script.resource_path else "[built-in]"
+
+	if include_properties:
+		var props := {}
+		var filter_empty = filter_arr.is_empty()
+		for prop in node.get_property_list():
+			var name: String = prop.name
+			if name in ["_meta", "_import_path", "script", "owner"] or name.begins_with("_") or name == "unique_id_in_owner":
+				continue
+			if not (prop.usage & PROPERTY_USAGE_STORAGE or prop.usage & PROPERTY_USAGE_EDITOR):
+				continue
+			if not filter_empty and not name in filter_arr:
+				continue
+			props[name] = _serialize_value(node.get(name))
+		if not props.is_empty():
+			result["properties"] = props
+
+	if include_signals:
+		var sigs := _get_node_signals(node)
+		if not sigs.is_empty():
+			result["signals"] = sigs
+
+	if include_children and depth > 0:
+		var children: Array = []
+		for child in node.get_children():
+			children.append(_inspect_node(child, depth - 1, include_children, include_properties, include_signals, filter_arr))
+		if not children.is_empty():
+			result["children"] = children
+	return result
+
+
+func _get_node_signals(node: Node) -> Dictionary:
+	var result := {}
+	for signal_dict in node.get_signal_list():
+		var signal_name: String = signal_dict.name
+		var connections = node.get_signal_connection_list(signal_name)
+		if connections.is_empty():
+			continue
+		var conn_list: Array = []
+		for conn in connections:
+			var bind_args: Array = []
+			for b in conn.get("binds", []):
+				bind_args.append(str(b))
+			var target_path = ""
+			var sig = conn.get("signal")
+			if sig != null:
+				if typeof(sig) == TYPE_OBJECT and sig.has_method("get_object"):
+					var obj = sig.get_object()
+					if obj:
+						target_path = str(obj.get_path())
+				elif typeof(sig) == TYPE_DICTIONARY:
+					var obj = sig.get("object")
+					if obj:
+						target_path = str(obj.get_path())
+			conn_list.append({
+				"node_path": target_path,
+				"signal_name": signal_name,
+				"connected_to": str(conn.get("callable", "")),
+				"method": str(conn.get("method", "")),
+				"flags": conn.get("flags", 0),
+				"binds": bind_args,
+			})
+		result[signal_name] = conn_list
+	return result
+
+
+func _handle_get_signal_connections(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var path = str(data.get("path", "/root"))
+	var editor_interface = _get_editor_interface()
+	if editor_interface == null:
+		_send_result("signal_connections_result", request_id, {"success": false, "node_path": path, "signal_count": 0, "signals": {}, "error": "No editor plugin"})
+		return
+	var root_node = editor_interface.get_edited_scene_root()
+	if root_node == null:
+		_send_result("signal_connections_result", request_id, {"success": false, "node_path": path, "signal_count": 0, "signals": {}, "error": "No scene open"})
+		return
+	var target = _resolve_scene_path(root_node, path)
+	if target == null:
+		_send_result("signal_connections_result", request_id, {"success": false, "node_path": path, "signal_count": 0, "signals": {}, "error": "Node not found: " + path})
+		return
+	var signals = _get_node_signals(target)
+	_send_result("signal_connections_result", request_id, {
+		"success": true, "node_path": path, "signal_count": signals.size(), "signals": signals
+	})
+
+
+func _handle_get_console_stream(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var since_timestamp = float(data.get("since_timestamp", 0.0))
+	var limit = int(data.get("limit", 50))
+	var entries = []
+	if _log_catcher != null and _log_catcher.has_method("get_console_entries"):
+		entries = _log_catcher.get_console_entries(since_timestamp, limit)
+	var next_ts = 0
+	for e in entries:
+		var ts = e.get("timestamp_ms", 0)
+		if ts > next_ts:
+			next_ts = ts
+	_send_result("console_stream_result", request_id, {
+		"success": true, "entries": entries, "next_timestamp_ms": next_ts
+	})
+
+
+func _handle_get_compile_errors(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var errors = []
+	if _log_catcher != null and _log_catcher.has_method("get_compile_errors"):
+		errors = _log_catcher.get_compile_errors()
+	_send_result("compile_errors_result", request_id, {
+		"success": true, "error_count": errors.size(), "errors": errors
+	})
+
+
+func _handle_script_reload(data: Dictionary) -> void:
+	var request_id = str(data.get("request_id", ""))
+	var path = str(data.get("path", ""))
+
+	if path.is_empty():
+		_send_result("script_reload_result", request_id, {"success": false, "reloaded": false, "compile_success": false, "error": "No path provided"})
+		return
+
+	# 安全防护：禁止重载 Hastur 插件自身的脚本（会导致编辑器崩溃）
+	var _script_blacklist := [
+		"broker_client.gd", "executor_backend.gd",
+		"editor_log_catcher.gd", "hastur_logger.gd", "executor_dock.gd",
+		"execution_context.gd", "game_executor.gd", "runtime_error_capture.gd",
+	]
+	for _bad in _script_blacklist:
+		if path.ends_with(_bad):
+			_send_result("script_reload_result", request_id, {"success": false, "reloaded": false, "compile_success": false, "error": "Cannot reload Hastur core script: " + _bad})
+			return
+
+	var file = FileAccess.open(path, FileAccess.READ)
+	if not file:
+		_send_result("script_reload_result", request_id, {"success": false, "reloaded": false, "compile_success": false, "error": "File not found: " + path})
+		return
+	var disk_source = file.get_as_text()
+	file.close()
+	var script = ResourceLoader.load(path, "GDScript", ResourceLoader.CACHE_MODE_IGNORE)
+	if not script:
+		_send_result("script_reload_result", request_id, {"success": false, "reloaded": false, "compile_success": false, "error": "Failed to load script"})
+		return
+	script.source_code = disk_source
+	var err = script.reload()
+	if err != OK:
+		_send_result("script_reload_result", request_id, {
+			"success": true, "reloaded": true, "compile_success": false, "method_count": 0, "error": "Compile error"
+		})
+		return
+	_send_result("script_reload_result", request_id, {
+		"success": true, "reloaded": true, "compile_success": true, "method_count": script.get_script_method_list().size(), "error": ""
+	})
+
+
+func _resolve_scene_path(root: Node, path: String) -> Node:
+	if path == "/root" or path == "":
+		return root
+	var clean = path.trim_prefix("/root").trim_prefix("/")
+	if clean.is_empty():
+		return root
+	var parts = clean.split("/")
+	if parts.size() > 0 and parts[0] == root.name:
+		parts = parts.slice(1)
+	if parts.is_empty():
+		return root
+	return _find_node_by_path(root, parts, 0)
+
+
+func _find_node_by_path(current: Node, parts, idx: int) -> Node:
+	if idx >= parts.size():
+		return current
+	var child = current.get_node_or_null(parts[idx])
+	if child:
+		return _find_node_by_path(child, parts, idx + 1)
+	return null
 
 func _send_result(type: String, request_id: String, data: Dictionary) -> void:
 	data["request_id"] = request_id

@@ -1,11 +1,21 @@
 ## DemoTarget — 演示器受体木偶
 ## 简单箭靶/训练假人视觉效果
-extends Node2D
+extends Area2D
 
 var is_alive: bool = true
 
+func take_damage(_dmg: float) -> void:
+	pass  # demo target: no actual damage handling
+
 const RADIUS: float = 14.0
 const RING_WIDTH: float = 3.0
+
+func _ready() -> void:
+	var _s := CollisionShape2D.new()
+	_s.shape = CircleShape2D.new()
+	_s.shape.radius = 17.0
+	add_child(_s)
+	collision_layer = 4
 
 func _draw() -> void:
 	# 靶心

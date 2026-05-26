@@ -151,6 +151,128 @@ func execute_code(code: String, execute_context: Dictionary = {}, editor_plugin 
 	return result
 
 
+func execute_in_scene(code: String, context_path: String, execute_context: Dictionary = {}, editor_plugin = null) -> Dictionary:
+	var result = {
+		"compile_success": false, "compile_error": "", "compile_error_details": [],
+		"run_success": false, "run_error": "", "run_error_details": [], "outputs": []
+	}
+	# Wrap user code as RefCounted snippet with scene root injection
+	var wrapped = _wrap_in_scene_snippet(code)
+	var compile_result = _compile_source(wrapped)
+	if not compile_result.compile_success:
+		result.compile_success = false
+		result.compile_error = compile_result.compile_error
+		result.compile_error_details = compile_result.compile_error_details
+		return result
+	result.compile_success = true
+	var script = compile_result.script as GDScript
+	var target_node = _find_scene_node(context_path, editor_plugin)
+	if target_node == null:
+		result.run_error = "Context path not found: " + context_path
+		return result
+	var ctx = ExecutionContext.new(editor_plugin)
+	_error_capturer.start_capture("in_scene")
+	var instance = script.new()
+	if instance == null:
+		result.run_error = "Failed to instantiate script"
+		return result
+	instance._run(target_node, ctx)
+	var captured_errors = _error_capturer.stop_capture()
+	var run_details = _error_capturer.get_captured_details()
+	result.outputs = ctx.get_outputs()
+	if captured_errors.size() > 0:
+		result.run_success = false
+		result.run_error = "
+".join(captured_errors)
+		result.run_error_details = run_details
+	else:
+		result.run_success = true
+	instance = null
+	return result
+
+func _wrap_in_scene_snippet(code: String) -> String:
+	var captured = _capture_print_statements(code)
+	var lines = captured.split("
+")
+	var indented = ""
+	for line in lines:
+		indented += "	" + line + "
+"
+	return "@tool
+extends RefCounted
+
+var executeContext: RefCounted
+var _scene_root: Node
+
+func _run(root: Node, ctx: RefCounted):
+	_scene_root = root
+	executeContext = ctx
+	_ready()
+
+func get_node(path: String) -> Node:
+	return _scene_root.get_node(path)
+
+func _ready():
+" + indented
+
+
+func _find_scene_node(path: String, editor_plugin = null) -> Node:
+	if path.is_empty() or path == "/root":
+		if editor_plugin != null:
+			var ei = editor_plugin.get_editor_interface()
+			if ei:
+				var edited = ei.get_edited_scene_root()
+				if edited:
+					return edited
+		return Engine.get_main_loop().root
+	var root = Engine.get_main_loop().root
+	# Also try editor scene root
+	if editor_plugin != null:
+		var ei = editor_plugin.get_editor_interface()
+		if ei:
+			var edited = ei.get_edited_scene_root()
+			if edited:
+				var found = _resolve_editor_path(edited, path)
+				if found:
+					return found
+	var clean = path.trim_prefix("/root").trim_prefix("/").trim_suffix("/")
+	if clean.is_empty():
+		return root
+	var parts = clean.split("/")
+	var current = root
+	for part in parts:
+		current = current.get_node_or_null(part)
+		if current == null:
+			return null
+	return current
+
+
+
+func _resolve_editor_path(root: Node, path: String) -> Node:
+	var clean = path.trim_prefix("/root").trim_prefix("/")
+	if clean.is_empty():
+		return root
+	var parts = clean.split("/")
+	if parts.size() > 0 and parts[0] == root.name:
+		parts = parts.slice(1)
+	if parts.is_empty():
+		return root
+	return _find_node_recursive(root, parts, 0)
+
+
+func _find_node_recursive(current: Node, parts: Array, idx: int) -> Node:
+	if idx >= parts.size():
+		return current
+	var child = current.get_node_or_null(parts[idx])
+	if child:
+		return _find_node_recursive(child, parts, idx + 1)
+	for c in current.get_children():
+		var found = _find_node_recursive(c, parts, idx)
+		if found:
+			return found
+	return null
+
+
 func _is_full_class(code: String) -> bool:
 	return "extends" in code
 

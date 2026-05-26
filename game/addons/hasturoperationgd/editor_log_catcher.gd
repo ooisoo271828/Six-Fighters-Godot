@@ -34,6 +34,14 @@ var _session_start_time_ms: int = 0  # 会话开始时间
 # 内部 Timer（避免被垃圾回收）
 var _internal_timer: Timer = null
 
+# ── v0.6.0: 编译错误缓存 ──
+var _compile_errors: Array = []
+var _compile_error_mutex: Mutex = Mutex.new()
+
+# ── v0.6.0: 控制台流缓存 ──
+var _console_buffer: Array = []
+var _console_mutex: Mutex = Mutex.new()
+const _CONSOLE_BUFFER_MAX: int = 500
 # 外部回调
 var _on_log_ready: Callable = Callable()
 
@@ -251,6 +259,36 @@ func capture_compile_error(error_message: String, script_path: String = "") -> v
 
 
 # 捕获运行时错误（融合自 error_collector.gd）
+func get_compile_errors() -> Array:
+	_compile_error_mutex.lock()
+	var copy = _compile_errors.duplicate()
+	_compile_error_mutex.unlock()
+	return copy
+
+
+func get_console_entries(since_timestamp: float, limit: int) -> Array:
+	_console_mutex.lock()
+	var result: Array = []
+	for entry in _console_buffer:
+		if entry.get("timestamp_ms", 0) > since_timestamp:
+			result.append({"timestamp_ms": entry.get("timestamp_ms", 0), "type": entry.get("type", "output"), "message": entry.get("message", "")})
+			if result.size() >= limit:
+				break
+	_console_mutex.unlock()
+	return result
+
+
+func _add_to_console_stream(entry: Dictionary) -> void:
+	var etype = entry.get("type", "")
+	if etype not in ["output", "print", "warning", "error", "script_error", "compile_error", "runtime_error"]:
+		return
+	_console_mutex.lock()
+	_console_buffer.append({"timestamp_ms": Time.get_ticks_msec(), "type": etype, "message": str(entry.get("message", ""))})
+	if _console_buffer.size() > _CONSOLE_BUFFER_MAX:
+		_console_buffer.pop_front()
+	_console_mutex.unlock()
+
+
 func capture_runtime_error(error_message: String, stack_trace: Array = [], script_path: String = "") -> void:
 	_add_entry_with_type("runtime_error", error_message, "runtime", stack_trace, script_path)
 

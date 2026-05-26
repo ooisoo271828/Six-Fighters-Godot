@@ -66,13 +66,12 @@ static func find_random(pos: Vector2, units: Array, max_range: float) -> Node2D:
 
 ## 射程内血量比例最低的
 static func find_lowest_hp(pos: Vector2, units: Array, max_range: float) -> Node2D:
-	var best: Node2D = null
+	var candidates := filter_in_range(pos, units, max_range)
+	if candidates.is_empty():
+		return null
+	var best: Node2D = candidates[0]
 	var best_ratio: float = INF
-	for u in units:
-		if not _is_valid_target(u):
-			continue
-		if pos.distance_to(u.position) > max_range:
-			continue
+	for u in candidates:
 		var hp_ratio: float = 0.0
 		var stats = u.get("stats")
 		if stats and stats.max_hp > 0:
@@ -81,9 +80,6 @@ static func find_lowest_hp(pos: Vector2, units: Array, max_range: float) -> Node
 			best_ratio = hp_ratio
 			best = u
 	return best
-
-
-## 射程内最近目标（带射程过滤）
 static func find_nearest_in_range(pos: Vector2, units: Array, max_range: float) -> Node2D:
 	var candidates := filter_in_range(pos, units, max_range)
 	if candidates.is_empty():
@@ -307,11 +303,15 @@ static func find_optimal_laser_path(
 
 ## 无射程限制的血量比例最低目标
 static func _find_lowest_hp_no_range(_pos: Vector2, units: Array) -> Node2D:
-	var best: Node2D = null
-	var best_ratio: float = INF
+	var candidates: Array = []
 	for u in units:
-		if not _is_valid_target(u):
-			continue
+		if _is_valid_target(u):
+			candidates.append(u)
+	if candidates.is_empty():
+		return null
+	var best: Node2D = candidates[0]
+	var best_ratio: float = INF
+	for u in candidates:
 		var hp_ratio: float = 0.0
 		var stats = u.get("stats")
 		if stats and stats.max_hp > 0:
@@ -320,3 +320,81 @@ static func _find_lowest_hp_no_range(_pos: Vector2, units: Array) -> Node2D:
 			best_ratio = hp_ratio
 			best = u
 	return best
+## Small laser beam: 120-degree cone targeting
+static func find_best_cone_angle(caster_pos: Vector2, units: Array, cone_deg: float, max_range: float) -> float:
+	var candidates: Array = []
+	for u in units:
+		if not _is_valid_target(u):
+			continue
+		var dist: float = caster_pos.distance_to(u.position)
+		if dist <= max_range and dist > 1.0:
+			candidates.append(u)
+	if candidates.is_empty():
+		return INF
+	if candidates.size() == 1:
+		return rad_to_deg(caster_pos.angle_to_point(candidates[0].position))
+	var half_cone := cone_deg * 0.5
+	var best_angle_deg: float = 0.0
+	var best_count: int = -1
+	var step_deg := 5.0
+	var test_deg := 0.0
+	while test_deg < 360.0:
+		var count := 0
+		var cone_dir := Vector2.RIGHT.rotated(deg_to_rad(test_deg))
+		for u in candidates:
+			var to_u: Vector2 = u.position - caster_pos
+			var angle_diff := rad_to_deg(absf(to_u.angle_to(cone_dir)))
+			if angle_diff <= half_cone:
+				count += 1
+		if count > best_count:
+			best_count = count
+			best_angle_deg = test_deg
+		test_deg += step_deg
+	return best_angle_deg
+
+
+## 气泡炸弹阵：找覆盖最多目标的椭圆区域
+## 返回椭圆中心（局部坐标）和覆盖目标数
+static func find_optimal_ellipse(caster_pos: Vector2, units: Array, cast_range: float,
+		ellipse_w: float = 300.0, ellipse_h: float = 200.0) -> Dictionary:
+	var candidates: Array = []
+	for u in units:
+		if not _is_valid_target(u):
+			continue
+		var dist: float = caster_pos.distance_to(u.position)
+		if dist <= cast_range and dist > 1.0:
+			candidates.append(u)
+	if candidates.is_empty():
+		return {"ellipse_center": Vector2.ZERO, "covered_count": 0}
+
+	var hw := ellipse_w * 0.5
+	var hh := ellipse_h * 0.5
+	var best_center: Vector2 = candidates[0].position
+	var best_count := -1
+
+	# 候选中心：每个目标位置 + 所有目标质心
+	var test_centers: Array[Vector2] = []
+	for u in candidates:
+		test_centers.append(u.position)
+	# 质心
+	var centroid := Vector2.ZERO
+	for u in candidates:
+		centroid += u.position
+	centroid /= candidates.size()
+	test_centers.append(centroid)
+
+	for center in test_centers:
+		# 椭圆中心必须在射程内
+		if caster_pos.distance_to(center) > cast_range:
+			continue
+		var count := 0
+		for u in candidates:
+			var dx := absf(u.position.x - center.x)
+			var dy := absf(u.position.y - center.y)
+			if (dx * dx) / (hw * hw) + (dy * dy) / (hh * hh) <= 1.0:
+				count += 1
+		if count > best_count:
+			best_count = count
+			best_center = center
+
+	return {"ellipse_center": best_center, "covered_count": best_count}

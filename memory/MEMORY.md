@@ -1,5 +1,4 @@
-# Memory Index
-
-- [UI Popup Positioning Rule](feedback_ui_popup_positioning.md) — All popup/dialog/overlay must be viewport-centered, manually set anchors to 0.5, slightly below center for mobile
-- [Squad Formation Single Source](project_squad_formation_rule.md) — Formation data + spawn logic centralized in GameManager. All scenes use GameManager.spawn_squad(). No more per-scene duplication.
-- [Use Hastur Proactively](feedback_use_hastur_proactively.md) — Always consider Hastur first for debugging, inspection, verification. Don't wait for user to suggest it.
+- [Feedback: UI 弹出窗必须居中定位](feedback_ui_popup_positioning.md) — 视口居中，不依赖 anchors_preset
+- [Feedback: 优先使用 Hastur 插件](feedback_use_hastur_proactively.md) — 调试/检查/验证首选 Hastur
+- [Project: 小队阵型规则](project_squad_formation_rule.md) — GameManager.spawn_squad() 是唯一数据源
+- [Reference: Hastur 插件 v0.6.0 能力全参考](reference_hastur_capabilities.md) — REST API、CLI、执行模式、诊断 API、实战决策树

@@ -18,3 +18,6 @@ position_smoothing_enabled = true
 position_smoothing_speed = 5.0
 
 [node name="SkillSystem" type="Node" parent="." instance=ExtResource("3_skill")]
+
+[node name="DamageTextLayer" type="CanvasLayer" parent="."]
+layer = 10

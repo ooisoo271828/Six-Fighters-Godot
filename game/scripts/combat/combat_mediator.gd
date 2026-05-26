@@ -12,6 +12,7 @@ const ENEMY_MELEE_RANGE := 80.0
 
 # ── 信号 ──
 signal all_heroes_dead
+signal damage_dealt(target: Node2D, amount: float, is_crit: bool, hit_outcome: int, damage_type: int, is_player_target: bool)
 
 # ── 配置 ──
 var combat_params: CombatParams
@@ -74,10 +75,16 @@ func _update_dots(dt: float) -> void:
 	var dot_interval: float = combat_params.dot_tick_interval_sec
 	for hero in heroes:
 		if hero and is_instance_valid(hero) and hero.is_alive:
-			hero.status_effects.tick(dt, dot_interval, func(dmg): hero.take_damage(dmg))
+			hero.status_effects.tick(dt, dot_interval, func(dmg: float) -> void:
+				hero.take_damage(dmg)
+				damage_dealt.emit(hero, dmg, false, CombatResolver.HitOutcome.HIT, CombatResolver.DamageType.ELEMENTAL_POISON, true)
+			)
 	for enemy in enemies:
 		if enemy and is_instance_valid(enemy) and enemy.is_alive:
-			enemy.status_effects.tick(dt, dot_interval, func(dmg): enemy.take_damage(dmg))
+			enemy.status_effects.tick(dt, dot_interval, func(dmg: float) -> void:
+				enemy.take_damage(dmg)
+				damage_dealt.emit(enemy, dmg, false, CombatResolver.HitOutcome.HIT, CombatResolver.DamageType.ELEMENTAL_POISON, false)
+			)
 
 
 # ══════════════════════════════════════════
@@ -126,6 +133,7 @@ func _resolve_and_apply_damage(attacker: Node2D, target: Node2D, skill_def: Reso
 		combat_params, rng_func,
 		target.status_effects.get_shock_stacks_for_resolution()
 	)
+	damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, skill_def.damage_type, false)
 	target.take_damage(result.instant_damage)
 	if attacker.get("timers") and attacker.timers.get("rage") != null:
 		attacker.timers.rage = minf(100.0, attacker.timers.rage + result.instant_damage * 0.15)
@@ -163,6 +171,8 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 		combat_params, rng_func,
 		target.status_effects.get_shock_stacks_for_resolution()
 	)
+	var is_player_target := target is Hero
+	damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, dmg_type, is_player_target)
 	target.take_damage(result.instant_damage)
 	if caster.get("timers") and caster.timers.get("rage") != null:
 		caster.timers.rage = minf(100.0, caster.timers.rage + result.instant_damage * 0.15)
@@ -186,6 +196,8 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 				combat_params, rng_func,
 				target.status_effects.get_shock_stacks_for_resolution()
 			)
+			var is_player_target_sec := target is Hero
+			damage_dealt.emit(target, sec_result.instant_damage, sec_result.crit, sec_result.hit_outcome, sec_type, is_player_target_sec)
 			target.take_damage(sec_result.instant_damage)
 			target.apply_status_updates(sec_result.status_updates, combat_params)
 
@@ -207,6 +219,7 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 						combat_params, rng_func,
 						enemy.status_effects.get_shock_stacks_for_resolution()
 					)
+					damage_dealt.emit(enemy, sec_aoe_result.instant_damage, sec_aoe_result.crit, sec_aoe_result.hit_outcome, sec_type, false)
 					enemy.take_damage(sec_aoe_result.instant_damage)
 					enemy.apply_status_updates(sec_aoe_result.status_updates, combat_params)
 
@@ -228,6 +241,7 @@ func _apply_aoe_damage(hit_pos: Vector2, radius: float, caster: Node2D, primary_
 			combat_params, rng_func,
 			enemy.status_effects.get_shock_stacks_for_resolution()
 		)
+		damage_dealt.emit(enemy, result.instant_damage, result.crit, result.hit_outcome, dmg_type, false)
 		enemy.take_damage(result.instant_damage)
 		enemy.apply_status_updates(result.status_updates, combat_params)
 
@@ -271,9 +285,11 @@ func _update_enemy_combat(dt: float) -> void:
 			if is_ranged:
 				if _enemy_shuriken_cb.is_valid():
 					_enemy_shuriken_cb.call(enemy, target, result.instant_damage)
+				damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, CombatResolver.DamageType.PHYSICAL, true)
 			else:
 				if _enemy_slash_cb.is_valid():
 					_enemy_slash_cb.call(enemy, target)
+				damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, CombatResolver.DamageType.PHYSICAL, true)
 				target.take_damage(result.instant_damage)
 
 

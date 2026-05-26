@@ -116,6 +116,9 @@ func _setup_effect_factory() -> void:
 		"emit_meteor": "res://scripts/skill_system/core/effects/emit_meteor.gd",
 		"emit_laser_beam": "res://scripts/skill_system/core/effects/emit_laser_beam.gd",
 			"emit_evil_eye_laser": "res://scripts/skill_system/core/effects/emit_evil_eye_laser.gd",
+		"emit_small_laser_beam": "res://scripts/skill_system/core/effects/emit_small_laser_beam.gd",
+		"emit_bubble_bomb_array": "res://scripts/skill_system/core/effects/emit_bubble_bomb_array.gd",
+		"emit_flying_sword_storm": "res://scripts/skill_system/core/effects/emit_flying_sword_storm.gd",
 	}
 
 func _load_all_skills() -> void:

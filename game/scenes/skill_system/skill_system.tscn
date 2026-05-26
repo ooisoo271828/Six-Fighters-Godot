@@ -10,6 +10,9 @@
 [ext_resource type="Script" path="res://scripts/skill_system/vfx/skill_vfx_manager.gd" id="8_vfx"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/laser_beam_pool.gd" id="9_beam"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/evil_eye_pool.gd" id="10_eye"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/small_laser_beam_pool.gd" id="11_small"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/bubble_bomb_array_pool.gd" id="12_bubble"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/flying_sword_pool.gd" id="13_sword"]
 
 [node name="SkillSystem" type="Node"]
 script = ExtResource("1_root")
@@ -40,3 +43,12 @@ script = ExtResource("9_beam")
 
 [node name="EvilEyePool" type="Node2D" parent="."]
 script = ExtResource("10_eye")
+
+[node name="SmallLaserBeamPool" type="Node2D" parent="."]
+script = ExtResource("11_small")
+
+[node name="BubbleBombArrayPool" type="Node2D" parent="."]
+script = ExtResource("12_bubble")
+
+[node name="FlyingSwordPool" type="Node2D" parent="."]
+script = ExtResource("13_sword")

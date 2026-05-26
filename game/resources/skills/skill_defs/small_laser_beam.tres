@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "small_laser_beam"
+display_name = "小激光术"
+category = 1
+damage_type = 2
+base_damage = 18.0
+cooldown = 4.0
+cast_range = 850.0
+effect_type = "emit_small_laser_beam"
+target_mode = 6
+delivery_type = "instant"
+max_targets = 0
+description = "释放5道冰蓝激光柱，在120°扇区内随机索敌"

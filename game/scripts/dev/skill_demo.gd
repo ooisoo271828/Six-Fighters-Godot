@@ -120,6 +120,16 @@ func _setup_skill_system() -> void:
 	if vfx_manager:
 		vfx_manager.register_vfx_layer(vfx_container)
 
+	# Initialize damage floater
+	var _dt_layer := get_node_or_null("DamageTextLayer") as CanvasLayer
+	if _dt_layer:
+		var _demo_df = load("res://scripts/skill_system/damage_text/damage_floater.gd").new()
+		_demo_df.name = "DamageFloater"
+		_dt_layer.add_child(_demo_df)
+		var _sig_bus = _skill_system.get_node_or_null("SkillSignalBus")
+		if _sig_bus and _sig_bus.has_signal("skill_hit"):
+			_sig_bus.skill_hit.connect(_on_demo_skill_hit.bind(_demo_df))
+
 	_refresh_skill_list()
 
 func _refresh_skill_list() -> void:
@@ -167,7 +177,7 @@ func _update_targets() -> void:
 	var positions: Array = mode_def["positions"]
 
 	for pos in positions:
-		var t := Node2D.new()
+		var t := Area2D.new()
 		t.name = "Target_%s_%d" % [mode_key, _targets.size()]
 		t.set_script(preload("res://scripts/dev/demo_target.gd"))
 		t.position = pos as Vector2
@@ -265,6 +275,15 @@ func _count_active_projectiles() -> int:
 	var ee_pool = _skill_system.get_node_or_null("EvilEyePool")
 	if ee_pool and ee_pool.has_method("get_active_count"):
 		count += ee_pool.get_active_count()
+	var slb_pool = _skill_system.get_node_or_null("SmallLaserBeamPool")
+	if slb_pool and slb_pool.has_method("get_active_count"):
+		count += slb_pool.get_active_count()
+	var bb_pool = _skill_system.get_node_or_null("BubbleBombArrayPool")
+	if bb_pool and bb_pool.has_method("get_active_count"):
+		count += bb_pool.get_active_count()
+	var fs_pool = _skill_system.get_node_or_null("FlyingSwordPool")
+	if fs_pool and fs_pool.has_method("get_active_count"):
+		count += fs_pool.get_active_count()
 	return count
 
 func _clear_all_projectiles() -> void:
@@ -277,6 +296,15 @@ func _clear_all_projectiles() -> void:
 	var ee_pool = _skill_system.get_node_or_null("EvilEyePool")
 	if ee_pool and ee_pool.has_method("clear_all"):
 		ee_pool.clear_all()
+	var slb_pool = _skill_system.get_node_or_null("SmallLaserBeamPool")
+	if slb_pool and slb_pool.has_method("clear_all"):
+		slb_pool.clear_all()
+	var bb_pool = _skill_system.get_node_or_null("BubbleBombArrayPool")
+	if bb_pool and bb_pool.has_method("clear_all"):
+		bb_pool.clear_all()
+	var fs_pool = _skill_system.get_node_or_null("FlyingSwordPool")
+	if fs_pool and fs_pool.has_method("clear_all"):
+		fs_pool.clear_all()
 
 func _process(dt: float) -> void:
 	if not _is_casting:
@@ -437,3 +465,27 @@ func _setup_ui() -> void:
 	back_btn.add_theme_font_size_override("font_size", 13)
 	back_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/hub/main.tscn"))
 	row2.add_child(back_btn)
+
+
+
+## Handle skill_hit in demo mode
+func _on_demo_skill_hit(caster: Node2D, targets: Array, damage_info: Dictionary, floater) -> void:
+	if targets.is_empty() or not floater:
+		return
+	var dmg: float = damage_info.get("damage", 0.0)
+	var dt_str: String = damage_info.get("damage_type", "physical")
+	var dmg_type: int = _demo_dmg_type(dt_str)
+	for target in targets:
+		if not (target and is_instance_valid(target)):
+			continue
+		floater.show_monster_damage(target.global_position, dmg, false, CombatResolver.HitOutcome.HIT, dmg_type)
+
+
+func _demo_dmg_type(dt_str: String) -> int:
+	match dt_str:
+		"physical": return CombatResolver.DamageType.PHYSICAL
+		"elemental_fire": return CombatResolver.DamageType.ELEMENTAL_FIRE
+		"elemental_ice": return CombatResolver.DamageType.ELEMENTAL_ICE
+		"elemental_lightning": return CombatResolver.DamageType.ELEMENTAL_LIGHTNING
+		"elemental_poison": return CombatResolver.DamageType.ELEMENTAL_POISON
+	return CombatResolver.DamageType.PHYSICAL

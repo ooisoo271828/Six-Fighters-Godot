@@ -75,7 +75,7 @@ export function createHttpApp(
 			success: true,
 			data: {
 				status: 'ok',
-				version: '0.5.0',
+				version: '0.6.0',
 				tcp_port: tcpPort,
 				http_port: httpPort,
 				executors_connected: executors.length,
@@ -171,7 +171,7 @@ export function createHttpApp(
 	})
 
 	app.post('/api/execute', async (req: Request, res: Response) => {
-		const { code, executor_id, project_name, project_path, type, timeout_ms } = req.body
+		const { code, executor_id, project_name, project_path, type, timeout_ms, execution_mode, context_path } = req.body
 
 		// 可配置超时，默认 30 秒，最大 120 秒
 		const timeout = Math.min(
@@ -220,7 +220,7 @@ export function createHttpApp(
 		}
 
 		try {
-			const result = await tcpServer.sendExecute(executor.id, code, 'gdscript', timeout)
+			const result = await tcpServer.sendExecute(executor.id, code, 'gdscript', timeout, execution_mode, context_path)
 			// Execute summary — 让 AI/CLI 快速判断成功/失败
 			const compileOk = (result as Record<string, unknown>).compile_success as boolean
 			const runOk = (result as Record<string, unknown>).run_success as boolean
@@ -646,11 +646,85 @@ export function createHttpApp(
 			asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'scene_save', { force }, 10000), res, 'Failed to save scene')
 	})
 
+	// ── v0.6.0 Scene Diagnostics ──
+
+	app.get('/api/scene/inspect', (req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({ success: false, error: 'No editor executor connected' })
+			return
+		}
+		const path = req.query.path as string || '/root'
+		const depth = parseInt(req.query.depth as string) || 2
+		asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'get_scene_inspect', {
+			path, depth,
+			include_children: req.query.include_children !== 'false',
+			include_properties: req.query.include_properties !== 'false',
+			include_signals: req.query.include_signals === 'true',
+			property_filter: req.query.property_filter as string || '',
+		}, 15000), res, 'Failed to inspect scene')
+	})
+
+	app.get('/api/scene/signals', (req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({ success: false, error: 'No editor executor connected' })
+			return
+		}
+		const path = req.query.path as string || '/root'
+		asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'get_signal_connections', { path }, 10000), res, 'Failed to get signal connections')
+	})
+
+	// ── v0.6.0 Compile Errors ──
+
+	app.get('/api/project/compile-errors', (req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({ success: false, error: 'No editor executor connected' })
+			return
+		}
+		asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'get_compile_errors', {}, 5000), res, 'Failed to get compile errors')
+	})
+
+	// ── v0.6.0 Console Stream ──
+
+	app.get('/api/executors/:id/console/stream', (req: Request, res: Response) => {
+		const executor = resolveExecutor(req, res, executorManager)
+		if (!executor) return
+		const since = req.query.since as string || '0'
+		const limit = parseInt(req.query.limit as string) || 50
+		asyncTcpRoute(() => tcpServer.sendRequest(executor.id, 'get_console_stream', {
+			since_timestamp: parseFloat(since), limit,
+		}, 5000), res, 'Failed to get console stream')
+	})
+
+	// ── v0.6.0 Script Reload ──
+
+	app.post('/api/script/reload', (req: Request, res: Response) => {
+		const executors = executorManager.getAll()
+		const editorExecutor = executors.find((ex) => ex.type === 'editor')
+		if (!editorExecutor) {
+			res.status(404).json({ success: false, error: 'No editor executor connected' })
+			return
+		}
+		const path = req.body?.path as string
+		if (!path) {
+			res.status(400).json({ success: false, error: 'Missing path in request body' })
+			return
+		}
+		asyncTcpRoute(() => tcpServer.sendRequest(editorExecutor.id, 'script_reload', { path }, 15000), res, 'Failed to reload script')
+	})
+
+	// ── End v0.6.0 routes ──
+
 	app.use((_req: Request, res: Response) => {
 		res.status(404).json({
 			success: false,
 			error: 'Route not found',
-			hint: 'Available endpoints: GET /api/executors, POST /api/execute, POST /api/project/rescan, POST /api/script/check, GET /api/executors/:id/scene/properties, POST /api/scene/save',
+			hint: 'Available endpoints: GET /api/executors, POST /api/execute, POST /api/project/rescan, POST /api/script/check, GET /api/executors/:id/scene/properties, POST /api/scene/save, GET /api/scene/inspect, GET /api/scene/signals, GET /api/project/compile-errors, POST /api/script/reload',
 		})
 	})
 

@@ -44,6 +44,9 @@ var _ground_tilemap: TileMapLayer
 # ── 战斗编排 ──
 var combat_mediator: CombatMediator
 
+# ── 跳字系统 ──
+var damage_floater
+
 # ── 运行时状态（战斗） ──
 var combat_params: CombatParams
 var arena_config: ArenaConfig
@@ -129,6 +132,11 @@ func _initialize() -> void:
 
 	_wave_spawner = WaveSpawner.new()
 	add_child(_wave_spawner)
+
+	# 初始化伤害跳字系统
+	damage_floater = load("res://scripts/skill_system/damage_text/damage_floater.gd").new()
+	damage_floater.name = "DamageFloater"
+	damage_text_layer.add_child(damage_floater)
 
 func _create_tilemap() -> void:
 	_ground_tilemap = TileMapLayer.new()
@@ -220,6 +228,7 @@ func _start_combat() -> void:
 	combat_mediator.register_enemies(enemies)
 	combat_mediator.set_skill_system(skill_system)
 	combat_mediator.set_enemy_attack_callbacks(_spawn_enemy_shuriken, _spawn_enemy_slash)
+	combat_mediator.damage_dealt.connect(_on_damage_dealt)
 	EventBus.emit_combat_started()
 
 func _get_spawn_center() -> Vector2:
@@ -447,6 +456,17 @@ func _spawn_enemy_slash(enemy: Node2D, target: Node2D) -> void:
 # ══════════════════════════════════════════
 #  清理 / 结算
 # ══════════════════════════════════════════
+
+
+
+## Route damage events to floating text
+func _on_damage_dealt(target: Node2D, amount: float, is_crit: bool, hit_outcome: int, damage_type: int, is_player_target: bool) -> void:
+	if not damage_floater or not is_instance_valid(damage_floater):
+		return
+	if is_player_target:
+		damage_floater.show_player_damage(target.global_position, amount, is_crit, hit_outcome, damage_type)
+	else:
+		damage_floater.show_monster_damage(target.global_position, amount, is_crit, hit_outcome, damage_type)
 
 
 

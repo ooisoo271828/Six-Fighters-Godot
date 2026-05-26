@@ -2059,3 +2059,635 @@ func _destroy() -> void:
 ---
 
 *版本更新：v4.3 — 新增 GDScript 类型映射陷阱（color_ramp→GradientTexture2D）、编辑器 GDScript 缓存陷阱（source_code 不从磁盘重读）、数组引用共享陷阱、类型错误误导性报错。*
+
+## 二十一、跨文件编辑陷阱（技能系统集成高频专区）
+
+### 21.1 新增自定义 Effect 类型必须修改 5+ 个文件
+
+**症状**：新技能编译通过，但技能查看器中找不到、或点击播放无响应。
+
+**根因**：新增一个技能类型（如小激光术）需要修改的完整文件清单如下。漏掉任意一个都会导致技能不可用。
+
+```
+新增技能需要检查的 5 个位置：
+1. skill_registry.gd    effect_factory 添加 effect_type → 脚本路径
+2. skill_root.gd        @onready var pool 引用 + _initialize_subsystems() 初始化
+3. skill_system.tscn    添加对应的 Pool 子节点
+4. skill_root.gd        _execute_chain() 添加 effect_id 路由
+5. skill_demo.gd        _count_active_projectiles() + _clear_all_projectiles() 添加池跟踪
+```
+
+**检查清单**（把技能从"写完了"变成"能跑了"的标准流程）：
+```
+☐ effect_factory 添加了映射
+☐ skill_root.gd 的 @onready var 引用了新池
+☐ skill_root.gd 的 _initialize_subsystems() 初始化了新池
+☐ skill_system.tscn 添加了新池子节点
+☐ _execute_chain() 添加了 effect_id 路由
+☐ skill_demo.gd 更新了池统计和清理
+```
+
+### 21.2 光束类技能的 `_all_hit_targets` 必须每 tick 清空
+
+**症状**：激光柱只造成一次伤害，而不是每 0.5 秒持续伤害。
+
+**根因**：`_apply_damage()` 中使用 `_all_hit_targets` 防止同一目标被重复命中。但该列表在光束整个生命周期中**从不清理**——第一次 tick 后所有目标被加入 `_all_hit_targets`，后续 tick 全部跳过。
+
+```gdscript
+# ❌ 错误：_all_hit_targets 只增不减
+func _apply_damage() -> void:
+    for body in bodies:
+        if body in _all_hit_targets:
+            continue  # 第一次之后永远被跳过
+        _hit_targets.append(body)
+        _all_hit_targets.append(body)  # 从不清理！
+
+# ✅ 正确：每次 tick 前清理
+func _apply_damage() -> void:
+    _all_hit_targets.clear()  # 每 tick 重新计数
+    for body in bodies:
+        ...
+```
+
+**规律**：任何带持续区域伤害的技能（光束、光环、火焰区域），命中记录必须每 tick 重置。`_hit_targets` 和 `_all_hit_targets` 的关系：
+- `_hit_targets`：当前 tick 命中（用于 tick 内去重）
+- `_all_hit_targets`：总命中记录（如需跨 tick 去重，则每 tick 清空）
+
+---
+
+## 二十二、Area2D 碰撞检测陷阱
+
+### 22.1 `get_overlapping_bodies()` 只返回 PhysicsBody2D，不返回 Area2D
+
+**症状**：用 `Area2D` 做的碰撞检测区域检测不到 `Area2D` 类型的演示靶标。
+
+**根因**：Godot 4 的 `Area2D.get_overlapping_bodies()` 只返回 `PhysicsBody2D` 子类（`CharacterBody2D`、`RigidBody2D`、`StaticBody2D`）的节点。`Area2D` 节点需要通过 `get_overlapping_areas()` 检测。
+
+```gdscript
+# ❌ 错误：只能检测到 PhysicsBody2D
+var bodies = hit_area.get_overlapping_bodies()
+
+# ✅ 正确：同时检测 PhysicsBody2D 和 Area2D
+var bodies: Array = []
+bodies.append_array(hit_area.get_overlapping_bodies())
+bodies.append_array(hit_area.get_overlapping_areas())
+```
+
+**注意**：`Array[PhysicsBody2D] + Array[Area2D]` 在 Godot 4.6 中不兼容。必须使用 `append_array()` 分别追加。
+
+**排查思路**：碰撞检测不到目标时：
+1. 检查目标节点类型是 `PhysicsBody2D` 还是 `Area2D`
+2. 检查使用了 `get_overlapping_bodies()` 还是 `get_overlapping_areas()`
+3. 检查 collision_layer 和 collision_mask 是否匹配
+4. 对于 `Area2D` 检测 `Area2D`，需确认 `monitorable = true`（默认值）
+
+---
+
+## 二十三、跨文件编辑的连锁损坏陷阱（重点）
+
+### 23.1 全局 `data.replace()` 会替换文件中所有匹配项
+
+**症状**：修复一个函数的缩进后，另一个完全无关的函数也崩了。
+
+**根因**：用 `content.replace(old, new)` 在**整个文件**中做字符串替换时，如果 `old` 字符串不够具体（如 `if candidates.is_empty():`），它会匹配文件中**所有**符合该模式的位置，包括其他函数中的同名代码。
+
+```python
+# ❌ 危险：全局替换所有匹配
+old = '\t\t\tif candidates.is_empty():'  # 匹配文件中所有 3-tab 的 if candidates
+new = '\t\tif candidates.is_empty():'
+data = data.replace(old, new)  # 所有匹配位置都被修改！
+
+# ✅ 安全：只替换目标区域
+idx = content.find('func find_best_cone_angle')
+target_section = content[idx:]
+target_section = target_section.replace(old, new)
+content = content[:idx] + target_section
+```
+
+**预防**：
+- 全局替换前，确认匹配模式在当前文件中**唯一**
+- 用 `data.count(old)` 检查匹配数量——多于 1 则不能直接用 `replace()`
+- 对非唯一模式，用 `find()` 定位到目标区域后再局部替换
+- 替换后 grep 验证：`grep -n "目标函数" file.gd` 确认只改了预期位置
+
+### 23.2 CRLF/LF 行尾混乱导致所有文本操作工具不可靠
+
+**症状**：Edit 工具报 "String to replace not found"，但文件内容明明有该字符串。Python 脚本的 `replace()` 也意外失败。
+
+**根因**：项目中的 `.gd` 文件同时存在 CRLF（Windows Git 检出）和 LF（部分手动创建/修改）行尾。当工具期望一种行尾而文件使用另一种时，匹配失败。
+
+```python
+# ❌ 用 LF 查找 CRLF 文件 → 失败
+with open('file.gd', 'rb') as f:
+    data = f.read()
+data.replace(b'var x = 1', b'var x = 2')  # 如果文件是 LF，这个能工作
+# 但如果文件是 CRLF，实际存储的是 b'var x = 1\r\n'，b'var x = 1\n' 不匹配
+
+# ✅ 正确：先确认行尾格式
+import subprocess
+result = subprocess.run(['file', path], capture_output=True, text=True)
+if 'CRLF' in result.stdout:
+    eol = b'\r\n'
+else:
+    eol = b'\n'
+```
+
+**Godot 项目的行尾规律**：
+
+| 文件来源 | 行尾 | 示例 |
+|---------|------|------|
+| Godot 编辑器创建 | CRLF (Windows) | 大多数 `.gd`、`.tscn`、`.tres` |
+| Git 检出 | CRLF (auto.crlf=true) | 同上 |
+| 手动创建 (echo/cat) | LF | Bash 脚本创建的临时文件 |
+| Write 工具 | LF | AI 工具直接写入的文件 |
+| Python 脚本写回 | 取决于 `open()` 模式 | `newline='\r\n'` 或默认系统 |
+
+**硬性规则**：
+1. **修改任何 .gd 文件前，先用 `file` 命令确认行尾格式**
+2. 用 `cat -A` 检查目标行的精确字节
+3. Python 编辑时，用 `'rb'` 读取、`'r'` 写入时指定 `newline='\r\n'` 保持一致性
+4. **绝对不要在同一文件中混用行尾**——这会导致 Godot 报 "Mixed tabs and spaces" 以外，还可能引起"行尾相关"的静默编译失败
+5. 批量编辑前可以统一转换行尾：`sed -i 's/\r$//' file.gd`（LF）或 `unix2dos`（CRLF）
+
+### 23.3 Edit 工具在 CRLF 文件上静默失败
+
+**症状**：Edit 工具报 "String to replace not found in file"，但 `grep` 确认字符串确实存在。
+
+**根因**：该工具的内部匹配机制可能期望 LF（`\n`）行尾，但文件实际使用 CRLF（`\r\n`）。匹配失败且错误信息不指示行尾问题。
+
+**排查流程**：
+```
+Edit 报 "not found" → 检查文件行尾
+  file file.gd → "with CRLF line terminators"
+  → 这是根本原因！Edit 工具不匹配 CRLF
+  → 改用 Python 编辑并指定 `'rb'` / `'r'` + `newline=''`
+  → 或者先用 `unix2dos` / `sed -i 's/\r$//'` 统一行尾
+```
+
+**首选方案**：用 Python 编辑时始终考虑行尾：
+```python
+# 1. 先用 file 命令确认
+# 2. 读取时用 'rb' 保持原始行尾
+with open(path, 'rb') as f:
+    data = f.read()
+eol = b'\r\n' if b'\r\n' in data[:5000] else b'\n'
+
+# 3. 替换时使用正确的 eol
+old = f'func setup(){eol.decode()}\tpass'.encode()
+data = data.replace(old, new_bytes)
+
+# 4. 写入时保持原始行尾
+with open(path, 'wb') as f:
+    f.write(data)
+```
+
+---
+
+## 二十四、Godot 4.6 严格模式返回值检查
+
+### 24.1 编译器无法验证所有路径的变量赋值
+
+**症状**：`Parse Error: Not all code paths return a value.`
+
+**根因**：即使变量被初始化为 `null`，且在函数末尾 `return best`，编译器也无法证明 `best` 一定在循环中被赋值。当函数声明了 `-> Node2D` 返回类型时，这会成为阻断性错误。
+
+```gdscript
+# ❌ 错误：编译器无法验证 best 一定会被赋值
+static func find_lowest_hp(pos, units, max_range) -> Node2D:
+    var best: Node2D = null
+    var best_ratio: float = INF
+    for u in units:              # 可能 0 次迭代
+        if not valid(u):
+            continue             # 可能全部跳过
+        ...
+        best = u
+    return best                  # 编译器：best 可能仍是 null！
+
+# ✅ 正确：预过滤 + 初始化给第一个有效元素
+static func find_lowest_hp(pos, units, max_range) -> Node2D:
+    var candidates := filter_in_range(pos, units, max_range)
+    if candidates.is_empty():
+        return null
+    var best: Node2D = candidates[0]  # 明确有值
+    for u in candidates:
+        ...
+    return best
+```
+
+**规律**：Godot 4.6 严格模式下，以下模式都会触发此错误：
+- `for x in list: ... return x`（list 可能为空）
+- `var x = null; if cond: x = val; return x`（cond 可能为 false）
+- 任何编译器无法通过静态分析证明的赋值路径
+
+**修复模式**：
+1. **预过滤**：用 `filter_in_range()` 或预检查确保列表不为空
+2. **初始化**：将 `best` 初始化为列表的第一个已知有效元素
+3. **显式早期返回**：如果无法保证初始化，在主循环前 `return null`
+
+---
+
+## 二十五、`class_name` 跨文件编译依赖
+
+### 25.1 文件 A 引用文件 B 的 class_name → 编译顺序依赖
+
+**症状**：编辑器或 Hastur 报 `Could not find type "ClassName" in the current scope.`，但该类型确实存在。
+
+**根因**：Godot 在加载脚本时需要先注册所有 `class_name`。当脚本 A（如 `damage_text_pool.gd`）在其 `class_name` 声明中使用脚本 B（如 `damage_text_node.gd`）的类型时（如 `var node: DamageTextNode`），必须先加载 B。但 Godot 的加载顺序不确定，可能导致循环依赖或未注册。
+
+**解决方案优先级**：
+
+| 方案 | 适用场景 | 说明 |
+|------|---------|------|
+| 1. 删除 class_name | 内部使用的工具类 | 用 `load("path.gd")` + 动态类型替代 |
+| 2. `preload()` | 单向依赖 | `const Script := preload("path.gd")` |
+| 3. 运行时 `load()` | 循环依赖 | `var s = load("path.gd")` 在函数内 |
+| 4. 去掉类型标注 | 内部容器 | `Array` 代替 `Array[TypeName]` |
+
+**推荐做法**（经过本项目验证）：
+```gdscript
+# 对于可能发生交叉引用的脚本，采用"无 class_name + 运行时 load"模式
+# damage_text_node.gd
+extends Node2D
+# 没有 class_name — 通过 load() 使用
+
+# damage_text_pool.gd  
+extends Node2D
+# 在函数内用 var s = load("node_path.gd") 创建实例
+func acquire():
+    var node = load("res://node.gd").new()
+    return node
+```
+
+**注意**：此模式适用于**系统内部组件**（如 damage_text 系列）。对于需要在场景中直接引用的类（如需要在 `.tscn` 中挂脚本），`class_name` 仍然是更好的选择。
+
+---
+
+## 二十六、参数传递链路陷阱（重点）
+
+### 26.1 新增参数必须验证全链路透传
+
+**症状**：API 请求中新增了参数（如 `execution_mode`），服务端解析了它，但 Godot 端收到的数据中该参数始终为默认值。
+
+**根因**：参数在 HTTP → TCP → Godot 插件 的完整链路中，只要有一层"漏接"就会丢失：
+
+```
+HTTP 请求体     →  Express 路由 handler   →  TCP sendRequest  →  Godot _handle_execute
+{execution_mode}    {解构时漏了该字段}       {sendExecute 固定参数}   {只能取到默认值}
+```
+
+**案例**：`v0.6.0 in_scene` 执行模式中，`execution_mode` 参数在 `http-server.ts` 的第 174 行被 `const { code, executor_id, project_name } = req.body` 解构——`execution_mode` 不在解构列表中。它被 Express 解析到了 `req.body` 中，但从未被读取。下游 `tcpServer.sendExecute(executor.id, code, 'gdscript', timeout)` 只接受固定参数，完全不包含 `execution_mode`。整个链路有 3 层断裂。
+
+**排查流程**：
+```bash
+# 1. 在 HTTP 路由入口确认参数到达
+curl -s -X POST http://localhost:5302/api/execute \
+  -H "Content-Type: application/json" \
+  -d '{"code":"print(42)","execution_mode":"in_scene","project_name":"Test"}'
+# 看返回 → success=true 表示参数到达 HTTP
+
+# 2. 在 Godot 端打日志确认参数收到
+# 在 _handle_execute 中添加：
+# print("[EXEC_MODE]", data.get("execution_mode", "NOT_FOUND"))
+```
+
+**预防检查清单**（任何新增参数必须逐层确认）：
+```
+HTTP 路由:
+  ☐ req.body 解构时包含该参数
+  ☐ sendRequest / sendExecute 参数列表中包含该参数
+  ☐ TCP 消息 data 中包含该字段
+
+Godot 插件:
+  ☐ data.get("field_name") 存在
+  ☐ 函数签名包含该参数
+  ☐ 调用链中每层都传递了该参数
+```
+
+**检查方法**——用二分法定位断裂点：
+
+1. 在 Godot 端 `_handle_execute` 开头加 `print(data)`，看参数是否到达插件
+2. 如果在 Godot 端能看到参数 → 问题不在链路，在后续处理
+3. 如果在 Godot 端看不到参数 → 问题在 broker 转发
+4. 检查 `tcp-server.ts` 的 `sendExecute` 方法签名是否包含了该参数
+5. 检查 `http-server.ts` 的 destructuring 是否包含该参数
+
+---
+
+## 二十七、GDScript 动态编译陷阱（重点）
+
+### 27.1 `GDScript.new()` + `extends Node` 编译通过但运行时 `get_node()` 不可用
+
+**症状**：用 `GDScript.new()` 创建脚本，`source_code = "@tool\nextends Node\n...\n\tget_node(".").name"`，`reload()` 报错 `Function "get_node()" not found in base self`。但把同样的源码通过文件方式加载时编译正常。
+
+**根因**：Godot 4.6 中，`GDScript.new()` 创建的临时脚本对象，当 `extends Node` 时，编译器在编译期无法确定 `self` 是 `Node`——因为脚本尚未关联到任何实际节点。这是一个 Godot 4 动态编译的限制。
+
+```
+# ❌ 失败：GDScript.new() + extends Node + get_node()
+var s = GDScript.new()
+s.source_code = "@tool\nextends Node\n\nfunc _ready():\n\tget_node(\".\")"  # ❌ 编译错误
+s.reload()
+
+# ✅ 方案 A：使用 extends RefCounted + 自定义 get_node()
+var s = GDScript.new()
+s.source_code = "@tool\nextends RefCounted\n\nvar root: Node\n\nfunc get_node(p: String) -> Node:\n\treturn root.get_node(p)"
+s.reload()  # ✅ 编译通过
+
+# ✅ 方案 B：通过 _compile_source() 编译（优先）
+# 项目中已有 _compile_source()，它经过充分测试
+var result = _compile_source(wrapped_code)
+```
+
+**适用场景**：
+
+| 场景 | 推荐方案 |
+|------|---------|
+| 动态编译 Node 脚本并注入场景 | `extends RefCounted` + 自定义 `get_node()` |
+| 动态编译 Node 脚本但不注入 | 用 `_compile_source()` 编译 + `script.new()` |
+| 需要 `_ready()` 自动调用 | 自定义 `_run(root, ctx)` → 手动调用 `_ready()` |
+| 需要 `get_tree()` / `get_node()` | 注入场景根引用 + 自定义方法 |
+
+**关键实现模式** —— `v0.6.0 execute_in_scene` 验证过的可靠方案：
+
+```gdscript
+# 生成脚本源码
+var wrapped = "@tool\nextends RefCounted\n\n"
+wrapped += "var executeContext: RefCounted\n"
+wrapped += "var _scene_root: Node\n\n"
+wrapped += "func _run(root: Node, ctx: RefCounted):\n"
+wrapped += "\t_scene_root = root\n"
+wrapped += "\texecuteContext = ctx\n"
+wrapped += "\t_ready()\n\n"
+wrapped += "func get_node(path: String) -> Node:\n"
+wrapped += "\treturn _scene_root.get_node(path)\n\n"
+wrapped += "func _ready():\n"
+wrapped += "\t" + user_code_indented
+
+# 编译
+var compile_result = _compile_source(wrapped)
+var script = compile_result.script
+var instance = script.new()
+instance._run(target_node, ctx)  # 注入场景根 + 手动调用 _ready
+```
+
+### 27.2 `GDScript.new().can_instantiate()` 在无 `resource_path` 时返回 false
+
+**症状**：代码编译通过（`reload()` 返回 OK），但 `script.new()` 返回 null。`script.can_instantiate()` 返回 false。
+
+**根因**：Godot 4 的 GDScript 对象在没有设置 `resource_path` 时，`can_instantiate()` 可能因为加载上下文不完整而返回 false。
+
+```gdscript
+# ❌ 错误：没有 resource_path
+var s = GDScript.new()
+s.source_code = "@tool\nextends RefCounted\n..."
+s.reload()                 # OK
+s.can_instantiate()        # 可能 false
+
+# ✅ 正确：设置唯一 resource_path
+var s = GDScript.new()
+s.source_code = "@tool\nextends RefCounted\n..."
+s.resource_path = "res://_temp_" + str(Time.get_ticks_usec()) + ".gd"
+s.reload()                 # OK
+s.can_instantiate()        # 应该 true
+```
+
+**规律**：任何通过 `GDScript.new()` 动态创建的脚本，都应该在 `reload()` 前设置 `resource_path`。否则在特定 Godot 版本和平台组合下，`can_instantiate()` 会返回 false。
+
+### 27.3 GDScript 多行字符串包含文件缩进
+
+**症状**：函数返回值字符串中包含意外的 tab/空格，导致生成的代码语法错误。
+
+**根因**：GDScript 多行字符串字面量会保留每一行的前导空白（包括文件级别的缩进）。
+
+```gdscript
+# ❌ 错误：多行字符串包含了函数体的 tab 缩进
+func _generate_code() -> String:
+	return "@tool
+	extends Node             # ← 这个 tab 是函数体的缩进，被包含在字符串中！
+	
+	var x = 1                # ← 同上
+	"
+
+# ✅ 正确：用显式 \n 连接，避免缩进污染
+func _generate_code() -> String:
+	return "@tool\nextends Node\n\nvar x = 1\n"
+
+# ✅ 也正确：保持续行顶格（无缩进）
+func _generate_code() -> String:
+	return "@tool
+extends Node                # ← 顶格！无前导空白
+
+var x = 1                   # ← 顶格！
+"
+```
+
+**诊断方法**：
+```bash
+# 查看字符串实际包含的字符
+sed -n 'LINE_START,LINE_ENDp' file.gd | cat -An
+# ^I 表示 tab → 有问题！前导 tab 会被包含在字符串中
+```
+
+**黄金法则**：GDScript 多行字符串中的每一行，实际内容是**从行首第一个非空白字符开始**到行尾的内容，加上换行符。前导空白（tab/space）**全部保留**。除非你控制每一行的前导空白，否则应使用 `\n` 转义序列构建长字符串。
+
+---
+
+## 二十八、编辑器 vs 游戏场景树陷阱
+
+### 28.1 `Engine.get_main_loop().root` 在编辑器进程中返回编辑器界面根，而非编辑中的场景
+
+**症状**：在 `editor` executor 中使用 `Engine.get_main_loop().root` 遍历子节点，找不到编辑中的游戏场景。
+
+**根因**：Godot 编辑器的场景树结构：
+```
+root (Window)
+  ├── @EditorNode@18065    ← 编辑器 UI
+  │   ├── Control/...
+  │   └── ...
+  ├── @ProgressDialog@13
+  └── <游戏场景>                ← 只在 Play 模式下存在
+```
+
+编辑模式中，编辑中的场景（如 `SkillDemo`）**不是** `Engine.get_main_loop().root` 的子节点。需要通过 `EditorInterface.get_edited_scene_root()` 获取。
+
+```gdscript
+# ❌ 错误：只在 Play 模式下工作
+var root = Engine.get_main_loop().root
+var demo = root.get_node("SkillDemo")  # 编辑模式下不存在！
+
+# ✅ 正确：通过 EditorInterface 获取编辑中的场景
+var ei = editor_plugin.get_editor_interface()
+var demo = ei.get_edited_scene_root()  # 编辑模式 √，Play 模式也需要测试
+```
+
+**排查方法**：
+```gdscript
+# 打印场景树根的子节点，确认当前上下文
+var root = Engine.get_main_loop().root
+for c in root.get_children():
+    print(c.name, " (", c.get_class(), ")")
+# 如果输出包含 @EditorNode → 在编辑器上下文中
+# 如果需要访问编辑中的场景 → 用 EditorInterface
+```
+
+**什么时候用什么**：
+
+| 上下文 | 场景根获取方式 |
+|--------|-------------|
+| 编辑器 executor（编辑模式） | `EditorInterface.get_edited_scene_root()` |
+| 游戏 executor（Play 模式） | `Engine.get_main_loop().root.get_child(-1)` |
+| 通用（兼容两者） | 优先用 EditorInterface，回退到 Engine.get_main_loop().root |
+
+---
+
+## 二十九、Windows 网络绑定陷阱
+
+### 29.1 Node.js 的 `0.0.0.0` 和 `::` 在 Windows 上行为不同
+
+**症状**：Broker-Server 绑定 `0.0.0.0:5301` 后，Godot 编辑器无法连接——TCP 状态显示 `SYN_SENT` 而非 `ESTABLISHED`。
+
+**根因**：在 Windows 上：
+- `listen(port, "0.0.0.0")` — 只监听 **IPv4**
+- `listen(port, "::")` — 监听 **IPv6**（Windows 10+ 默认启用 dual-stack，也会接受 IPv4 连接）
+- `listen(port)` — 监听所有接口（行为取决于 `net.getDefaultAutoSelectFamily()`）
+
+Godot 4 的 `StreamPeerTCP.connect_to_host()` 在 Windows 上解析 `localhost` 时可能优先使用 IPv6 地址 `::1`。如果服务器只监听 IPv4，连接会挂在 `SYN_SENT`。
+
+```typescript
+// ❌ 错误：只监听 IPv4
+const host = "localhost";  // → 某些系统解析为 127.0.0.1 (IPv4)
+// 或
+const host = "0.0.0.0";   // → 只监听 IPv4
+
+// ✅ 正确：在 Windows 上使用 dual-stack
+const host = "::";          // → 同时监听 IPv6 和 IPv4
+
+// 或者在 Node.js 22+ 使用 auto family
+// server.listen(port) → 自动选择
+```
+
+**验证方法**：
+```bash
+# 检查服务器实际监听的地址
+netstat -ano | findstr :5301
+# 0.0.0.0:5301 → IPv4 only
+# [::]:5301    → IPv6 + IPv4 (dual-stack)
+# 127.0.0.1:5301 → localhost only
+
+# 检查客户端的连接目标地址
+netstat -ano | findstr :5301 | findstr SYN_SENT
+# SYN_SENT + [::1]:5301 → 客户端尝试 IPv6，服务器要支持 dual-stack
+```
+
+**预防**：
+- 在 Windows 上开发时，优先用 `"::"` 作为监听地址
+- 在 `hastur.py start` 命令中默认传递 `--host "::"`
+- 如果遇到连接问题，先用 `netstat` 确认协议族匹配
+
+---
+
+## 三十、Godot 脚本热重载陷阱
+
+### 30.1 `script.reload()` 返回 err=22 — "Cannot reload while instances exist"
+
+**症状**：调用 `script.source_code = new_source; script.reload()` 返回错误码 22，新代码不生效。
+
+**根因**：Godot 4 的 GDScript 缓存机制：如果有任何对象持有该脚本类的实例（`RefCounted` 引用计数 > 0，或 `Node` 仍在场景树中），`reload()` 会拒绝加载新版本。返回值 `ERR_SCRIPT_IS_USED` = 22。
+
+```gdscript
+# ❌ 错误：试图热重载有活跃实例的脚本
+var executor = preload("res://gdscript_executor.gd")
+_executor = executor.new()            # 创建实例
+...
+var s = load("res://gdscript_executor.gd")
+s.source_code = new_code
+var err = s.reload()                  # err = 22！实例还存在
+
+# ✅ 正确：重启编辑器（唯一可靠方法）
+# Hot-reload 在 Godot 4 中有根本性限制，v0.5.0 已明确决定不做
+```
+
+**哪些脚本可以热重载**：
+
+| 类型 | 能否重载 | 说明 |
+|------|---------|------|
+| 游戏逻辑脚本（无活跃实例） | ✅ | `res://scripts/arena/*.gd` 等 |
+| 游戏逻辑脚本（有活跃实例） | ❌ | 除非确保所有旧实例已被释放 |
+| 插件核心脚本 | ❌ | `broker_client.gd`, `gdscript_executor.gd` 等 |
+| `class_name` 全局注册脚本 | ❌ | 需要编辑器重新扫描全局类缓存 |
+| 新创建的 `GDScript.new()` | ✅ | 没有文件路径，不受缓存影响 |
+
+**工作流建议**：
+- 修改插件核心脚本后，告知用户"需要重启编辑器"
+- 游戏脚本可以通过 `POST /api/script/reload` 热重载（已在 v0.6.0 实现）
+- `gdscript_executor.gd` 等核心脚本由于有 `_executor` 实例常驻内存，无法热重载
+- 如果实在不想重启，可以通过 `execute` 端点运行 GDScript 来动态修改行为（绕过脚本重载）
+
+---
+
+## 三十一、Debug 方法论：新增功能验证清单
+
+综合今日教训，新增功能的验证应该按以下清单逐层排查：
+
+### 31.1 参数传递层
+
+```bash
+# 1. HTTP 层：参数是否到达 Express handler？
+# 在 handler 第一行加 console.log("body:", JSON.stringify(req.body))
+# 或直接 curl + 查看 Godot 端的打印输出
+
+# 2. TCP 层：参数是否被序列化到 TCP 消息中？
+# 检查 tcpServer.sendRequest / sendExecute 的 data 对象
+
+# 3. Godot 层：参数是否被正确解析？
+# 在 _handle_execute 中加: print("PARAMS:", JSON.stringify(data))
+```
+
+### 31.2 编译层
+
+```bash
+# 先使用 script/check 验证编译
+python tools/hastur.py check '你的代码'
+
+# 再使用 execute（snippet 模式）验证执行
+python tools/hastur.py exec '你的代码'
+
+# 最后使用 execute（in_scene 模式）验证场景上下文
+```
+
+### 31.3 场景层
+
+```bash
+# 确认路径在场景树中存在
+python tools/hastur.py inspect /root/SkillDemo --depth 3
+
+# 确认信号连接存在
+python tools/hastur.py signal /root/SkillDemo/SkillSystem/SkillSignalBus
+```
+
+### 31.4 错误定位流
+
+```
+Bug 报告
+  ↓
+1. 检查 Godot Output 面板（编译错误？）
+  ↓
+2. 检查 broker 是否在运行
+  ↓
+3. 检查 executor 是否连接
+  ↓
+4. 用 curl 直接测试 API（排除 CLI 工具问题）
+  ↓
+5. 用 script/check 测试编译（排除执行环境问题）
+  ↓
+6. 用 snippet 模式测试执行（排除 in_scene 问题）
+  ↓
+7. 用 in_scene 模式测试（验证场景上下文）
+  ↓
+8. 检查参数全链路传递（从 HTTP → TCP → Godot）
+```
+
+**基本原则**：**80% 的"奇怪错误"最后发现是参数没传过去，或者版本没更新。在怀疑引擎 Bug 之前，先确认数据确实到达了目标代码。**
+
+---
+
+*版本更新：v4.5 — 新增参数传递链路陷阱（execution_mode 透传）、GDScript 动态编译陷阱（extends Node + get_node 失败、resource_path 问题、多行字符串缩进）、编辑器 vs 游戏场景树陷阱（Engine.get_main_loop().root vs EditorInterface）、Windows 网络绑定陷阱（IPv6 vs IPv4）、Godot 热重载陷阱（err=22）、Debug 方法论（新增功能验证清单）。*

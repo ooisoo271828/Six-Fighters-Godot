@@ -7,8 +7,8 @@ const DAMAGE_INTERVAL: float = 0.5
 const FADE_OUT_DURATION: float = 0.8
 const BEAM_WIDTH_EYE: float = 10.0
 const BEAM_WIDTH_GROUND: float = 18.0
-const ELLIPSE_A: float = 19.0
-const ELLIPSE_B: float = 7.1
+const ELLIPSE_A: float = 60.0
+const ELLIPSE_B: float = 25.0
 const EYE_SIZE: int = 64
 const GLOW_SIZE: int = 80
 

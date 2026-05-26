@@ -315,9 +315,12 @@ func _update_pulse(_dt: float) -> void:
 
 func _apply_damage() -> void:
 	_hit_targets.clear()
+	_all_hit_targets.clear()
 	if not _hit_area or not _hit_area.monitoring:
 		return
-	var bodies: Array = _hit_area.get_overlapping_bodies()
+	var bodies: Array = []
+	bodies.append_array(_hit_area.get_overlapping_bodies())
+	bodies.append_array(_hit_area.get_overlapping_areas())
 	for body in bodies:
 		if body == _caster:
 			continue

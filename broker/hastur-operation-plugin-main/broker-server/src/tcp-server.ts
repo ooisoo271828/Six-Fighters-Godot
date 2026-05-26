@@ -14,7 +14,10 @@ const MAX_LINE_LENGTH = 1024 * 1024    // 单行消息最大长度（1MB）
 const RESULT_TYPES = new Set([
 	'execute_result', 'scene_tree_result', 'create_node_result',
 	'delete_node_result', 'rescan_result', 'script_check_result',
-	'scene_properties_result', 'scene_save_result'
+	'scene_properties_result', 'scene_save_result',
+		'scene_inspect_result', 'signal_connections_result',
+		'compile_errors_result', 'console_stream_result',
+		'script_reload_result'
 ])
 
 interface PendingRequest {
@@ -137,8 +140,8 @@ export class TcpServer {
 		}
 	}
 
-	sendExecute(executorId: string, code: string, language: string, timeoutMs: number = 30000): Promise<ExecuteResult> {
-		return this.sendRequest<ExecuteResult>(executorId, 'execute', { code, language }, timeoutMs)
+	sendExecute(executorId: string, code: string, language: string, timeoutMs: number = 30000, executionMode?: string, contextPath?: string): Promise<ExecuteResult> {
+		return this.sendRequest<ExecuteResult>(executorId, 'execute', { code, language, execution_mode: executionMode, context_path: contextPath }, timeoutMs)
 	}
 
 	// 场景树请求

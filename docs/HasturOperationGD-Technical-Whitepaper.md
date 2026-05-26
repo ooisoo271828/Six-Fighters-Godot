@@ -1,7 +1,7 @@
 # HasturOperationGD 插件技术蓝皮书
 
-> **版本**: v0.5.0（插件 + broker-server）
-> **最后更新**: 2026-05-25（新增第五章 + 编译阶段重构 + 全路由 asyncTcpRoute 迁移 + 激光束计数修复 + 死代码清理）
+> **版本**: v0.6.0（插件 + broker-server）
+> **最后更新**: 2026-05-26（新增诊断层 6 个端点 + in_scene 执行模式 + 编译错误缓存 + 控制台流 + 脚本软重载 + 全蓝皮书翻新）
 > **适用对象**: 人类开发团队成员、AI 助理（Claude Code 等）
 > **状态**: 正式记录
 >
@@ -167,12 +167,13 @@ curl -s -X POST http://localhost:5302/api/execute \
 
 **职责**: 动态编译并执行 GDScript 代码片段。
 
-**两种执行模式**:
+**三种执行模式**:
 
-| 模式 | 检测条件 | 包装方式 |
-|------|---------|---------|
-| **Snippet** | 不含 `extends` | 自动包装为 `@tool extends RefCounted` + `run(executeContext)` 方法 |
-| **Full Class** | 含 `extends` | 自动补 `@tool` 注解，调用 `execute(executeContext)` |
+| 模式 | 检测条件 | 包装方式 | 适用场景 |
+|------|---------|---------|---------|
+| **Snippet** | 不含 `extends` | `@tool extends RefCounted` + `run(executeContext)` | 快速执行、调试、查询 |
+| **Full Class** | 含 `extends` | 自动补 `@tool` 注解，调用 `execute(executeContext)` | 复杂多步操作、自定义上下文 |
+| **In-Scene** | `execution_mode: "in_scene"` | `@tool extends RefCounted` + 注入场景根 + 自定义 `get_node()` | 场景上下文操作，`get_node()` / `get_tree()` 可用 |
 
 **Snippet 包装示例**:
 
@@ -397,7 +398,7 @@ curl -s "http://localhost:5302/api/executors/<id>/logs/errors" \
 | `/api/executors` | GET | 列出所有 executor | Bearer | v0.1 |
 | `/api/executors/:id` | GET | 单个 executor 信息 | Bearer | v0.1 |
 | `/api/executors/:id/metrics` | GET | 连接指标 | Bearer | v0.1 |
-| **`/api/execute`** | **POST** | **执行 GDScript 代码**（v0.5.0 增加 summary） | Bearer | v0.1 |
+| **`/api/execute`** | **POST** | **执行 GDScript 代码**（v0.5.0 增加 summary；v0.6.0 增加 `execution_mode`/`context_path`） | Bearer | v0.1 |
 | `/api/scene/tree` | GET | 获取场景树 | Bearer | v0.1 |
 | `/api/scene/nodes` | POST | 创建节点 | Bearer | v0.1 |
 | `/api/scene/nodes?path=` | DELETE | 删除节点 | Bearer | v0.1 |
@@ -406,6 +407,11 @@ curl -s "http://localhost:5302/api/executors/<id>/logs/errors" \
 | **`/api/script/check`** | **POST** | **编译检查（不执行）** | Bearer | v0.5.0 |
 | **`/api/executors/:id/scene/properties`** | **GET** | **获取节点属性**（支持 filter 参数） | Bearer | v0.5.0 |
 | **`/api/scene/save`** | **POST** | **保存当前场景到磁盘** | Bearer | v0.5.0 |
+| **`/api/scene/inspect`** | **GET** | **场景诊断快照**（递归节点树 + 属性 + 信号） | Bearer | v0.6.0 |
+| **`/api/scene/signals`** | **GET** | **信号连接诊断** | Bearer | v0.6.0 |
+| **`/api/project/compile-errors`** | **GET** | **查询当前编译报错** | Bearer | v0.6.0 |
+| **`/api/executors/:id/console/stream`** | **GET** | **控制台实时流**（游戏运行时 print 输出） | Bearer | v0.6.0 |
+| **`/api/script/reload`** | **POST** | **软重载脚本**（编译验证，不替换实例） | Bearer | v0.6.0 |
 
 #### 3.2.2 Execute API
 
@@ -436,6 +442,10 @@ python tools/hastur.py scene-tree      # 获取场景树
 python tools/hastur.py props <path> [--filter p1,p2]  # 获取节点属性  [v0.5.0]
 python tools/hastur.py rescan          # 强制文件系统刷新  [v0.5.0]
 python tools/hastur.py save [--force]  # 保存当前场景  [v0.5.0]
+python tools/hastur.py inspect <path> [--depth N]  # 场景诊断快照  [v0.6.0]
+python tools/hastur.py signal <path>   # 信号连接诊断  [v0.6.0]
+python tools/hastur.py errors          # 查询编译错误  [v0.6.0]
+python tools/hastur.py reload <path>   # 软重载脚本  [v0.6.0]
 python tools/hastur.py logs [limit]    # 获取日志
 python tools/hastur.py start|stop|restart  # 管理 broker-server
 ```
@@ -454,8 +464,38 @@ Content-Type: application/json
 {
     "executor_id": "<uuid>",
     "code": "print(\"Hello\")",
-    "timeout_ms": 30000
+    "timeout_ms": 30000,
+    "execution_mode": "snippet",
+    "context_path": "/root/SkillDemo"
 }
+```
+
+**参数说明**:
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `code` | String | 必填 | GDScript 代码 |
+| `executor_id` | String | 可选 | 精确指定执行器 |
+| `project_name` | String | 可选 | 按项目名模糊匹配 |
+| `type` | String | `"editor"` | `"editor"` 或 `"game"` |
+| `timeout_ms` | int | 30000 | 超时（1000-120000） |
+| `execution_mode` | String | `"snippet"` | `"snippet"` / `"in_scene"` |
+| `context_path` | String | `""` | in_scene 模式下的场景根路径 |
+
+**execution_mode 说明**:
+
+`snippet`（默认）— 代码在隔离的 RefCounted 中执行，`self` 无场景上下文。`print()` 自动捕获到 `executeContext.output()`。`get_tree()` / `get_node()` **不可用**，需用 `Engine.get_main_loop()` 替代。
+
+`in_scene`（v0.6.0 新增）— 代码在注入的场景根节点上下文中执行。`get_node(path)`、`get_tree()` **可用**。编译为 `@tool extends RefCounted`，通过自定义 `get_node()` 方法路由到指定场景根节点：
+
+```gdscript
+# in_scene 模式下可用：
+print(get_node("CameraAnchor"))           # 场景内路径
+print(get_tree().root.name)               # 场景树完整访问
+print(Engine.get_main_loop().root.name)   # 全局访问（共存）
+
+# 与 snippet 模式一样：
+executeContext.output("key", value)       # 输出到 API 响应
 ```
 
 **响应**:
@@ -935,9 +975,15 @@ SkillDemo (Node2D)                     ← res://scripts/dev/skill_demo.gd
 │   ├── ProjectilePool
 │   ├── ExecutorPool
 │   ├── SkillVFXManager
-│   └── LaserBeamPool
+│   ├── LaserBeamPool
+│   ├── EvilEyePool
+│   └── SmallLaserBeamPool             [v0.6.0]
 ├── VFX (Node2D)                       ← 运行时创建
-├── Target_* (Node2D)                  ← 运行时创建（具体数量由目标模式决定）
+├── DamageTextLayer (CanvasLayer)      ← 伤害跳字层 [v0.6.0]
+│   └── DamageFloater
+│       ├── MonsterDamageTextPool
+│       └── PlayerDamageTextPool
+├── Target_* (Area2D)                  ← 运行时创建（具体数量由目标模式决定）
 └── CanvasLayer (CanvasLayer)
     └── ControlPanel (PanelContainer)  ← UI 控制栏（底部）
 ```
@@ -1119,6 +1165,8 @@ echo "== Done =="
 | `laser_beam` | 火焰 | MAX_COVERAGE(6) | emit_laser_beam | instant |
 | `missile_storm` | 物理 | 多目标 | 投射物群 | projectile |
 | `water_wave` | 物理 | 扇形 | 投射物 | projectile |
+| `small_laser_beam` | **冰霜** | **MAX_COVERAGE(6)** | **emit_small_laser_beam** | **instant** |
+| `evil_eye_laser` | 火焰 | MAX_COVERAGE(6) | emit_evil_eye_laser | instant |
 
 #### 目标模式兼容性
 
@@ -1166,15 +1214,38 @@ func _clear_all_projectiles() -> void:
 
 > **根因**: MAX_COVERAGE 模式（target_mode=6）是激光术特有的目标选择逻辑，走 `skill_root.gd:60-111` 的独立分支，直接调用 `laser_beam_pool.spawn()`。旧的项目池计数逻辑未覆盖此分支。
 
-#### 5.7.2 Snippet 模式的 RefCounted 限制
+#### 5.7.2 Snippet / In-Scene 模式对比
 
-在 game executor 的 snippet 模式中：
+| 能力 | Snippet（默认） | In-Scene（v0.6.0） |
+|------|-----------------|-------------------|
+| `get_tree()` | ❌ | ✅ `self.get_tree()` |
+| `get_node(path)` | ❌ | ✅ `get_node("CameraAnchor")` |
+| `Engine.get_main_loop()` | ✅ | ✅（共存） |
+| 编译速度 | 快 | 稍慢（`_compile_source` 包装） |
+| `print()` 自动捕获 | ✅ | ✅ |
+| `executeContext` | ✅ | ✅ |
 
-| 不可用 | 替代方案 |
-|--------|---------|
-| `get_tree()` | `Engine.get_main_loop() as SceneTree` |
-| `get_node(path)` | `tree.root.get_node_or_null(path)` |
-| `get_viewport()` | `tree.root` |
+**Snippet 模式（默认）** 适用于快速执行、查询、调试。代码轻量，绕过场景上下文：
+
+```gdscript
+# 用 Engine 替代 get_tree/get_node
+var tree = Engine.get_main_loop() as SceneTree
+var root = tree.root
+```
+
+**In-Scene 模式** 适用于场景上下文操作，`get_node()` 直接可用：
+
+```bash
+curl -X POST http://localhost:5302/api/execute \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "print(get_node(\"CameraAnchor/Camera2D\").zoom)",
+    "execution_mode": "in_scene",
+    "context_path": "/root/SkillDemo",
+    "project_name": "Six Fighter"
+  }'
+```
 
 #### 5.7.3 远程代码环境 vs 本地执行
 
@@ -1345,11 +1416,14 @@ v0.5.0 提供以下端点缓解此问题（非热重载）：
 #### 对 AI Agent 工作流的影响
 
 修改 `.gd` 文件后，AI 应：
-1. 调用 `POST /api/project/rescan` 通知编辑器刷新
-2. 调用 `POST /api/script/check` 验证编译通过
-3. 如需生效：停止游戏 → 重新运行（`stop → replay`）
+1. 调用 `POST /api/script/reload` 尝试编译验证（**v0.6.0 新增**）
+2. 如果脚本有活跃实例，`reload` 返回 `err=22`
+3. 检查编译结果：成功 → 重启场景使新代码生效；失败 → 先修复再重启
+4. 对于无实例的游戏脚本，`reload` 可成功编译验证
 
-不要尝试通过 API 修改 `source_code` 并 `reload()` — 在有实例的场景中必然失败。
+**核心插件脚本**（`broker_client.gd`, `executor_backend.gd`, `editor_log_catcher.gd` 等 9 个）被**黑名单保护**，无法通过 `POST /api/script/reload` 重载，修改后必须重启编辑器。
+
+不要尝试通过 API 修改 `source_code` 并 `reload()` — 在有实例的场景中必然返回 `ERR_ALREADY_IN_USE (22)`。
 
 ---
 
@@ -1414,11 +1488,11 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 
 | 组件 | 源码仓库版本 | 生产版本 | 说明 |
 |------|------------|---------|------|
-| 插件 | v0.1 | **v0.5.0** | `game/addons/hasturoperationgd/` 下为生产版本 |
-| broker-server | v0.1.0 | **v0.5.0** | 运行中 API 返回 version 0.5.0 |
+| 插件 | v0.1 | **v0.6.0** | `game/addons/hasturoperationgd/` 下为生产版本 |
+| broker-server | v0.1.0 | **v0.6.0** | 运行中 API 返回 version 0.6.0 |
 | CLI 工具 | 无 | **Python 3.x** | `game/tools/hastur.py` + `game/tools/editor_call.py` |
 
-### 功能演进：v0.1 → v0.5.0
+### 功能演进：v0.1 → v0.6.0
 
 | 特性 | v0.1 | v0.4.0 | 状态 |
 |------|------|--------|------|
@@ -1465,6 +1539,17 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 | `asyncTcpRoute` 全覆盖 6 条旧路由 | ❌ | ✅ | 2026-05-25 — scene tree / create / delete 路由从手动 try/catch 迁移 |
 | `scene/save` force 参数支持 | ❌ | ✅ | 2026-05-25 — `force=true` 时服务端日志记录，数据传递给 executor |
 | `_executor.dispose()` 死代码清理 | ❌ | ✅ | 2026-05-25 — `disconnect_client()` 中移除 4 行无法到达的代码 |
+| **`GET /api/scene/inspect`** | ❌ | ✅ | v0.6.0 — 场景诊断快照，递归节点树 + 属性 + 信号 |
+| **`GET /api/scene/signals`** | ❌ | ✅ | v0.6.0 — 信号连接诊断 |
+| **`GET /api/project/compile-errors`** | ❌ | ✅ | v0.6.0 — 查询当前编译报错（从 EditorLogCatcher 缓存读取） |
+| **`GET /api/executors/:id/console/stream`** | ❌ | ✅ | v0.6.0 — 控制台实时流（游戏运行时 print 输出） |
+| **`POST /api/script/reload`** | ❌ | ✅ | v0.6.0 — 软重载脚本（黑名单保护 Hastur 核心脚本） |
+| **`in_scene` 执行模式** | ❌ | ✅ | v0.6.0 — 场景上下文执行，`get_node()` / `get_tree()` 可用 |
+| **编译错误缓存** | ❌ | ✅ | v0.6.0 — `editor_log_catcher.gd` 中新增线程安全编译错误缓存 |
+| **控制台流缓冲区** | ❌ | ✅ | v0.6.0 — 500 条 FIFO 循环缓冲区，`since_timestamp` 查询 |
+| **脚本重载黑名单** | ❌ | ✅ | v0.6.0 — 9 个核心插件脚本禁止热重载 |
+| **CLI `inspect`/`signal`/`errors`/`reload`** | ❌ | ✅ | v0.6.0 — 4 个新 CLI 命令 |
+| **IPv6 dual-stack 支持** | ❌ | ✅ | v0.6.0 — `--host "::"` 兼容 Windows IPv6 连接 |
 
 ---
 
@@ -1489,4 +1574,4 @@ curl -s -H "Authorization: Bearer <token>" http://localhost:5302/api/executors/<
 
 ---
 
-*本蓝皮书于 2026-05-25 更新。涵盖 v0.5.0 全部功能：注册式路由重构、4 个新端点（rescan/script-check/properties/save）、execute summary 增强、CLI 新命令、GDScript Resource Reload 测试结论、编译阶段重构消除重复、全路由 asyncTcpRoute 迁移、激光束计数修复、以及技能自动化测试指南。*
+*本蓝皮书于 2026-05-26 更新至 v0.6.0。新增：诊断层 5 个端点（scene/inspect, scene/signals, project/compile-errors, console/stream, script/reload）、in_scene 执行模式（get_node/get_tree 可用）、编译错误缓存、控制台流缓冲区、脚本热重载安全黑名单、IPv6 dual-stack 支持、CLI 增强 4 命令（inspect/signal/errors/reload）。版本号同步更新至 v0.6.0（plugin.cfg, package.json, broker_client.gd, http-server.ts）。*

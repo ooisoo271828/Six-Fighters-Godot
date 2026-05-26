@@ -15,6 +15,9 @@ extends Node
 @onready var skill_vfx_manager: Node = $SkillVFXManager
 @onready var laser_beam_pool: Node2D = $LaserBeamPool
 @onready var evil_eye_pool: Node2D = $EvilEyePool
+@onready var small_laser_beam_pool: Node2D = $SmallLaserBeamPool
+@onready var bubble_bomb_array_pool: Node2D = $BubbleBombArrayPool
+@onready var flying_sword_pool: Node2D = $FlyingSwordPool
 
 var _chain_id_counter: int = 0
 
@@ -31,6 +34,9 @@ func _initialize_subsystems() -> void:
 	skill_vfx_manager.initialize()
 	laser_beam_pool.initialize()
 	evil_eye_pool.initialize()
+	small_laser_beam_pool.initialize()
+	bubble_bomb_array_pool.initialize()
+	flying_sword_pool.initialize()
 
 func _connect_signal_bus() -> void:
 	# VFX 监听伤害信号
@@ -62,6 +68,18 @@ func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extr
 	if target_mode == 6:  # MAX_COVERAGE
 		if skill_def.get("effect_type") == "emit_evil_eye_laser":
 			_cast_evil_eye_laser(caster, skill_def, skill_id, available_targets, extra_modifiers)
+			return
+
+		if skill_def.get("effect_type") == "emit_small_laser_beam":
+			_cast_small_laser_beam(caster, skill_def, skill_id, available_targets, extra_modifiers)
+			return
+
+		if skill_def.get("effect_type") == "emit_bubble_bomb_array":
+			_cast_bubble_bomb_array(caster, skill_def, skill_id, available_targets, extra_modifiers)
+			return
+
+		if skill_def.get("effect_type") == "emit_flying_sword_storm":
+			_cast_flying_sword_storm(caster, skill_def, skill_id, available_targets, extra_modifiers)
 			return
 
 		var beam_width: float = 90.0   # laser_beam.gd 中的 BEAM_WIDTH
@@ -205,6 +223,124 @@ func _cast_evil_eye_laser(caster: Node2D, skill_def, skill_id: String, available
 		skill_signal_bus,
 		available_targets
 	)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
+## 小激光术：120度扇区 + 5道激光柱
+func _cast_small_laser_beam(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	var cone_angle := TargetSelector.find_best_cone_angle(caster.position, available_targets, 120.0, skill_def.cast_range)
+	if cone_angle == INF:
+		return
+
+	var half_cone := 60.0
+	var cone_dir := Vector2.RIGHT.rotated(deg_to_rad(cone_angle))
+	var cone_targets: Array = []
+	for u in available_targets:
+		if not (u and is_instance_valid(u) and u.get("is_alive") == true):
+			continue
+		var to_u: Vector2 = u.position - caster.position
+		if to_u.length() > skill_def.cast_range or to_u.length() < 1.0:
+			continue
+		var angle_diff := rad_to_deg(absf(to_u.angle_to(cone_dir)))
+		if angle_diff <= half_cone:
+			cone_targets.append(u)
+
+	if cone_targets.is_empty():
+		return
+
+	var shuffled := cone_targets.duplicate()
+	shuffled.shuffle()
+	var pick: Array = []
+	for i in range(min(5, shuffled.size())):
+		pick.append(shuffled[i])
+	while pick.size() < 5:
+		pick.append(cone_targets[randi() % cone_targets.size()])
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, pick[0].global_position)
+
+	for i in range(5):
+		var target = pick[i]
+		var dir: Vector2 = (target.global_position - caster.global_position).normalized()
+		get_tree().create_timer(i * 0.3).timeout.connect(func():
+			small_laser_beam_pool.spawn(caster, dir, skill_def.base_damage, _int_to_damage_type_string(skill_def.damage_type), skill_id, skill_signal_bus)
+		)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
+## 气泡炸弹阵：椭圆覆盖 + 多阶段爆炸
+func _cast_bubble_bomb_array(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	var ellipse_result := TargetSelector.find_optimal_ellipse(
+		caster.position, available_targets, skill_def.cast_range
+	)
+	if ellipse_result.get("covered_count", 0) == 0:
+		return
+
+	var ellipse_center := ellipse_result.ellipse_center as Vector2
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, ellipse_center)
+
+	bubble_bomb_array_pool.spawn(
+		caster,
+		ellipse_center,
+		available_targets,
+		skill_def.base_damage,
+		_int_to_damage_type_string(skill_def.damage_type),
+		skill_id,
+		skill_signal_bus
+	)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
+## 飞剑风暴：椭圆选域 + 分散索敌 + 竖直下插
+func _cast_flying_sword_storm(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	var ellipse_center := TargetSelector.find_optimal_ellipse(
+		caster.position, available_targets, 800.0,
+		350.0, 125.0
+	).get("ellipse_center", caster.position) as Vector2
+
+	var valid: Array = []
+	var hw := 175.0
+	var hh := 62.5
+	for u in available_targets:
+		if u and is_instance_valid(u) and u.get("is_alive") == true:
+			var dx := absf(u.position.x - ellipse_center.x)
+			var dy := absf(u.position.y - ellipse_center.y)
+			if (dx * dx) / (hw * hw) + (dy * dy) / (hh * hh) <= 1.0:
+				valid.append(u)
+
+	if valid.is_empty():
+		return
+
+	var assigned: Array = []
+	var already: Array = []
+	var count := mini(10, maxi(1, valid.size() * 2))
+	for i in range(count):
+		var pick: Node2D = null
+		var unassigned: Array = []
+		for u in valid:
+			if not already.has(u):
+				unassigned.append(u)
+		if not unassigned.is_empty():
+			pick = unassigned[randi() % unassigned.size()]
+		else:
+			pick = valid[randi() % valid.size()]
+		assigned.append(pick)
+		already.append(pick)
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, ellipse_center)
+
+	for target in assigned:
+		flying_sword_pool.spawn(
+			caster, target, skill_def.base_damage,
+			_int_to_damage_type_string(skill_def.damage_type),
+			skill_id, skill_signal_bus
+		)
 
 	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
 

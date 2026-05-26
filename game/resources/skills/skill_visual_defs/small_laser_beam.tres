@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "small_laser_beam"
+projectile_kind = 0
+telegraph_shape = 0
+speed = 0.0

@@ -180,6 +180,45 @@ def cmd_save(force=False):
     print(json.dumps(resp, indent=2, ensure_ascii=False))
 
 
+# ── v0.6.0 Commands ──
+
+
+def cmd_inspect(path="/root", depth=2):
+    print(f">> Inspecting scene: {path} (depth={depth})")
+    resp = api("GET", f"/scene/inspect?path={path}&depth={depth}")
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_signal(path="/root"):
+    print(f">> Getting signal connections for: {path}")
+    resp = api("GET", f"/scene/signals?path={path}")
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_errors():
+    print(">> Compile errors:")
+    resp = api("GET", "/project/compile-errors")
+    data = resp.get("data") or {}
+    errors = data.get("errors", [])
+    if errors:
+        for e in errors:
+            loc = f"{e.get('file', '?')}:{e.get('line', '?')}"
+            print(f"  [ERROR] {loc} - {e.get('message', '')}")
+    else:
+        print("  No compile errors.")
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
+def cmd_reload(path):
+    if not path:
+        print("[ERROR] Script path is required")
+        print("Usage: hastur.py reload res://path/to/file.gd")
+        sys.exit(1)
+    print(f">> Reloading script: {path}")
+    resp = api("POST", "/script/reload", {"path": path})
+    print(json.dumps(resp, indent=2, ensure_ascii=False))
+
+
 def cmd_props(path, filter_str=None):
     if not path:
         print("[ERROR] Node path is required")
@@ -357,6 +396,11 @@ def main():
         "start": cmd_start,
         "stop": cmd_stop,
         "restart": cmd_restart,
+        # v0.6.0
+        "inspect": lambda: cmd_inspect(args[0] if args else "/root", int(args[2]) if len(args) > 2 and args[1] == "--depth" else 2),
+        "signal": lambda: cmd_signal(args[0] if args else "/root"),
+        "errors": cmd_errors,
+        "reload": lambda: cmd_reload(args[0] if args else ""),
     }
 
     handler = commands.get(cmd)
