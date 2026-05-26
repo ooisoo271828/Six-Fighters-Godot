@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "scatter_shuriken"
+display_name = "霰弹手里剑"
+category = 1
+damage_type = 0
+base_damage = 35.0
+cooldown = 8.0
+cast_range = 640.0
+telegraph_ms = 300
+effect_type = "emit_scatter_shuriken"
+target_mode = 0
+delivery_type = "projectile"
+max_targets = 1
+description = "9发手里剑扇形连射，间隔递减，命中即消"

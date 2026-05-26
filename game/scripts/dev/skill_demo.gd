@@ -284,6 +284,12 @@ func _count_active_projectiles() -> int:
 	var fs_pool = _skill_system.get_node_or_null("FlyingSwordPool")
 	if fs_pool and fs_pool.has_method("get_active_count"):
 		count += fs_pool.get_active_count()
+	var sk_pool = _skill_system.get_node_or_null("ShurikenPool")
+	if sk_pool and sk_pool.has_method("get_active_count"):
+		count += sk_pool.get_active_count()
+	var bh_pool = _skill_system.get_node_or_null("BurningHandsPool")
+	if bh_pool and bh_pool.has_method("get_active_count"):
+		count += bh_pool.get_active_count()
 	return count
 
 func _clear_all_projectiles() -> void:
@@ -305,6 +311,12 @@ func _clear_all_projectiles() -> void:
 	var fs_pool = _skill_system.get_node_or_null("FlyingSwordPool")
 	if fs_pool and fs_pool.has_method("clear_all"):
 		fs_pool.clear_all()
+	var sk_pool = _skill_system.get_node_or_null("ShurikenPool")
+	if sk_pool and sk_pool.has_method("clear_all"):
+		sk_pool.clear_all()
+	var bh_pool = _skill_system.get_node_or_null("BurningHandsPool")
+	if bh_pool and bh_pool.has_method("clear_all"):
+		bh_pool.clear_all()
 
 func _process(dt: float) -> void:
 	if not _is_casting:

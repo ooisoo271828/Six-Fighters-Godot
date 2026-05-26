@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+skill_id = "burning_hands"
+display_name = "火焰之手"
+category = 1
+damage_type = 1
+base_damage = 22.0
+cooldown = 5.0
+cast_range = 300.0
+effect_type = "emit_burning_hands"
+target_mode = 6
+delivery_type = "instant"
+max_targets = 0
+description = "双掌推出火浪，对扇形范围内所有敌人造成持续火焰伤害，每0.5秒判定一次，共9次"

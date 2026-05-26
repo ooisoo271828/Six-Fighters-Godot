@@ -20,7 +20,8 @@ extends Resource
 	"CHAIN_LIGHTNING:5",
 	"BURNING_HANDS:6",
 	"ICE_RING:7",
-	"PLASMA_BEAM:8"
+	"PLASMA_BEAM:8",
+	"SHURIKEN:9"
 )
 var projectile_kind: int = 0
 
@@ -102,6 +103,7 @@ func get_projectile_kind_name() -> String:
 		6: return "BURNING_HANDS"
 		7: return "ICE_RING"
 		8: return "PLASMA_BEAM"
+		9: return "SHURIKEN"
 	return "MECHANICAL_BULLET"
 
 func get_telegraph_shape_name() -> String:

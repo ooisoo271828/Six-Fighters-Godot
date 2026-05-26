@@ -2,6 +2,8 @@
 ## 中式宝剑 + 弧线升空 → 大圈盘旋 → 竖直下插 → 插地残留
 extends Node2D
 
+const ProjectileHitDetectorScript = preload("res://scripts/skill_system/core/projectile_hit_detector.gd")
+
 # ── 常量 ──
 const SWORD_W: int = 16
 const SWORD_H: int = 80
@@ -12,6 +14,11 @@ const TURN_RATE: float = 3.5
 const STUCK_DURATION: float = 2.0
 const FADE_DURATION: float = 0.5
 const ORBIT_RADIUS: float = 150.0
+const CIRCLE_RADIUS_SHRINK: float = 25.0
+const CIRCLE_MIN_RADIUS: float = 80.0
+const CIRCLE_MAX_DURATION: float = 2.5
+const TRAIL_INTERVAL: float = 0.06
+const TRAIL_MAX_POINTS: int = 18
 
 enum Phase { LAUNCH, ASCEND, CIRCLE, DIVE, STUCK, DONE }
 
@@ -21,6 +28,7 @@ var _damage: float
 var _damage_type: String
 var _skill_id: String
 var _signal_bus: Node
+var _available_targets: Array = []
 
 var _phase: int = Phase.LAUNCH
 var _phase_timer: float = 0.0
@@ -30,6 +38,8 @@ var _active: bool = false
 var _hit_done: bool = false
 var _circle_center: Vector2
 var _circle_angle: float = 0.0
+var _trail_timer: float = 0.0
+var _trail_line: Line2D = null
 
 var _sword: Sprite2D
 var _glow: Sprite2D
@@ -90,13 +100,14 @@ func _sword_pixel(x: int, y: int) -> Color:
 	return Color(0.45 * shade, 0.22 * shade, 0.1 * shade, 1.0)
 
 
-func initialize(caster: Node2D, target: Node2D, damage: float, damage_type: String, skill_id: String, signal_bus: Node) -> void:
+func initialize(caster: Node2D, target: Node2D, damage: float, damage_type: String, skill_id: String, signal_bus: Node, available_targets: Array = []) -> void:
 	_caster = caster
 	_target = target
 	_damage = damage
 	_damage_type = damage_type
 	_skill_id = skill_id
 	_signal_bus = signal_bus
+	_available_targets = available_targets
 	_phase = Phase.LAUNCH
 	_phase_timer = 0.0
 	_launch_delay = randf_range(0.0, 0.8)
@@ -108,6 +119,8 @@ func initialize(caster: Node2D, target: Node2D, damage: float, damage_type: Stri
 	_sword.position = Vector2.ZERO
 	_sword.rotation = 0.0
 	_glow.modulate = Color(0.75, 0.8, 1.0, 0.12)
+	_trail_timer = 0.0
+	_setup_trail_line()
 	set_process(true)
 	visible = true
 	_sword.visible = false
@@ -146,6 +159,7 @@ func _start_dive() -> void:
 	_phase_timer = 0.0
 	_sword.rotation = PI
 	_glow.rotation = PI
+	_clear_trail()
 
 
 func _on_hit() -> void:
@@ -178,6 +192,7 @@ func _destroy() -> void:
 	_active = false
 	visible = false
 	set_process(false)
+	_cleanup_trail_line()
 	var p := get_parent()
 	if p and p.has_method("despawn"):
 		p.despawn(self)
@@ -254,6 +269,10 @@ func _process(dt: float) -> void:
 			global_position += _launch_dir * ASCEND_SPEED * dt
 			_sword.rotation = _launch_dir.angle() + PI / 2.0
 			_glow.rotation = _sword.rotation
+			_trail_timer += dt
+			if _trail_timer >= TRAIL_INTERVAL:
+				_trail_timer = 0.0
+				_add_trail_point()
 			if global_position.distance_squared_to(target_pt) < 60.0 * 60.0:
 				_start_circle()
 
@@ -261,30 +280,64 @@ func _process(dt: float) -> void:
 			if not is_instance_valid(_target):
 				_destroy(); return
 			_circle_center = _target.global_position + Vector2(0, -CIRCLE_HEIGHT)
-			# 大圈盘旋（150px 半径，3.0 rad/s ≈ 2s 一圈）
+
+			# 盘旋运动：半径缓慢缩小
 			_circle_angle += 4.5 * dt
-			var radius := maxf(ORBIT_RADIUS - 60.0 * _phase_timer, 20.0)
+			var radius: float = maxf(ORBIT_RADIUS - CIRCLE_RADIUS_SHRINK * _phase_timer, CIRCLE_MIN_RADIUS)
 			global_position = _circle_center + Vector2(cos(_circle_angle), sin(_circle_angle)) * radius
-			# Phase A: 水平盘旋，剑尖沿轨道切线
-			# Phase B: 快速倾斜到竖直
-			if _phase_timer < 0.6:
-				var tangent := _circle_angle + PI / 2.0
-				_sword.rotation = tangent + PI / 2.0
-			else:
-				_sword.rotation = move_toward(_sword.rotation, PI, 9.0 * dt)
+
+			# 剑的旋转：ease曲线渐进（从水平切线到竖直）
+			var rotate_progress: float = clampf((_phase_timer - 0.3) / 1.5, 0.0, 1.0)
+			rotate_progress = ease(rotate_progress, 0.5)
+			var tangent: float = _circle_angle + PI / 2.0
+			var target_rot: float = lerpf(tangent, PI, rotate_progress)
+			_sword.rotation = target_rot
 			_glow.rotation = _sword.rotation
-			# 盘旋到位 + 基本竖直 → 下插
-			if _phase_timer > 0.8 and absf(_sword.rotation - PI) < 0.15:
+
+			# 拖尾
+			_trail_timer += dt
+			if _trail_timer >= TRAIL_INTERVAL:
+				_trail_timer = 0.0
+				_add_trail_point()
+
+			# 退出条件：盘旋2秒后且剑基本竖直
+			if _phase_timer > 2.0 and absf(_sword.rotation - PI) < 0.2:
+				_start_dive()
+			elif _phase_timer > CIRCLE_MAX_DURATION:
 				_start_dive()
 
 		Phase.DIVE:
-			if not is_instance_valid(_target):
+			# 获取所有可用目标
+			var targets := _available_targets
+			if targets.is_empty() and is_instance_valid(_target):
+				targets = [_target]
+
+			if targets.is_empty():
 				_destroy(); return
-			var tpos := _target.global_position
-			var dir := global_position.direction_to(tpos)
-			global_position += dir * DIVE_SPEED * dt
-			if global_position.distance_squared_to(tpos) < 22.0 * 22.0:
+
+			# 使用统一的碰撞检测
+			var hit_target: Node2D = ProjectileHitDetectorScript.check_collision(
+				global_position, targets, 22.0
+			)
+
+			if hit_target:
+				_target = hit_target  # 更新目标为实际命中的敌人
 				_on_hit()
+			else:
+				# 飞向最近的目标
+				var nearest: Node2D = null
+				var nearest_dist: float = INF
+				for t in targets:
+					if t and is_instance_valid(t):
+						var d := global_position.distance_squared_to(t.global_position)
+						if d < nearest_dist:
+							nearest_dist = d
+							nearest = t
+				if nearest:
+					var dir := global_position.direction_to(nearest.global_position)
+					global_position += dir * DIVE_SPEED * dt
+				else:
+					_destroy()
 
 		Phase.STUCK:
 			if not _active: return
@@ -305,7 +358,58 @@ func reset_for_pool() -> void:
 	_glow.modulate = Color(0.75, 0.8, 1.0, 0.12)
 	_sword.rotation = 0.0; _sword.position = Vector2.ZERO
 	_sword.region_enabled = false
+	_cleanup_trail_line()
+	_trail_timer = 0.0
 	set_process(false)
+
+
+# ═══════════════════ 拖尾 ═══════════════════
+
+func _setup_trail_line() -> void:
+	_cleanup_trail_line()
+	var line: Line2D = Line2D.new()
+	line.name = "SwordTrail"
+	line.width = 4.0
+	# 渐变：index 0 = 最旧（远离飞剑）→ 淡窄，index 1 = 最新（靠近飞剑）→ 亮宽
+	var grad: Gradient = Gradient.new()
+	grad.set_color(0, Color(0.5, 0.6, 1.0, 0.0))
+	grad.set_color(1, Color(0.8, 0.85, 1.0, 0.8))
+	line.gradient = grad
+	# 宽度曲线：远离飞剑端窄，靠近飞剑端宽
+	var curve: Curve = Curve.new()
+	curve.add_point(Vector2(0.0, 0.15))
+	curve.add_point(Vector2(1.0, 1.0))
+	line.width_curve = curve
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	# 放到 pool 父节点，坐标系固定不动
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(line)
+	else:
+		add_child(line)
+	_trail_line = line
+
+
+func _add_trail_point() -> void:
+	if _trail_line == null:
+		return
+	_trail_line.add_point(global_position)
+	if _trail_line.get_point_count() > TRAIL_MAX_POINTS:
+		_trail_line.remove_point(0)
+
+
+func _clear_trail() -> void:
+	if _trail_line != null:
+		_trail_line.clear_points()
+
+
+func _cleanup_trail_line() -> void:
+	if _trail_line != null:
+		_trail_line.clear_points()
+		_trail_line.queue_free()
+		_trail_line = null
 
 
 # ═══════════════════ 工具纹理 ═══════════════════

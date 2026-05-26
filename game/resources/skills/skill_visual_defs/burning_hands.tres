@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "burning_hands"
+projectile_kind = 6
+telegraph_shape = 2
+telegraph_ms = 200
+impact_level = 2
+speed = 0.0

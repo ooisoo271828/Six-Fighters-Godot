@@ -115,10 +115,12 @@ func _setup_effect_factory() -> void:
 		"emit_burst": "res://scripts/skill_system/core/effects/emit_burst.gd",
 		"emit_meteor": "res://scripts/skill_system/core/effects/emit_meteor.gd",
 		"emit_laser_beam": "res://scripts/skill_system/core/effects/emit_laser_beam.gd",
-			"emit_evil_eye_laser": "res://scripts/skill_system/core/effects/emit_evil_eye_laser.gd",
+		"emit_evil_eye_laser": "res://scripts/skill_system/core/effects/emit_evil_eye_laser.gd",
 		"emit_small_laser_beam": "res://scripts/skill_system/core/effects/emit_small_laser_beam.gd",
 		"emit_bubble_bomb_array": "res://scripts/skill_system/core/effects/emit_bubble_bomb_array.gd",
 		"emit_flying_sword_storm": "res://scripts/skill_system/core/effects/emit_flying_sword_storm.gd",
+		"emit_scatter_shuriken": "res://scripts/skill_system/core/effects/emit_scatter_shuriken.gd",
+		"emit_burning_hands": "res://scripts/skill_system/core/effects/emit_burning_hands.gd",
 	}
 
 func _load_all_skills() -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://cxkqwerty1234"]
+[gd_scene load_steps=12 format=3 uid="uid://cxkqwerty1234"]
 
 [ext_resource type="Script" path="res://scripts/skill_system/skill_root.gd" id="1_root"]
 [ext_resource type="Script" path="res://scripts/skill_system/registry/skill_registry.gd" id="2_reg"]
@@ -13,6 +13,8 @@
 [ext_resource type="Script" path="res://scripts/skill_system/pools/small_laser_beam_pool.gd" id="11_small"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/bubble_bomb_array_pool.gd" id="12_bubble"]
 [ext_resource type="Script" path="res://scripts/skill_system/pools/flying_sword_pool.gd" id="13_sword"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/shuriken_pool.gd" id="14_shuriken"]
+[ext_resource type="Script" path="res://scripts/skill_system/pools/burning_hands_pool.gd" id="15_burning"]
 
 [node name="SkillSystem" type="Node"]
 script = ExtResource("1_root")
@@ -52,3 +54,9 @@ script = ExtResource("12_bubble")
 
 [node name="FlyingSwordPool" type="Node2D" parent="."]
 script = ExtResource("13_sword")
+
+[node name="ShurikenPool" type="Node2D" parent="."]
+script = ExtResource("14_shuriken")
+
+[node name="BurningHandsPool" type="Node2D" parent="."]
+script = ExtResource("15_burning")

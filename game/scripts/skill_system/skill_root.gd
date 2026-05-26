@@ -18,6 +18,8 @@ extends Node
 @onready var small_laser_beam_pool: Node2D = $SmallLaserBeamPool
 @onready var bubble_bomb_array_pool: Node2D = $BubbleBombArrayPool
 @onready var flying_sword_pool: Node2D = $FlyingSwordPool
+@onready var shuriken_pool: Node2D = $ShurikenPool
+@onready var burning_hands_pool: Node2D = $BurningHandsPool
 
 var _chain_id_counter: int = 0
 
@@ -37,6 +39,8 @@ func _initialize_subsystems() -> void:
 	small_laser_beam_pool.initialize()
 	bubble_bomb_array_pool.initialize()
 	flying_sword_pool.initialize()
+	shuriken_pool.initialize()
+	burning_hands_pool.initialize()
 
 func _connect_signal_bus() -> void:
 	# VFX 监听伤害信号
@@ -81,6 +85,15 @@ func cast_skill(caster: Node2D, skill_id: String, available_targets: Array, extr
 		if skill_def.get("effect_type") == "emit_flying_sword_storm":
 			_cast_flying_sword_storm(caster, skill_def, skill_id, available_targets, extra_modifiers)
 			return
+
+		if skill_def.get("effect_type") == "emit_burning_hands":
+			_cast_burning_hands(caster, skill_def, skill_id, available_targets, extra_modifiers)
+			return
+
+	# 特殊 Effect 直接走专用方法
+	if skill_def.get("effect_type") == "emit_scatter_shuriken":
+		_cast_scatter_shuriken(caster, skill_def, skill_id, available_targets, extra_modifiers)
+		return
 
 		var beam_width: float = 90.0   # laser_beam.gd 中的 BEAM_WIDTH
 		var beam_length: float = 900.0 # laser_beam.gd 中的 BEAM_LENGTH
@@ -339,7 +352,131 @@ func _cast_flying_sword_storm(caster: Node2D, skill_def, skill_id: String, avail
 		flying_sword_pool.spawn(
 			caster, target, skill_def.base_damage,
 			_int_to_damage_type_string(skill_def.damage_type),
-			skill_id, skill_signal_bus
+			skill_id, skill_signal_bus, valid
+		)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
+## 火焰之手：扇形 AOE + 持续灼烧
+func _cast_burning_hands(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	# 筛选有效目标
+	var valid: Array = []
+	for u in available_targets:
+		if u and is_instance_valid(u) and u.get("is_alive") == true:
+			var dist := caster.position.distance_to(u.position)
+			if dist <= skill_def.cast_range and dist > 1.0:
+				valid.append(u)
+
+	if valid.is_empty():
+		return
+
+	# 计算扇形中心方向（朝向最近目标的质心）
+	var centroid := Vector2.ZERO
+	for u in valid:
+		centroid += u.position
+	centroid /= valid.size()
+	var direction := caster.position.direction_to(centroid)
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, centroid)
+
+	burning_hands_pool.spawn(
+		caster, direction, skill_def.base_damage,
+		_int_to_damage_type_string(skill_def.damage_type),
+		skill_id, skill_signal_bus, valid
+	)
+
+	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
+
+
+## 霰弹手里剑：90度扇形选域 + 9发连射 + 间隔递减
+func _cast_scatter_shuriken(caster: Node2D, skill_def, skill_id: String, available_targets: Array, _extra_modifiers: Array = []) -> void:
+	const SHOT_COUNT: int = 9
+	const FAN_ANGLE_DEG: float = 90.0
+	# 间隔递减：0.35 → 0.1
+	const INTERVALS: Array[float] = [0.35, 0.32, 0.29, 0.26, 0.23, 0.20, 0.17, 0.14, 0.11]
+
+	# 筛选有效目标
+	var valid: Array = []
+	for u in available_targets:
+		if u and is_instance_valid(u) and u.get("is_alive") == true:
+			var dist := caster.position.distance_to(u.position)
+			if dist <= skill_def.cast_range and dist > 1.0:
+				valid.append(u)
+
+	if valid.is_empty():
+		return
+
+	# 计算扇形中心方向（朝向最近目标或质心）
+	var center_dir: Vector2
+	var nearest := TargetSelector.find_nearest_in_range(caster.position, valid, skill_def.cast_range)
+	if nearest:
+		center_dir = caster.position.direction_to(nearest.position)
+	else:
+		var centroid := Vector2.ZERO
+		for u in valid:
+			centroid += u.position
+		centroid /= valid.size()
+		center_dir = caster.position.direction_to(centroid)
+
+	# 筛选90度扇形内目标
+	var half_fan := deg_to_rad(FAN_ANGLE_DEG * 0.5)
+	var fan_targets: Array = []
+	for u in valid:
+		var to_u := caster.position.direction_to(u.position)
+		var angle_diff := absf(center_dir.angle_to(to_u))
+		if angle_diff <= half_fan:
+			fan_targets.append(u)
+
+	# 回退：扇形内无目标则用全部有效目标
+	if fan_targets.is_empty():
+		fan_targets = valid
+
+	# 按距离排序
+	fan_targets.sort_custom(func(a, b): return caster.position.distance_to(a.position) < caster.position.distance_to(b.position))
+
+	skill_signal_bus.skill_cast_requested.emit(caster, skill_id, null)
+	skill_signal_bus.skill_cast_started.emit(caster, skill_id, fan_targets[0].global_position)
+
+	# 选择9个目标（优先不同目标）
+	var assigned: Array = []
+	var last_target: Node2D = null
+	for i in range(SHOT_COUNT):
+		var pick: Node2D = null
+		# 优先选择不同于上次的目标
+		if last_target != null and fan_targets.size() > 1:
+			var different: Array = []
+			for t in fan_targets:
+				if t != last_target:
+					different.append(t)
+			if not different.is_empty():
+				pick = different[randi() % different.size()]
+		if pick == null:
+			pick = fan_targets[randi() % fan_targets.size()]
+		assigned.append(pick)
+		last_target = pick
+
+	# 计算累积延迟并发射
+	var accumulated_delay: float = 0.0
+	for i in range(SHOT_COUNT):
+		var target: Node2D = assigned[i]
+		var delay: float = accumulated_delay
+		accumulated_delay += INTERVALS[i]
+
+		# 伤害微调 +/-10%
+		var damage: float = skill_def.base_damage * randf_range(0.9, 1.1)
+		damage = maxf(1.0, damage)
+
+		# 方向
+		var dir: Vector2 = caster.position.direction_to(target.global_position)
+
+		get_tree().create_timer(delay).timeout.connect(func():
+			shuriken_pool.spawn(
+				caster, target, damage,
+				_int_to_damage_type_string(skill_def.damage_type),
+				skill_id, skill_signal_bus, dir, valid
+			)
 		)
 
 	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)

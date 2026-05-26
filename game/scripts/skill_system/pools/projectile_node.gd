@@ -2,6 +2,8 @@
 ## 运动和命中逻辑在此，视觉效果委托给 ProjectileComponent
 extends Node2D
 
+const ProjectileHitDetectorScript = preload("res://scripts/skill_system/core/projectile_hit_detector.gd")
+
 var _chain: ExecutionChain
 var _visual_def: SkillVisualDef
 var _signal_bus: Node
@@ -239,14 +241,28 @@ func _get_crest_pos() -> Vector2:
 
 
 func _check_hit() -> void:
-	if _chain.target == null or not is_instance_valid(_chain.target):
-		_chain.destroy()
-		return
+	# 获取所有可用目标
+	var targets: Array = _chain.available_targets
+	if targets.is_empty():
+		# 如果没有可用目标列表，回退到只检测指定目标
+		if _chain.target == null or not is_instance_valid(_chain.target):
+			_chain.destroy()
+			return
+		targets = [_chain.target]
+
 	var hit_radius := _chain.hit_precision_radius + _chain.current_radius if _chain.tracking_enabled else _chain.current_radius + 10.0
 	var check_pos := _get_crest_pos()
-	var dist := check_pos.distance_to(_chain.target.global_position)
-	if dist < hit_radius:
-		_handle_hit(_chain.target)
+
+	# 使用统一的碰撞检测，检测所有敌人
+	var hit_target: Node2D = ProjectileHitDetectorScript.check_collision(
+		check_pos, targets, hit_radius, _chain.hit_targets
+	)
+
+	if hit_target:
+		_handle_hit(hit_target)
+	elif _chain.target == null or not is_instance_valid(_chain.target):
+		# 如果指定目标无效，销毁投射物
+		_chain.destroy()
 
 
 func _handle_hit(target: Node2D) -> void:
