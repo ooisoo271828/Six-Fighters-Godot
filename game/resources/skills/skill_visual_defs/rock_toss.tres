@@ -1,0 +1,63 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="4_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="5_iv"]
+
+[sub_resource type="Resource" id="body_rock"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://rock_irregular"
+core_color = Color(0.47, 0.33, 0.18, 1)
+core_width = 45.0
+core_height = 45.0
+core_radius = 22.0
+inner_enabled = false
+nose_enabled = false
+glow_radius = 0.0
+glow_alpha = 0.0
+glow_enabled = false
+jitter_enabled = false
+core_rotation_speed = 1.6
+
+[sub_resource type="Resource" id="ctc_rock"]
+script = ExtResource("4_ctc")
+enabled = true
+max_samples = 3
+outer_width = 1.5
+outer_color = Color(0.4, 0.28, 0.15, 1)
+outer_alpha = 0.15
+mid_width = 1.0
+mid_color = Color(0.5, 0.35, 0.2, 1)
+mid_alpha = 0.1
+inner_width = 0.5
+inner_alpha = 0.0
+
+[sub_resource type="Resource" id="trail_rock"]
+script = ExtResource("3_td")
+comet = SubResource("ctc_rock")
+
+[sub_resource type="Resource" id="impact_rock"]
+script = ExtResource("5_iv")
+spark_count_min = 8
+spark_count_max = 15
+spark_speed_min = 60.0
+spark_speed_max = 180.0
+spark_life_min = 0.2
+spark_life_max = 0.5
+spark_color = Color(0.5, 0.35, 0.2, 1)
+spark_particle_count = 12
+spark_lifetime = 0.4
+shake_strength = 3.0
+shake_duration = 0.1
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "rock_toss"
+projectile_kind = 0
+speed = 200.0
+projectile_scale = 1.0
+body = SubResource("body_rock")
+trail = SubResource("trail_rock")
+impact = SubResource("impact_rock")

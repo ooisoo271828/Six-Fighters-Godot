@@ -93,8 +93,10 @@ func configure(visual_def: SkillVisualDef, chain: ExecutionChain, tex_manager: V
 	_particles.visible = true
 
 
-func update(_dt: float, _parent: Node2D, _chain: ExecutionChain) -> void:
-	pass  # 粒子自驱动
+func update(_dt: float, _parent: Node2D, chain: ExecutionChain) -> void:
+	# 动态跟随弹体尾部：每帧将粒子发射点定位到弹体最后端
+	if _config and _config.position_offset != Vector2.ZERO and chain.direction.length() > 0:
+		_particles.position = -chain.direction * absf(_config.position_offset.x)
 
 
 func on_destroy(_parent: Node2D) -> void:

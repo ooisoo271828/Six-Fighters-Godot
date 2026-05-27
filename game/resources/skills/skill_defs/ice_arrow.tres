@@ -6,12 +6,16 @@
 script = ExtResource("1")
 skill_id = "ice_arrow"
 display_name = "冰箭术"
+category = 1
 damage_type = 2
 base_damage = 28.0
 cooldown = 3.5
 telegraph_ms = 300
 tracking_enabled = false
 turn_rate = 4.0
+collision_shape = 1
+collision_width = 8.0
+collision_height = 24.0
 hit_precision_radius = 14.0
 hit_aoe_radius = 14.0
 description = "发射3枚冰箭，追踪不同目标，命中后造成冰霜减速"

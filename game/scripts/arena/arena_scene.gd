@@ -11,7 +11,7 @@ const FOLLOW_LERP_NORMAL := 3.0
 const FOLLOW_LERP_URGENT := 8.0
 
 # ── Boss 战参数 ──
-const BOSS_WAVE_COUNTS: Array[int] = [8, 9, 10, 15, 23]
+const BOSS_WAVE_COUNTS: Array[int] = [6, 8, 10, 12, 18]  # 适配缩小后的Boss区
 const BOSS_WAVE_TIMEOUT := 30.0
 const BOSS_WAVE_DEATH_RATIO := 0.9
 const BOSS_SPAWN_INTERVAL := 1.5
@@ -227,7 +227,7 @@ func _start_combat() -> void:
 	combat_mediator.register_heroes(heroes)
 	combat_mediator.register_enemies(enemies)
 	combat_mediator.set_skill_system(skill_system)
-	combat_mediator.set_enemy_attack_callbacks(_spawn_enemy_shuriken, _spawn_enemy_slash)
+	# 敌人攻击现在通过 cast_skill() 走 SkillSystem，不再需要回调
 	combat_mediator.damage_dealt.connect(_on_damage_dealt)
 	EventBus.emit_combat_started()
 
@@ -303,7 +303,7 @@ func _update_corridor(_dt: float) -> void:
 
 func _spawn_corridor_wave(cfg: Dictionary) -> void:
 	var zone_center := Vector2(camera_anchor.position.x, camera_anchor.position.y - 200.0)
-	var zone_size := Vector2(500.0, 160.0)
+	var zone_size := Vector2(300.0, 140.0)  # 收窄让怪出在走廊中央
 	var rect_zone := SpawnZone.rect(zone_center, zone_size)
 	var walkable_zone := SpawnZone.validated(rect_zone, func(p): return _arena_map.is_walkable(p.x, p.y))
 
@@ -328,8 +328,28 @@ func _on_wave_spawn(pos: Vector2, _config: WaveConfig, is_elite: bool) -> void:
 			arena_config.minion_base_hp * _config.hp_multiplier,
 			arena_config.minion_base_attack * _config.attack_multiplier, 0.9)
 
-	var skill_type := "shuriken" if rng_func.call() < 0.5 else "slash"
-	enemy.set_meta("skill_type", skill_type)
+	# 普通小怪：丢石头/丢骨头/丢飞镖 三选一
+	# 精英怪：从已有技能池中随机选一个
+	var skill_id: String
+	var attack_range: float = 400.0
+	if is_elite:
+		var elite_skills := [
+			"fireball_basic", "ice_arrow", "water_wave",
+			"small_laser_beam", "scatter_shuriken"
+		]
+		var idx: int = randi() % elite_skills.size()
+		skill_id = elite_skills[idx]
+	else:
+		var r: float = rng_func.call()
+		if r < 0.33:
+			skill_id = "rock_toss"
+		elif r < 0.66:
+			skill_id = "bone_throw"
+		else:
+			skill_id = "shuriken_throw"
+
+	enemy.set_meta("skill_id", skill_id)
+	enemy.set_meta("attack_range", attack_range)
 
 	# åºç¨ WaveConfig æ©å±æ ç­¾
 	for key in _config.tags:
@@ -372,7 +392,7 @@ func _begin_boss_wave() -> void:
 
 	var boss_center := _arena_map.get_boss_center_world()
 	var zone := SpawnZone.validated(
-		SpawnZone.circle(boss_center, 450.0),
+		SpawnZone.circle(boss_center, 360.0),  # 适配缩小后的Boss区
 		func(p): return _arena_map.is_walkable(p.x, p.y)
 	)
 
@@ -439,19 +459,7 @@ func _add_unit_shadow(unit: CharacterBody2D) -> void:
 	shadow.color = Color(0, 0, 0, 0.3)
 	unit.add_child(shadow)
 
-func _spawn_enemy_shuriken(enemy: Node2D, target: Node2D, damage: float) -> void:
-	var shuriken: Node2D = Node2D.new()
-	shuriken.set_script(preload("res://scripts/arena/enemy_shuriken.gd"))
-	shuriken.global_position = enemy.global_position
-	add_child(shuriken)
-	shuriken.setup(target, damage, func(dmg): target.take_damage(dmg))
 
-func _spawn_enemy_slash(enemy: Node2D, target: Node2D) -> void:
-	var slash: Node2D = Node2D.new()
-	slash.set_script(preload("res://scripts/arena/enemy_slash.gd"))
-	slash.global_position = enemy.global_position
-	add_child(slash)
-	slash.setup(target)
 
 # ══════════════════════════════════════════
 #  清理 / 结算

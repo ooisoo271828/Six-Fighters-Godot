@@ -26,11 +26,6 @@ var enemies: Array[Enemy] = []
 var skill_system: Node
 var skill_signal_bus: Node
 
-# ── 敌人攻击视觉回调（由场景注册） ──
-var _enemy_shuriken_cb: Callable
-var _enemy_slash_cb: Callable
-
-
 func setup(p_combat_params: CombatParams, p_rng_func: Callable) -> void:
 	combat_params = p_combat_params
 	rng_func = p_rng_func
@@ -49,11 +44,6 @@ func set_skill_system(p_skill_system: Node) -> void:
 	skill_signal_bus = skill_system.skill_signal_bus if skill_system else null
 	if skill_signal_bus:
 		skill_signal_bus.skill_hit.connect(_on_projectile_hit)
-
-
-func set_enemy_attack_callbacks(shuriken_cb: Callable, slash_cb: Callable) -> void:
-	_enemy_shuriken_cb = shuriken_cb
-	_enemy_slash_cb = slash_cb
 
 
 # ══════════════════════════════════════════
@@ -267,28 +257,25 @@ func _update_enemy_combat(dt: float) -> void:
 		var target: Hero = TargetSelector.find_nearest_alive_hero(enemy.position, heroes)
 		if not target:
 			continue
-		var skill_type: String = enemy.get_meta("skill_type", "slash")
-		var is_ranged: bool = skill_type == "shuriken"
-		var attack_range: float = ENEMY_RANGED_RANGE if is_ranged else ENEMY_MELEE_RANGE
+		var skill_id: String = enemy.get_meta("skill_id", "")
+		var attack_range: float = enemy.get_meta("attack_range", ENEMY_MELEE_RANGE)
 		var dist: float = enemy.position.distance_to(target.position)
 		if dist > attack_range:
 			var dir := (target.position - enemy.position).normalized()
 			enemy.position += dir * ENEMY_SPEED * dt
 			continue
 		if enemy.tick_ai(dt, target):
-			var result := CombatResolver.resolve_attack(
-				enemy.stats, target.stats,
-				enemy.base_attack, CombatResolver.DamageType.PHYSICAL,
-				0.0, 0.0, combat_params, rng_func,
-				target.status_effects.get_shock_stacks_for_resolution()
-			)
-			if is_ranged:
-				if _enemy_shuriken_cb.is_valid():
-					_enemy_shuriken_cb.call(enemy, target, result.instant_damage)
-				damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, CombatResolver.DamageType.PHYSICAL, true)
+			if skill_id != "" and skill_system and skill_system.has_method("cast_skill"):
+				var alive_heroes := get_alive_heroes()
+				skill_system.cast_skill(enemy, skill_id, alive_heroes)
 			else:
-				if _enemy_slash_cb.is_valid():
-					_enemy_slash_cb.call(enemy, target)
+				# 旧版回退：无 skill_id 的敌人走即时伤害
+				var result := CombatResolver.resolve_attack(
+					enemy.stats, target.stats,
+					enemy.base_attack, CombatResolver.DamageType.PHYSICAL,
+					0.0, 0.0, combat_params, rng_func,
+					target.status_effects.get_shock_stacks_for_resolution()
+				)
 				damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, CombatResolver.DamageType.PHYSICAL, true)
 				target.take_damage(result.instant_damage)
 

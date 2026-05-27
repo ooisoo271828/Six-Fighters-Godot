@@ -15,4 +15,7 @@ effect_type = "emit_small_laser_beam"
 target_mode = 6
 delivery_type = "instant"
 max_targets = 0
+collision_shape = 1
+collision_width = 40.0
+collision_height = 560.0
 description = "释放5道冰蓝激光柱，在120°扇区内随机索敌"

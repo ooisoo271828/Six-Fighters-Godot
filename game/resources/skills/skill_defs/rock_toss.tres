@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="SkillDef" format=3]
+
+[ext_resource type="Script" uid="uid://boty6cd3ndrfv" path="res://scripts/skill_system/registry/skill_def.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+skill_id = "rock_toss"
+display_name = "投石"
+damage_type = 0
+base_damage = 15.0
+cooldown = 3.0
+cast_range = 400.0
+target_mode = 0
+collision_shape = 0
+collision_radius = 14.0
+hit_precision_radius = 12.0
+description = "投出一块石头，对目标造成物理伤害"

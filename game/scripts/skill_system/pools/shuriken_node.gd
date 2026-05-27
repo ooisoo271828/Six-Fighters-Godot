@@ -182,7 +182,7 @@ func _on_hit() -> void:
 	_hit_done = true
 
 	# 发送伤害信号
-	if is_instance_valid(_target) and _signal_bus and _signal_bus.has_signal("skill_hit"):
+	if is_instance_valid(_caster) and is_instance_valid(_target) and _signal_bus and _signal_bus.has_signal("skill_hit"):
 		_signal_bus.skill_hit.emit(_caster, [_target], {
 			"caster": _caster, "target": _target, "damage": _damage,
 			"damage_type": _damage_type, "skill_id": _skill_id,

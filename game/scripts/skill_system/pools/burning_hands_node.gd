@@ -42,7 +42,7 @@ var _wave_distortion: float = 0.0
 # ── 子节点 ──
 var _fan_fill: Polygon2D
 var _wave_layers: Array[Polygon2D] = []
-var _wave_base_alphas: Array[float] = [0.375, 0.525, 0.675]
+var _wave_base_alphas: Array[float] = [0.12, 0.17, 0.22]
 var _wave_base_scales: Array[float] = [1.0, 0.82, 0.6]
 var _fire_sprites: Array[Sprite2D] = []
 var _fire_base_alphas: Array[float] = []
@@ -258,7 +258,7 @@ func _update_burst(_dt: float) -> void:
 	_swirl_r.visible = false
 
 	# 底层填充淡入
-	_fan_fill.color.a = 0.375 * eased
+	_fan_fill.color.a = 0.12 * eased
 
 	# 三层波浪从中心向外扩展（扩展到各自的 resting scale）
 	for i in range(WAVE_LAYERS):
@@ -269,7 +269,7 @@ func _update_burst(_dt: float) -> void:
 		_wave_layers[i].polygon = _compute_fan_polygon(radius)
 		# alpha: 快速亮起，然后稳定
 		var alpha_t := clampf(burst_t * 3.0, 0.0, 1.0)
-		_wave_layers[i].color.a = _wave_base_alphas[i] * alpha_t
+		_wave_layers[i].color.a = _wave_base_alphas[i] * alpha_t * 0.5
 
 
 func _update_burn(dt: float) -> void:
@@ -279,10 +279,10 @@ func _update_burn(dt: float) -> void:
 		for sp in _fire_sprites:
 			sp.visible = true
 		for i in range(FIRE_SPRITE_COUNT):
-			_fire_base_alphas[i] = 0.525 + randf() * 0.225
+			_fire_base_alphas[i] = 0.17 + randf() * 0.08
 
 	# 底层持续灼烧
-	_fan_fill.color.a = 0.375 + sin(_elapsed * 3.0) * 0.075
+	_fan_fill.color.a = 0.12 + sin(_elapsed * 3.0) * 0.025
 
 	# 波浪层呼吸 + 边缘波动
 	for i in range(WAVE_LAYERS):
@@ -323,7 +323,7 @@ func _apply_damage() -> void:
 		if angle_diff > FAN_HALF_ANGLE:
 			continue
 		# 命中
-		if _signal_bus and _signal_bus.has_signal("skill_hit"):
+		if _signal_bus and _signal_bus.has_signal("skill_hit") and is_instance_valid(_caster):
 			_signal_bus.skill_hit.emit(_caster, [u], {
 				"caster": _caster, "target": u, "damage": _damage,
 				"damage_type": _damage_type, "skill_id": _skill_id,
@@ -335,10 +335,10 @@ func _apply_damage() -> void:
 func _damage_pulse() -> void:
 	# 波浪层亮度脉冲
 	for i in range(WAVE_LAYERS):
-		_wave_layers[i].color.a = minf(_wave_base_alphas[i] + 0.1125, 1.0)
+		_wave_layers[i].color.a = minf(_wave_base_alphas[i] + 0.03, 0.5)
 	# 火苗亮度脉冲
 	for i in range(FIRE_SPRITE_COUNT):
-		_fire_base_alphas[i] = minf(_fire_base_alphas[i] + 0.1125, 0.9)
+		_fire_base_alphas[i] = minf(_fire_base_alphas[i] + 0.03, 0.4)
 	# 延时恢复
 	var tw := create_tween()
 	tw.tween_callback(_restore_pulse).set_delay(0.15)
@@ -350,7 +350,7 @@ func _restore_pulse() -> void:
 	for i in range(WAVE_LAYERS):
 		_wave_layers[i].color.a = _wave_base_alphas[i]
 	for i in range(FIRE_SPRITE_COUNT):
-		_fire_base_alphas[i] = 0.525 + randf() * 0.225
+		_fire_base_alphas[i] = 0.17 + randf() * 0.08
 
 
 # ═══════════════════ 收尾 ═══════════════════

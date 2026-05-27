@@ -16,4 +16,7 @@ effect_type = "emit_evil_eye_laser"
 target_mode = 6
 delivery_type = "instant"
 max_targets = 0
+collision_shape = 1
+collision_width = 120.0
+collision_height = 50.0
 description = "召唤魔眼射出激光，地面端点沿轨迹移动，对椭圆范围内的敌人造成持续伤害"

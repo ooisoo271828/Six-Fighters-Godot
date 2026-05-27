@@ -117,15 +117,19 @@ func update(dt: float, _parent: Node2D, chain: ExecutionChain) -> void:
 			_hotspot_sprite.position = _body.hotspot_offset + offset
 
 	# 岩石自转（陨石类技能缓慢旋转）
+	# 当 rotation_speed != 0 时，核心自由旋转，不对齐运动方向
+	var _has_rotation := false
 	if _core_sprite and _body.core_rotation_speed != 0.0:
 		_core_sprite.rotation += _body.core_rotation_speed * dt
+		_has_rotation = true
 
 	# 弹尖朝向
 	if _nose_sprite and _nose_sprite.visible and chain.direction.length() > 0:
 		_nose_sprite.rotation = chain.direction.angle()
 
 	# 核心朝向（扇形纹理前宽后窄，需要旋转到运动方向）
-	if _core_sprite and chain.direction.length() > 0:
+	# 仅当核心不自转时才对齐方向，避免覆盖 rotation_speed
+	if _core_sprite and not _has_rotation and chain.direction.length() > 0:
 		_core_sprite.rotation = chain.direction.angle()
 
 

@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="4_iv"]
+
+[sub_resource type="Resource" id="body_bone"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://bone"
+core_color = Color(0.91, 0.84, 0.69, 1)
+core_width = 51.0
+core_height = 83.0
+core_radius = 26.0
+inner_enabled = false
+nose_enabled = false
+glow_radius = 0.0
+glow_alpha = 0.0
+jitter_enabled = false
+glow_enabled = false
+core_rotation_speed = 12.0
+
+[sub_resource type="Resource" id="trail_bone"]
+script = ExtResource("3_td")
+
+[sub_resource type="Resource" id="impact_bone"]
+script = ExtResource("4_iv")
+spark_count_min = 10
+spark_count_max = 20
+spark_speed_min = 70.0
+spark_speed_max = 200.0
+spark_life_min = 0.2
+spark_life_max = 0.5
+spark_color = Color(0.85, 0.75, 0.55, 1)
+spark_particle_count = 15
+spark_lifetime = 0.4
+shake_strength = 2.0
+shake_duration = 0.1
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "bone_throw"
+projectile_kind = 0
+speed = 260.0
+projectile_scale = 1.0
+body = SubResource("body_bone")
+trail = SubResource("trail_bone")
+impact = SubResource("impact_bone")

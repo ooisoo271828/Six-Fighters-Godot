@@ -22,9 +22,9 @@ static func create_default() -> ArenaConfig:
 	config.wave_enemy_counts = [4, 6, 8]
 	config.spawn_interval_sec = 1.5
 	config.wave_break_sec = 3.0
-	config.minion_base_hp = 80.0
+	config.minion_base_hp = 56.0
 	config.minion_base_attack = 15.0
-	config.boss_base_hp = 600.0
+	config.boss_base_hp = 420.0
 	config.boss_phase_count = 3
 	config.boss_hp_phase_fraction = 0.3
 	config.boss_time_phase_sec = 20.0

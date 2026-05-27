@@ -34,6 +34,8 @@ const RAY_STARBURST := &"ray_starburst"
 const NOISE_PERLIN := &"noise_perlin"
 const RING_SPIKY := &"ring_spiky"
 const ROCK_IRREGULAR := &"rock_irregular"
+const BONE := &"bone"
+const SHURIKEN := &"shuriken"
 const MUSHROOM_CLOUD := &"mushroom_cloud"
 const FLAME_AURA := &"flame_aura"
 const WAVE_FAN := &"wave_fan"
@@ -45,6 +47,8 @@ const NOSE_SIZE := 32
 const RAY_SIZE := 64
 const RING_SPIKY_SIZE := 128
 const ROCK_IRREGULAR_SIZE := 64
+const BONE_SIZE := 64
+const SHURIKEN_SIZE := 32
 const MUSHROOM_FRAME_SIZE := 96
 const WAVE_FAN_SIZE := 64
 
@@ -137,6 +141,10 @@ func _load_or_generate(key: StringName) -> Texture2D:
 			return _generate_ring_spiky(RING_SPIKY_SIZE)
 		ROCK_IRREGULAR:
 			return _generate_rock_irregular(ROCK_IRREGULAR_SIZE)
+		BONE:
+			return _generate_bone(BONE_SIZE)
+		SHURIKEN:
+			return _generate_shuriken(SHURIKEN_SIZE)
 		FLAME_AURA:
 			return _generate_flame_aura(64)
 		WAVE_FAN:
@@ -353,6 +361,94 @@ func _generate_rock_irregular(size: int) -> Texture2D:
 				var edge_factor: float = clampf((dist_center - base_radius * 0.3) / (base_radius * 0.7), 0.0, 1.0)
 				col = col.darkened(edge_factor * 0.12)
 				img.set_pixel(x, y, col)
+
+	return ImageTexture.create_from_image(img)
+
+
+# ── 骨头纹理（两端粗中间细的骨节状，浅米白色） ──
+
+func _generate_bone(size: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx: float = float(size) * 0.5 - 0.5
+	var cy: float = float(size) * 0.5 - 0.5
+	var half_len: float = float(size) * 0.42
+	var half_w: float = float(size) * 0.10
+
+	var bone_color: Color = Color(0.91, 0.84, 0.69, 1)
+	var dark_color: Color = Color(0.70, 0.60, 0.45, 1)
+	var light_color: Color = Color(0.95, 0.90, 0.78, 1)
+
+	for x in range(size):
+		var px: float = float(x)
+		for y in range(size):
+			var py: float = float(y)
+			var dx: float = px - cx
+			var dy: float = py - cy
+
+			# 沿 X 轴的动物腿骨形状：中间细、两头粗
+			var t: float = clampf(abs(dx) / half_len, 0.0, 1.0)
+			# 从中心到两端逐渐变粗，端部膨大最明显
+			var width_factor: float = 0.2 + 0.8 * pow(t, 0.3)
+			var local_half_w: float = half_w * width_factor
+
+			var norm_dy: float = abs(dy) / maxf(local_half_w, 0.01)
+			if norm_dy <= 1.0 and abs(dx) <= half_len:
+				var alpha: float = 1.0 - pow(norm_dy, 2.0)
+				# 两端略微圆润过渡
+				if abs(dx) > half_len * 0.85:
+					var end_t: float = (abs(dx) - half_len * 0.85) / (half_len * 0.15)
+					alpha *= 1.0 - end_t
+				alpha = clampf(alpha, 0.0, 1.0)
+
+				# 着色：中间亮两端暗，带微纹理
+				var shade: float = 0.5 + 0.5 * sin(px * 0.3 + py * 0.2)
+				var col: Color = bone_color.lerp(dark_color, t * 0.3)
+				col = col.lerp(light_color, shade * 0.15)
+				# 关节处略深
+				if t > 0.7:
+					col = col.darkened((t - 0.7) * 0.3)
+				col.a = alpha
+				img.set_pixel(x, y, col)
+
+	return ImageTexture.create_from_image(img)
+
+
+# ── 飞镖纹理（八芒星手里剑） ──
+
+func _generate_shuriken(size: int) -> Texture2D:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color.TRANSPARENT)
+	var cx: float = float(size) * 0.5 - 0.5
+	var cy: float = float(size) * 0.5 - 0.5
+	var r_outer: float = float(size) * 0.42
+	var r_inner: float = float(size) * 0.14
+
+	# 构建八芒星顶点
+	var pts: PackedVector2Array = []
+	for i in range(8):
+		var angle := float(i) * PI / 4.0 - PI / 2.0
+		var r := r_outer if i % 2 == 0 else r_inner
+		pts.append(Vector2(cx + cos(angle) * r, cy + sin(angle) * r))
+
+	# 填充多边形
+	for x in range(size):
+		for y in range(size):
+			if _point_in_polygon(Vector2(x, y), pts):
+				# 金属渐变：外围亮银，中心略暗
+				var dist := Vector2(x, y).distance_to(Vector2(cx, cy))
+				var t := dist / r_outer
+				var brightness := 0.75 + 0.25 * (1.0 - t)
+				img.set_pixel(x, y, Color(brightness, brightness, brightness, 1))
+
+	# 中心小圆孔
+	var center_r2: float = (float(size) * 0.06) * (float(size) * 0.06)
+	for x in range(size):
+		for y in range(size):
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			if dx * dx + dy * dy < center_r2:
+				img.set_pixel(x, y, Color(0.25, 0.25, 0.3, 1))
 
 	return ImageTexture.create_from_image(img)
 

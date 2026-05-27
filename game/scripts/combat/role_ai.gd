@@ -50,8 +50,9 @@ class AutonomyPick:
 	static func _label_to_key(lbl: String) -> String:
 		match lbl:
 			"ultimate": return "rage"
-			"smallA", "smallA_survival": return "small_a"
-			"smallB", "smallB_survival": return "small_b"
+			"smallA", "smallA_survival", "1": return "small_a"
+			"smallB", "smallB_survival", "2": return "small_b"
+			"0": return "basic"
 		return "basic"
 
 const SURVIVAL_HP_FRAC := 0.35

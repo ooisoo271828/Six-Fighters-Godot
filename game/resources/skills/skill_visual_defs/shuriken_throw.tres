@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="4_iv"]
+
+[sub_resource type="Resource" id="body_shuriken"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://shuriken"
+core_color = Color(0.85, 0.85, 0.95, 1)
+core_width = 16.0
+core_height = 16.0
+core_radius = 8.0
+inner_enabled = false
+nose_enabled = false
+glow_radius = 0.0
+glow_alpha = 0.0
+glow_enabled = false
+jitter_enabled = false
+core_rotation_speed = 12.0
+
+[sub_resource type="Resource" id="trail_shuriken"]
+script = ExtResource("3_td")
+
+[sub_resource type="Resource" id="impact_shuriken"]
+script = ExtResource("4_iv")
+spark_count_min = 6
+spark_count_max = 12
+spark_speed_min = 50.0
+spark_speed_max = 150.0
+spark_life_min = 0.15
+spark_life_max = 0.4
+spark_color = Color(0.7, 0.7, 0.8, 1)
+spark_particle_count = 8
+spark_lifetime = 0.3
+shake_strength = 1.0
+shake_duration = 0.05
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "shuriken_throw"
+projectile_kind = 0
+speed = 280.0
+projectile_scale = 1.0
+body = SubResource("body_shuriken")
+trail = SubResource("trail_shuriken")
+impact = SubResource("impact_shuriken")

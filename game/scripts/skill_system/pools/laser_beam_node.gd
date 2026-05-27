@@ -330,7 +330,7 @@ func _apply_damage() -> void:
 			continue
 		_hit_targets.append(body)
 		_all_hit_targets.append(body)
-		if _signal_bus and _signal_bus.has_signal("skill_hit"):
+		if _signal_bus and _signal_bus.has_signal("skill_hit") and is_instance_valid(_caster):
 			var info: Dictionary = {"caster": _caster, "target": body, "damage": _damage, "damage_type": _damage_type, "skill_id": _skill_id, "hit_pos": body.global_position}
 			_signal_bus.skill_hit.emit(_caster, [body], info)
 		_spawn_hit_effect(body.global_position)

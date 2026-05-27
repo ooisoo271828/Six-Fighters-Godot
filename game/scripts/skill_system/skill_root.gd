@@ -276,8 +276,10 @@ func _cast_small_laser_beam(caster: Node2D, skill_def, skill_id: String, availab
 	for i in range(5):
 		var target = pick[i]
 		var dir: Vector2 = (target.global_position - caster.global_position).normalized()
-		get_tree().create_timer(i * 0.3).timeout.connect(func():
-			small_laser_beam_pool.spawn(caster, dir, skill_def.base_damage, _int_to_damage_type_string(skill_def.damage_type), skill_id, skill_signal_bus)
+		get_tree().create_timer(i * 0.15).timeout.connect(func():
+			if not is_instance_valid(caster):
+				return
+			small_laser_beam_pool.spawn(caster, dir, skill_def.base_damage, _int_to_damage_type_string(skill_def.damage_type), skill_id, skill_signal_bus, cone_targets)
 		)
 
 	skill_signal_bus.skill_cast_finished.emit(caster, skill_id)
@@ -472,6 +474,8 @@ func _cast_scatter_shuriken(caster: Node2D, skill_def, skill_id: String, availab
 		var dir: Vector2 = caster.position.direction_to(target.global_position)
 
 		get_tree().create_timer(delay).timeout.connect(func():
+			if not is_instance_valid(caster):
+				return
 			shuriken_pool.spawn(
 				caster, target, damage,
 				_int_to_damage_type_string(skill_def.damage_type),

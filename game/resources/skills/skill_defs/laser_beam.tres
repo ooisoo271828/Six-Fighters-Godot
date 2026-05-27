@@ -15,4 +15,7 @@ effect_type = "emit_laser_beam"
 target_mode = 6
 delivery_type = "instant"
 max_targets = 0
+collision_shape = 1
+collision_width = 90.0
+collision_height = 900.0
 description = "从施法者身前射出一根粗大的激光柱，持续4秒，对范围内所有敌人造成持续火焰伤害"

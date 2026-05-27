@@ -4,7 +4,13 @@ extends Node2D
 
 const ProjectileHitDetectorScript = preload("res://scripts/skill_system/core/projectile_hit_detector.gd")
 
+## 调试：显示碰撞检测框（运行时通过 execute 切换）
+static var debug_show_collision: bool = false
+
 var _chain: ExecutionChain
+var _hit_area: Area2D
+var _hit_shape: CollisionShape2D
+var _collision_shape_type: int = 0  # 0=CIRCLE, 1=RECT, 2=CAPSULE, 3=POLYGON
 var _visual_def: SkillVisualDef
 var _signal_bus: Node
 var _initialized: bool = false
@@ -40,7 +46,6 @@ var _crest_offset: float = 0.0
 
 func _ready() -> void:
 	VFXTextureManager._instance = null
-	_tex_manager = VFXTextureManager.get_instance()
 	_setup_components()
 
 
@@ -62,6 +67,7 @@ func initialize(chain: ExecutionChain, visual_def: SkillVisualDef, signal_bus: N
 	_visual_def = visual_def
 	_signal_bus = signal_bus
 	_initialized = true
+	_tex_manager = VFXTextureManager.get_instance()
 
 	global_position = chain.position
 
@@ -97,10 +103,14 @@ func initialize(chain: ExecutionChain, visual_def: SkillVisualDef, signal_bus: N
 	# 设置速度（从 visual_def）
 	_chain.speed = _visual_def.speed
 
-	# 读取浪头偏移（用于命中检测）
+	# 读取浪头偏移（仅对 crest 模式的技能生效）
+	_crest_offset = 0.0
 	var trail_def := _visual_def.get_trail()
-	if trail_def and trail_def.flame and trail_def.flame.is_enabled():
-		_crest_offset = trail_def.flame.forward_offset
+	if trail_def and trail_def.flame and trail_def.flame.is_enabled() and trail_def.flame.crest_mode:
+		_crest_offset = trail_def.flame.forward_offset + 8.0
+
+	# 从 SkillDef 加载碰撞配置
+	_setup_collision()
 
 	set_process(true)
 
@@ -232,6 +242,61 @@ func _update_expansion() -> void:
 	scale = Vector2.ONE * _chain.scale
 
 
+## ── 碰撞体设置 ──
+
+func _setup_collision() -> void:
+	_hit_area = Area2D.new()
+	_hit_area.collision_mask = 5  # 检测物理层1(敌人) + 物理层3(标靶)
+	add_child(_hit_area)
+
+	_hit_shape = CollisionShape2D.new()
+	var def_path := "res://resources/skills/skill_defs/" + _chain.skill_id + ".tres"
+	if ResourceLoader.exists(def_path):
+		var def := load(def_path)
+		_collision_shape_type = def.get("collision_shape") if "collision_shape" in def else 0
+		var radius: float = def.get("collision_radius") if "collision_radius" in def else 14.0
+		var w: float = def.get("collision_width") if "collision_width" in def else 16.0
+		var h: float = def.get("collision_height") if "collision_height" in def else 16.0
+		var poly = def.get("collision_polygon") if "collision_polygon" in def else []
+
+		match _collision_shape_type:
+			0:  # CIRCLE
+				var s := CircleShape2D.new()
+				s.radius = radius
+				_hit_shape.shape = s
+			1:  # RECT
+				var s := RectangleShape2D.new()
+				s.extents = Vector2(w * 0.5, h * 0.5)
+				_hit_shape.shape = s
+			2:  # CAPSULE
+				var s := CapsuleShape2D.new()
+				s.radius = minf(w, h) * 0.5
+				s.height = maxf(w, h) - s.radius * 2.0
+				_hit_shape.shape = s
+			3:  # POLYGON
+				if poly.size() >= 3:
+					var s := ConcavePolygonShape2D.new()
+					var segments: PackedVector2Array = []
+					for i in poly.size():
+						var p: Vector2 = poly[i]
+						segments.append(p)
+						segments.append(poly[(i + 1) % poly.size()])
+					s.set_segments(segments)
+					_hit_shape.shape = s
+	else:
+		# fallback: 圆形
+		_collision_shape_type = 0
+		var s := CircleShape2D.new()
+		s.radius = 14.0
+		_hit_shape.shape = s
+
+	_hit_area.add_child(_hit_shape)
+
+	# 碰撞体定位：有 crest 时放到浪头位置，否则在弹体中心
+	if _crest_offset > 0.0 and _chain.direction.length() > 0:
+		_hit_area.position = _chain.direction * _crest_offset
+
+
 ## ── 命中检测 ──
 
 func _get_crest_pos() -> Vector2:
@@ -241,28 +306,52 @@ func _get_crest_pos() -> Vector2:
 
 
 func _check_hit() -> void:
-	# 获取所有可用目标
-	var targets: Array = _chain.available_targets
-	if targets.is_empty():
-		# 如果没有可用目标列表，回退到只检测指定目标
+	# 使用 Area2D 物理碰撞检测
+	if _hit_area == null:
+		return
+	var bodies: Array = []
+	bodies.append_array(_hit_area.get_overlapping_bodies())
+	bodies.append_array(_hit_area.get_overlapping_areas())
+	if bodies.is_empty():
+		# 目标已死亡：检查是否有其他存活目标
 		if _chain.target == null or not is_instance_valid(_chain.target):
+			var alive_found := false
+			for t in _chain.available_targets:
+				if t and is_instance_valid(t) and t.get("is_alive") == true:
+					alive_found = true
+					break
+			if alive_found:
+				var new_target: Node2D = TargetSelector.find_nearest(global_position, _chain.available_targets, func(u): return u and is_instance_valid(u) and u.get("is_alive") == true)
+				if new_target == null:
+					for t in _chain.available_targets:
+						if t and is_instance_valid(t) and t.get("is_alive") == true:
+							new_target = t
+							break
+				if new_target:
+					_chain.target = new_target
+					_chain.target_pos = new_target.global_position
+					_chain.direction = global_position.direction_to(new_target.global_position)
+					return
 			_chain.destroy()
-			return
-		targets = [_chain.target]
+		return
 
-	var hit_radius := _chain.hit_precision_radius + _chain.current_radius if _chain.tracking_enabled else _chain.current_radius + 10.0
-	var check_pos := _get_crest_pos()
+	# 找到最近的重叠体
+	var closest: Node2D = null
+	var closest_dist: float = INF
+	for body in bodies:
+		if body == _chain.caster:
+			continue
+		if not body.has_method("take_damage"):
+			continue
+		if body in _chain.hit_targets:
+			continue
+		var d := global_position.distance_squared_to(body.global_position)
+		if d < closest_dist:
+			closest_dist = d
+			closest = body
 
-	# 使用统一的碰撞检测，检测所有敌人
-	var hit_target: Node2D = ProjectileHitDetectorScript.check_collision(
-		check_pos, targets, hit_radius, _chain.hit_targets
-	)
-
-	if hit_target:
-		_handle_hit(hit_target)
-	elif _chain.target == null or not is_instance_valid(_chain.target):
-		# 如果指定目标无效，销毁投射物
-		_chain.destroy()
+	if closest:
+		_handle_hit(closest)
 
 
 func _handle_hit(target: Node2D) -> void:
@@ -273,6 +362,9 @@ func _handle_hit(target: Node2D) -> void:
 			if _chain.pierce_count > 0:
 				_chain.pierce_count -= 1
 			if _chain.pierce_count == 0:
+				_hide_all_visuals()
+				_comp_flame.on_destroy(self)
+				_comp_comet.on_destroy(self)
 				_chain.destroy()
 	else:
 		_emit_hit_signal(target)
@@ -297,7 +389,7 @@ func _handle_hit(target: Node2D) -> void:
 
 
 func _emit_hit_signal(target: Node2D) -> void:
-	if _signal_bus:
+	if _signal_bus and is_instance_valid(_chain.caster):
 		var damage_amount: float = _chain.damage * _chain.bounce_damage_scale
 		var info: Dictionary = {
 			"caster": _chain.caster,
@@ -325,7 +417,14 @@ func _bounce_respawn(_hit_target: Node2D, next_target: Node2D) -> void:
 	_comp_flame.on_destroy(self)
 	_comp_comet.on_destroy(self)
 
-	# 播放命中特效（已由 _emit_hit_signal 触发）
+	# 如果施法者或弹射目标已死亡，不再弹射
+	if not is_instance_valid(_chain.caster) or not is_instance_valid(next_target):
+		_chain.destroy()
+		return
+
+	# 先把 target 换为 next_target，避免 duplicate 复制已释放的原始 target
+	_chain.target = next_target
+	_chain.target_pos = next_target.global_position
 
 	var new_chain := _chain.duplicate()
 	new_chain.position = global_position
@@ -357,31 +456,18 @@ func _on_chain_destroyed(_destroyed_chain: ExecutionChain) -> void:
 	if _signal_bus:
 		_signal_bus.behavior_complete.emit(self)
 
-	# 通知组件销毁
+	# 统一销毁所有视觉组件
 	for c in _components:
 		c.on_destroy(self)
 
-	# 收集所有 Sprite 用于淡出
-	var all_sprites: Array = []
-	all_sprites.append_array(_comp_core.get_all_sprites())
-	all_sprites.append_array(_comp_glow.get_all_sprites())
+	# 清理碰撞体
+	if _hit_area:
+		_hit_area.queue_free()
+		_hit_area = null
 
-	# 淡出（300ms）
-	var fade_tween: Tween = create_tween()
-	fade_tween.set_parallel(true)
-	for s in all_sprites:
-		if s and is_instance_valid(s) and s.visible:
-			fade_tween.tween_property(s, "modulate:a", 0.0, 0.3)
-
-	# 等待淡出后归还池
+	# 立即隐藏所有精灵并归还池
 	var pool = get_parent()
 	if pool.has_method("despawn"):
-		await get_tree().create_timer(0.6).timeout
-		if not is_instance_valid(self):
-			return
-		for s in all_sprites:
-			if s and is_instance_valid(s):
-				s.visible = false
 		pool.despawn(self)
 
 
@@ -407,7 +493,52 @@ func _show_all_visuals() -> void:
 
 ## ── 池复用重置 ──
 
+func _draw() -> void:
+	if not debug_show_collision:
+		return
+	if _hit_shape == null or _hit_shape.shape == null:
+		return
+
+	var color := Color(0.0, 1.0, 0.0, 0.8)  # 绿色半透明
+	match _collision_shape_type:
+		0:  # CIRCLE
+			var circle = _hit_shape.shape as CircleShape2D
+			if circle:
+				var r: float = circle.radius
+				draw_circle(Vector2.ZERO, r, Color.TRANSPARENT, false, 2.0)
+				draw_arc(Vector2.ZERO, r, 0, TAU, 32, color, 2.0)
+		1:  # RECT
+			var rect_shape = _hit_shape.shape as RectangleShape2D
+			if rect_shape:
+				var ext: Vector2 = rect_shape.extents
+				draw_rect(Rect2(-ext.x, -ext.y, ext.x * 2, ext.y * 2), color, false, 2.0)
+		2:  # CAPSULE
+			var cap = _hit_shape.shape as CapsuleShape2D
+			if cap:
+				var r: float = cap.radius
+				var h: float = cap.height * 0.5
+				draw_circle(Vector2(0, -h), r, Color.TRANSPARENT, false, 2.0)
+				draw_circle(Vector2(0, h), r, Color.TRANSPARENT, false, 2.0)
+				draw_rect(Rect2(-r, -h, r * 2, h * 2), color, false, 2.0)
+		3:  # POLYGON
+			if _chain and _chain.skill_id != "":
+				var def_path := "res://resources/skills/skill_defs/" + _chain.skill_id + ".tres"
+				if ResourceLoader.exists(def_path):
+					var def := load(def_path)
+					var poly = def.get("collision_polygon") if "collision_polygon" in def else []
+					if poly.size() >= 3:
+						var pts := PackedVector2Array()
+						for p in poly:
+							pts.append(p)
+						draw_polyline(pts, color, 2.0)
+						draw_line(pts[pts.size()-1], pts[0], color, 2.0)
+
+
 func _reset_for_pool() -> void:
 	for c in _components:
 		c.reset()
 	_initialized = false
+	if _hit_area:
+		_hit_area.queue_free()
+		_hit_area = null
+		_hit_shape = null

@@ -13,4 +13,6 @@ tracking_enabled = true
 turn_rate = 5.0
 hit_precision_radius = 14.0
 hit_aoe_radius = 14.0
+collision_shape = 0
+collision_radius = 12.0
 description = "发射 9~12 枚导弹，沿弧线弹道追踪目标"

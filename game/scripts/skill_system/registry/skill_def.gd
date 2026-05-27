@@ -46,6 +46,17 @@ var target_mode: int = 0
 # ── 投送方式 ──
 @export var delivery_type: String = "projectile"  # "projectile" / "instant"
 
+# ── 碰撞检测参数 ──
+@export_enum("CIRCLE:0", "RECT:1", "CAPSULE:2", "POLYGON:3")
+var collision_shape: int = 0
+## 圆形半径（CIRCLE 用）
+@export var collision_radius: float = 14.0
+## 矩形/胶囊宽高（RECT/CAPSULE 用）
+@export var collision_width: float = 16.0
+@export var collision_height: float = 16.0
+## 多边形顶点（POLYGON 用，弹体局部坐标）
+@export var collision_polygon: Array[Vector2] = []
+
 # ── 追踪参数 ──
 @export var tracking_enabled: bool = false
 @export var turn_rate: float = 0.0           # rad/s

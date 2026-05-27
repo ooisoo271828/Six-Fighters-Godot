@@ -16,4 +16,6 @@ effect_type = "emit_scatter_shuriken"
 target_mode = 0
 delivery_type = "projectile"
 max_targets = 1
+collision_shape = 0
+collision_radius = 10.0
 description = "9发手里剑扇形连射，间隔递减，命中即消"

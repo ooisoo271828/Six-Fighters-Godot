@@ -73,9 +73,10 @@ static func find_lowest_hp(pos: Vector2, units: Array, max_range: float) -> Node
 	var best_ratio: float = INF
 	for u in candidates:
 		var hp_ratio: float = 0.0
-		var stats = u.get("stats")
-		if stats and stats.max_hp > 0:
-			hp_ratio = float(stats.hp) / float(stats.max_hp)
+		var u_max_hp = u.get("max_hp")
+		var u_hp = u.get("current_hp")
+		if u_max_hp and u_max_hp > 0:
+			hp_ratio = float(u_hp) / float(u_max_hp)
 		if hp_ratio < best_ratio:
 			best_ratio = hp_ratio
 			best = u
@@ -124,9 +125,10 @@ static func select_target(pos: Vector2, units: Array, target_mode: int, max_rang
 			var highest_ratio: float = -1.0
 			for c in candidates_hp:
 				var ratio: float = 0.0
-				var c_stats = c.get("stats")
-				if c_stats and c_stats.max_hp > 0:
-					ratio = float(c_stats.hp) / float(c_stats.max_hp)
+				var c_max_hp = c.get("max_hp")
+				var c_hp = c.get("current_hp")
+				if c_max_hp and c_max_hp > 0:
+					ratio = float(c_hp) / float(c_max_hp)
 				if ratio > highest_ratio:
 					highest_ratio = ratio
 					highest = c
@@ -214,7 +216,12 @@ static func find_max_coverage_angle(caster_pos: Vector2, units: Array, beam_widt
 static func select_for_bounce(pos: Vector2, units: Array, target_mode: int, exclude: Array) -> Node2D:
 	var filtered: Array = []
 	for u in units:
-		if u in exclude:
+		var skip := false
+		for e in exclude:
+			if e == u:
+				skip = true
+				break
+		if skip:
 			continue
 		if _is_valid_target(u):
 			filtered.append(u)
@@ -313,9 +320,10 @@ static func _find_lowest_hp_no_range(_pos: Vector2, units: Array) -> Node2D:
 	var best_ratio: float = INF
 	for u in candidates:
 		var hp_ratio: float = 0.0
-		var stats = u.get("stats")
-		if stats and stats.max_hp > 0:
-			hp_ratio = float(stats.hp) / float(stats.max_hp)
+		var u_max_hp = u.get("max_hp")
+		var u_hp = u.get("current_hp")
+		if u_max_hp and u_max_hp > 0:
+			hp_ratio = float(u_hp) / float(u_max_hp)
 		if hp_ratio < best_ratio:
 			best_ratio = hp_ratio
 			best = u

@@ -38,6 +38,9 @@ func spawn(caster: Node2D, target: Node2D, damage: float, damage_type: String, s
 	else:
 		node = _pool.pop_back()
 
+	if not is_instance_valid(caster):
+		despawn(node)
+		return null
 	node.global_position = caster.global_position
 	node.initialize(caster, target, damage, damage_type, skill_id, signal_bus, direction, available_targets)
 	node.visible = true

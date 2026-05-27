@@ -15,4 +15,6 @@ effect_type = "emit_burning_hands"
 target_mode = 6
 delivery_type = "instant"
 max_targets = 0
+collision_shape = 0
+collision_radius = 14.0
 description = "双掌推出火浪，对扇形范围内所有敌人造成持续火焰伤害，每0.5秒判定一次，共9次"

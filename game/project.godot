@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 EventBus="*res://scripts/core/event_bus.gd"
 GameExecutor="*res://addons/hasturoperationgd/game_executor.gd"
 GameManager="*res://scripts/core/game_manager.gd"
+DebugSettings="*res://scripts/core/debug_settings.gd"
 
 [display]
 

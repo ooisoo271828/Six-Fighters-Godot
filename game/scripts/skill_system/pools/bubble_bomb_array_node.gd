@@ -292,7 +292,7 @@ func _apply_explosion_damage(world_pos: Vector2) -> void:
 		if dist <= EXPLOSION_RADIUS:
 			var prev: int = _hit_counter.get(u, 0)
 			var decayed: float = _damage * pow(0.7, prev)
-			if _signal_bus and _signal_bus.has_signal("skill_hit"):
+			if _signal_bus and _signal_bus.has_signal("skill_hit") and is_instance_valid(_caster):
 				_signal_bus.skill_hit.emit(_caster, [u], {
 					"caster": _caster, "target": u, "damage": decayed,
 					"damage_type": _damage_type, "skill_id": _skill_id,

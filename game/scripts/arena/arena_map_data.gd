@@ -11,12 +11,13 @@ const TILE_SIZE := 32
 const MAP_WIDTH := 60
 const MAP_HEIGHT := 270
 
-# 走廊半宽（瓦片数），全宽约 30 瓦片 = 960px ≈ 1.78 屏幕宽度
-const CORRIDOR_HALF_WIDTH := 15
+# 走廊半宽（瓦片数），全宽约 20 瓦片 = 640px ≈ 1.19 屏幕宽度
+# 加上边缘噪点后实际宽度 0.95~1.66 屏幕宽度
+const CORRIDOR_HALF_WIDTH := 10
 
 # Boss 区参数（瓦片坐标）
 const BOSS_CENTER := Vector2i(30, 32)
-const BOSS_RADIUS := 30  # 瓦片数，直径 60 = 1920px = 2×屏幕高度
+const BOSS_RADIUS := 24  # 瓦片数，比原尺寸缩小20%，原30
 
 # ── 蛇形走廊路径点（瓦片坐标） ──
 # 玩家从底部 (ty=MAP_HEIGHT-5) 进入，沿路径向上走到 Boss 区
@@ -33,13 +34,15 @@ const CORRIDOR_WAYPOINTS: Array[Vector2i] = [
 	Vector2i(30, 47),   # Boss区入口过渡
 ]
 
-# ── 走廊波次配置 ──
+# ── 走廊6波配置 ──
 # [{ "y_trigger": int, "count": int, "has_elite": bool }]
 const CORRIDOR_WAVES: Array[Dictionary] = [
-	{ "y_trigger": 205, "count": 3, "has_elite": false },
-	{ "y_trigger": 125, "count": 4, "has_elite": false },
-	{ "y_trigger": 75,  "count": 5, "has_elite": false },
-	{ "y_trigger": 55,  "count": 6, "has_elite": true  },
+	{ "y_trigger": 235, "count": 4, "has_elite": false },
+	{ "y_trigger": 195, "count": 5, "has_elite": false },
+	{ "y_trigger": 160, "count": 5, "has_elite": false },
+	{ "y_trigger": 125, "count": 6, "has_elite": true  },
+	{ "y_trigger": 88,  "count": 7, "has_elite": true  },
+	{ "y_trigger": 55,  "count": 8, "has_elite": true  },
 ]
 
 # Boss 战参数
@@ -222,7 +225,7 @@ func _draw_thick_line(from: Vector2i, to: Vector2i, half_w: int) -> void:
 			err += dx
 			cy += sy
 
-## 每行边缘不规则偏移（-3 到 +3 瓦片）
+## 每行边缘不规则偏移（-2 到 +4 瓦片），配合缩窄走廊产生宽窄变化
 func _get_edge_noise(ty: int) -> int:
 	if _edge_noise.has(ty):
 		return _edge_noise[ty]
@@ -230,7 +233,7 @@ func _get_edge_noise(ty: int) -> int:
 	var h := ty * 374761393 + 668265263
 	h = (h ^ (h >> 13)) * 1274126177
 	h = h ^ (h >> 16)
-	var offset := (h % 7) - 3  # -3 ~ +3
+	var offset := (h % 7) - 2  # -2 ~ +4
 	_edge_noise[ty] = offset
 	return offset
 

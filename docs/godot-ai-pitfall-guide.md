@@ -2690,4 +2690,596 @@ Bug 报告
 
 ---
 
-*版本更新：v4.5 — 新增参数传递链路陷阱（execution_mode 透传）、GDScript 动态编译陷阱（extends Node + get_node 失败、resource_path 问题、多行字符串缩进）、编辑器 vs 游戏场景树陷阱（Engine.get_main_loop().root vs EditorInterface）、Windows 网络绑定陷阱（IPv6 vs IPv4）、Godot 热重载陷阱（err=22）、Debug 方法论（新增功能验证清单）。*
+## 三十、综合复盘：2026-05-27 长会话全记录
+
+> 本次会话涉及：水浪术 Bug 修复 → 投石/投骨新技能 → 格斗场地图改造 → 怪物&英雄技能配置 → 大量运行时错误修复。
+> 以下分两部分：**A. AI 工作流错误（行为改进）** 和 **B. 代码级陷阱（技术沉淀）**。
+
+---
+
+### A. AI 工作流错误（行为改进）
+
+#### A1 🔴 排查方向反了：先读发送端，不读接收端
+
+**错误**：用户反馈受击特效位置不对后，连续修改了 3 次 `projectile_node.gd`（调整 `_crest_offset` 计算、加 body fallback、双重保障），但始终没有去读 `skill_vfx_manager.gd` 中 `_on_skill_hit()` 的源码。
+
+**实际 bug 链**：
+```
+VFXManager._on_skill_hit 优先取 _core_sprite.global_position → 受击特效在浪身中央
+      ↑
+排查方向（错误）：
+  _crest_offset 没设对？→ 加 body fallback
+  _get_crest_pos 返回不对？→ 加 print
+  trail def 没加载？→ 加双重保障
+      ↓
+全部白费力气，根因远在 projectile_node 之外
+```
+
+**规律**：信号数据流动的 debug 应该**从接收端往回追**，而不是从发送端往前推。如果信号已经发出了正确的数据（`info.hit_pos`），问题一定在接收端。先看 `_on_xxx`，再看 `_emit_xxx`。
+
+---
+
+#### A2 🔴 局部修改时没有遍历全部调用链
+
+**错误**：修改 `_handle_hit()` 加入 `_hide_all_visuals()`，但没有检查 REDIRECT bounce 路径。火球在 REDIRECT 弹射时视觉消失，空中转向后不可见。
+
+**规律**：一个函数如果有多个 return 路径（REDIRECT return、RESPAWN return、fall-through destroy），修改函数头部逻辑会影响所有路径。改之前必须遍历每条路径。
+
+---
+
+#### A3 🔴 `multi_edit` 批次回滚未被察觉
+
+**错误**：使用 `multi_edit` 同时修改 5 个文件，第 5 个文件搜索文本不匹配导致**整个批次全部回滚**。后续在未生效的旧代码上继续调试，浪费大量时间。
+
+**规律**：`multi_edit` 是原子操作——任何一个 edit 失败，所有 edit 都不执行。使用后必须立刻检查所有目标文件的内容，而不是假设"前面的成功了"。
+
+---
+
+#### A4 🔴 单例缓存清除机制被误删
+
+**错误**：移除了 `ProjectileNode._ready()` 中的 `VFXTextureManager._instance = null`，认为"保持单例可以缓存纹理"。但没有意识到这个 nullification 是热重载后强制创建新实例的关键机制。
+
+**规律**：**单例缓存清除（`_instance = null`）通常不是 bug，而是故意设计的"热重载兼容机制"。** 看不懂的代码不要随便删，先查 git blame 或项目文档。
+
+---
+
+#### A5 🔴 单元测试通过 = 集成测试通过？
+
+**错误**：通过 execute endpoint 验证了 BONE 纹理生成成功，就认为问题解决了。没有在游戏实际运行时验证。execute endpoint 运行在全新的 VFXTextureManager 实例中，而游戏运行时用的是池中缓存的旧实例。
+
+**规律**：**通过 API 测试 ≠ 游戏运行时正确。** 单元测试和集成测试是两回事，池复用、热重载、场景切换都会引入单元测试覆盖不到的问题。
+
+---
+
+#### A6 🔴 热重载后不重启场景验证
+
+**错误**：多次依赖 `curl POST /api/script/reload` 来应用修改，但没有意识到 `.tres` 文件变动需要重启场景才能生效。
+
+**规律**：**热重载不是万能的。** 以下情况必须重启场景或编辑器：
+- `.tres` / `.tscn` 文件修改
+- `@onready var` 的路径变化
+- 信号连接的增删
+- 类继承关系变化（`extends`）
+- `class_name` 新增/删除
+
+---
+
+#### A7 🔴 重复的 `read_file` 参数错误
+
+**错误**：在整个会话中反复出现 `read_file` 调用失败，原因是忘记传 `path` 参数或 JSON 格式错误。多次中断工作流，浪费调试时间。
+
+**规律**：当同一个工具调用连续失败 2 次时，**停下来检查参数格式**，不要机械重试。更不要在被工具拒绝后立即用完全相同的参数重试。
+
+---
+
+#### A8 🔴 没确认游戏视角就开干
+
+**错误**：设计投石/投骨技能时，没有主动确认游戏的相机视角（斜 45 度竖屏 2D RPG），按默认俯视 2D 思路设计。用户中途纠正。
+
+**规律**：新功能设计前先确认游戏的核心视觉参数——视角类型、分辨率、色调主题。
+
+---
+
+### B. 代码级陷阱（技术沉淀）
+
+#### B1 🔵 VFXManager 忽略 `hit_pos` 使用 `core_sprite` 位置
+
+**文件**：`skill_vfx_manager.gd:_on_skill_hit()`
+
+**症状**：受击特效总是出现在弹体中心，而不是浪头的撞击点。
+
+**根因**：`ring_pos` 的计算逻辑中，`projectile_node` 存在时永远取 `_core_sprite.global_position`（弹体中心），`info.hit_pos`（浪头位置）只作为 `else` 分支的 fallback：
+
+```gdscript
+var proj_node = info.get("projectile_node")
+if proj_node:
+    ring_pos = proj_node._comp_core._core_sprite.global_position  # ← 弹体中心
+else:
+    ring_pos = info.get("hit_pos", ...)  # ← 浪头位置，永远进不来
+```
+
+**修复**：将 `hit_pos` 的优先级提到 `projectile_node` 之前。信号发送方已经算好的位置，接收方不要重新算。
+
+---
+
+#### B2 🔵 组件 `glow_enabled` 不控制所有子效果
+
+**文件**：`CompGlow.configure()`
+
+**症状**：设置 `glow_enabled = false` 后，弹体中间仍然出现一个小圆球。
+
+**根因**：CompGlow 有三层视觉效果，但只有主光晕受 `glow_enabled` 控制，**辐射射线层完全无视 `glow_enabled`**，只看 `glow_radius > 0`：
+
+```gdscript
+# 第三层：辐射射线
+if glow_radius > 0.0:  # ← 只看 glow_radius，不看 glow_enabled！
+    _ray_sprite.visible = true
+```
+
+**修复**：将不需要光晕的技能的 `glow_radius` 也设为 0，或修改组件让所有子效果统一受 `glow_enabled` 控制。
+
+**规律**：组件如果有多个子效果，开关判断逻辑必须**统一收敛到同一个变量**。
+
+---
+
+#### B3 🔵 `RoleAI._label_to_key` 不认识数字字符串
+
+**文件**：`role_ai.gd`
+
+**症状**：某些英雄技能（如 `water_wave`）在整个关卡中从未释放过。
+
+**根因**：`_label_to_key` 的 match 语句只处理字符串标签（`"smallA"`、`"smallB"`），而调用处传入了 `str(cat)`（如 `"1"`、`"2"`），没有匹配项，fallthrough 返回 `"basic"`：
+
+```gdscript
+var key = _label_to_key(str(cat))  # cat=1 → "1" → 没有匹配 → "basic"
+# small_a 技能的 CD 写入了 timers.basic，阻塞了基本攻击
+```
+
+**修复**：增加 `"1" → "small_a"`, `"2" → "small_b"`, `"0" → "basic"` 的匹配。
+
+**规律**：Match 语句的 default 分支是地雷——它静默返回一个"看起来合理"的值，掩盖了上游调用传入了意外值的事实。
+
+---
+
+#### B4 🔵 TypedArray 中已释放对象的 `in` 操作
+
+**文件**：`target_selector.gd:select_for_bounce()`
+
+**症状**：报错 `Attempted to find an invalid (previously freed?) object instance into a 'TypedArray'`。
+
+**根因**：`_chain.hit_targets` 是 `Array[Node2D]`（类型化数组），节点被击杀释放后，`u in exclude` 触发 Godot 的类型校验错误。
+
+**修复**：用手动遍历 + `==` 比较代替 `in` 操作符。
+
+**规律**：**Godot 4 的 TypedArray 对已释放对象敏感**。如果数组中可能包含已释放的节点引用，用手动遍历代替 `in`。
+
+---
+
+#### B5 🔵 `ExecutionChain.duplicate()` 引用已释放对象
+
+**文件**：`projectile_node.gd:_bounce_respawn()`
+
+**症状**：水浪术弹射时抛出 `Invalid assignment of property or key 'caster' with value of type 'previously freed'`。
+
+**根因**：`_bounce_respawn()` 调用 `_chain.duplicate()` 复制执行链，`caster` 和 `target` 是 Node2D 引用。施法者或弹射目标在延迟期间已被击杀释放。
+
+**修复**：在 duplicating 前检查 `is_instance_valid(_chain.caster)` 和 `is_instance_valid(next_target)`。
+
+**规律**：**延迟执行 + 多单位同时战斗 = 引用失效的必然性**。任何 `await`、`create_timer`、或跨帧操作后访问节点引用前，都必须做 `is_instance_valid()` 检查。
+
+---
+
+#### B6 🔵 信号发射时 `_caster` 已释放（7 文件批量修复）
+
+**现象**：多个技能节点报 `Cannot convert argument 1 from Object to Object`。
+
+**根因**：`skill_hit` 信号定义为 `signal skill_hit(caster: Node2D, ...)`。当 `_caster` 是已释放对象时，Godot 的类型检查无法将其转换为 `Node2D`。
+
+**批量修复文件**：
+
+| 文件 | 修复位置 |
+|------|---------|
+| `projectile_node.gd` | `_emit_hit_signal()` |
+| `shuriken_node.gd` | `_on_hit()` |
+| `burning_hands_node.gd` | `_apply_damage()` |
+| `bubble_bomb_array_node.gd` | `_apply_explosion_damage()` |
+| `evil_eye_node.gd` | `_apply_damage()` |
+| `flying_sword_node.gd` | `_on_hit()` |
+| `laser_beam_node.gd` | `_apply_damage()` |
+
+**规律**：带类型参数的信号是双刃剑——它在运行时抛出无法忽略的报错。如果信号可能在对象释放后发射，要么去掉参数类型，要么在发射前检查 `is_instance_valid()`。
+
+---
+
+#### B7 🔵 Tween 空创建警告
+
+**现象**：`Tween: started with no Tweeners.`
+
+**根因**：`_on_chain_destroyed()` 先隐藏了所有精灵，再创建 Tween 做淡出。由于没有可见精灵，Tween 没添加任何 Tweener。
+
+**修复**：先统计可见精灵，有 >0 个时才创建 Tween。或者不做淡出直接归还池。
+
+---
+
+#### B8 🔵 Area2D 碰撞检测不到 CharacterBody2D
+
+**文件**：`small_laser_beam_node.gd` / `laser_beam_node.gd`
+
+**症状**：光束覆盖敌人但无伤害。
+
+**根因**：`_hit_area.get_overlapping_bodies()` 返回空。敌人/英雄是 `extends CharacterBody2D` **但没有 CollisionShape2D 子节点**。没有碰撞形状的 CharacterBody2D 在物理引擎中没有实体，任何 Area2D 都检测不到。
+
+**修复**：将伤害检测从 Area2D 碰撞改为距离/角度矩形检测：
+
+```gdscript
+for u in _available_targets:
+    var offset = u.global_position - beam_origin
+    var along = offset.dot(fwd)
+    var lateral = absf(offset.dot(perp))
+    if along >= 0 and along <= BEAM_LENGTH and lateral <= half_w:
+        # 命中！
+```
+
+**规律**：**CharacterBody2D ≠ 物理碰撞体**。没有 CollisionShape2D 的 CharacterBody2D 只是一个有移动逻辑的 Node2D，物理系统完全忽略它。
+
+---
+
+#### B9 🔵 多组件视觉销毁不同步
+
+**文件**：`projectile_node.gd:_on_chain_destroyed()`
+
+**症状**：水浪术命中后，浪头和浪身分开消失，出现视觉残留。
+
+**根因**：三个组件（CompFlameTrail / CompCoreSprite / CompCometTrail）使用不同的清理机制——`queue_free()`（延迟到帧末）、Tween 淡出 300ms（跨帧）、清空 Line2D（即时），三者时间不同步。
+
+**修复**：统一销毁入口，所有组件 `c.on_destroy(self)` 后立即 `pool.despawn(self)`。
+
+**规律**：多组件视觉系统的销毁必须统一入口。每个组件可以有自己的 `on_destroy()` 清理逻辑，但**不可以各自做独立的异步动画**。
+
+---
+
+*版本更新：v4.6 — 新增本次长会话综合复盘（30-A 工作流错误 8 条 + 30-B 代码陷阱 9 条）。*
+
+> 以下是对本次长时间开发会话中 AI 助手（Reasonix Code）所犯错误的诚实复盘。
+> 目标：提高后续协作效率，避免同类错误重复发生。
+
+### 30.0 最致命的错误链条：把大量时间耗在错误的方向上
+
+本次会话最大教训：**花了大量时间在 VFXManager 位置逻辑 bug 周围打转，却一直没有直接去读 `_on_skill_hit` 的源代码。**
+
+```
+实际 bug 链：
+VFXManager._on_skill_hit 优先取 _core_sprite.global_position → 受击特效在浪身中央
+      ↑
+我排查的方向：
+  _crest_offset 没设对？→ 加 body fallback
+  _get_crest_pos 返回不对？→ 加 print
+  trail def 没加载？→ 加双重保障
+      ↓
+全部白费力气，根因远在 projectile_node 之外
+```
+
+**教训**：当某个行为（受击特效位置不对）涉及多个系统（ProjectileNode → Signal → VFXManager）时，**先读接收端的代码**，不要只盯着发送端修。信号发出去了位置对了，那就是接收端用错了。
+
+---
+
+### 30.1 局部修改时没有检查全部调用链
+
+**错误**：修改 `_handle_hit()` 加入 `_hide_all_visuals()`，但没有检查 REDIRECT bounce 路径，导致飞行中的弹体在转向时被隐藏。
+
+**后果**：火球/飞弹在 REDIRECT 弹射时视觉消失，空中转向后不可见。
+
+**修复**：撤回了 `_handle_hit` 中的 `_hide_all_visuals()`，将隐藏逻辑移到只有最终销毁时才执行的路径中。
+
+**规律**：**一个函数如果有多个 return 路径（REDIRECT return、RESPAWN return、fall-through destroy），修改函数头部逻辑会影响所有路径。** 改之前必须遍历每条路径。
+
+---
+
+### 30.2 multi_edit 批次失败导致文件回滚未被察觉
+
+**错误**：使用 `multi_edit` 同时修改 5 个文件，第 5 个文件搜索文本不匹配导致**整个批次全部回滚**。后续测试时发现 `small_laser_beam_node.gd` 和 `small_laser_beam_pool.gd` 的改动没有生效，但没有立即意识到是批次回滚造成的。
+
+**后果**：在未生效的旧代码基础上继续调试，浪费了大量时间。最终不得不重新实施所有改动。
+
+**规律**：**`multi_edit` 是原子操作——任何一个 edit 失败，所有 edit 都不执行。** 使用 `multi_edit` 后必须立刻检查所有目标文件的内容，而不是假设"前面的成功了"。
+
+---
+
+### 30.3 单例管理模式变更时没有评估全部影响
+
+**错误**：移除了 `ProjectileNode._ready()` 中的 `VFXTextureManager._instance = null`，认为"保持单例可以缓存纹理"。但没有意识到这个 nullification 是在热重载后强制创建新实例的关键机制。
+
+**后果**：热重载 `texture_manager.gd` 后，BONE 纹理的生成代码不会在新实例中生效，因为旧实例仍在运行。
+
+**修复**：恢复了 nullification，但同时把 `_tex_manager` 的获取移到了 `initialize()` 中（从 `_ready()` 移出），确保池复用节点每次初始化都能获取最新实例。
+
+**规律**：**单例缓存清除（`_instance = null`）通常不是 bug，而是故意设计的"热重载兼容机制"。** 看不懂的代码不要随便删，先查 git blame 或文档。
+
+---
+
+### 30.4 只验证了单元测试，没有验证集成运行
+
+**错误**：通过 execute endpoint 验证了 BONE 纹理生成成功（`get_texture("bone")` 返回 64×64 纹理），就认为问题解决了。但没有在游戏实际运行时（SkillDemo / Arena）验证纹理是否正确显示。
+
+**后果**：BONE 纹理在测试中有效，但在池复用的 ProjectileNode 中显示为白色圆形——因为池中节点的 `_tex_manager` 还是旧单例。
+
+**规律**：**通过 execute endpoint 测试通过 ≠ 游戏运行时正确。** execute endpoint 运行在全新的 VFXTextureManager 实例中，而游戏运行时使用的是池中缓存的旧实例。单元测试和集成测试是两回事。
+
+---
+
+### 30.5 没有读取 VFXManager 源码就断定问题出在 projectile_node
+
+**错误**：用户反馈受击特效位置不对后，连续修改了 3 次 `projectile_node.gd`（调整 `_crest_offset` 计算、加 body fallback、双重保障），但始终没有去读 `skill_vfx_manager.gd` 中 `_on_skill_hit()` 的源码。
+
+**后果**：浪费了大量时间在错误的层级上做修改。最终读了 VFXManager 源码才发现 `ring_pos` 的逻辑完全忽略了 `hit_pos`。
+
+**规律**：**信号数据流动的 debug 应该从接收端往回追**，而不是从发送端往前推。如果信号已经发出了正确的数据（`info.hit_pos`），问题一定在接收端。先看 `_on_skill_hit`，再看 `_emit_hit_signal`。
+
+---
+
+### 30.6 修改 .tres 文件后没有验证 SubResource 引用链完整
+
+**错误**：多次编辑 `water_wave.tres` 删除和修改字段，没有检查 SubResource 的 id 引用链是否断裂。
+
+**后果**：可能（虽然最后检查没有断裂）导致运行时某些组件读不到配置数据，出现默认值行为。
+
+**规律**：**.tres 文件中的 SubResource 引用是通过 id 字符串连接的**（如 `id="ptc_water"`、`flame = SubResource("ftc_water")`）。添加/删除 SubResource 时需要确保引用链完整。删字段不会断引用，删整个 SubResource 会。
+
+---
+
+### 30.7 热重载后没有重启场景验证
+
+**错误**：多次依赖 `curl POST /api/script/reload` 来应用修改，但没有意识到某些修改（如 `.tres` 文件的变动、信号连接、`@onready var` 的初始化）需要重启场景才能生效。
+
+**后果**：`.tres` 文件修改后只做了 `project/rescan`，但没有重启 battle 场景。部分技能的行为变化没有被实际测试到。
+
+**规律**：**热重载不是万能的。** 以下情况必须重启场景或编辑器：
+- `.tres` / `.tscn` 文件修改
+- `@onready var` 的路径变化
+- 信号连接的增删
+- 类继承关系变化（`extends`）
+- `class_name` 新增/删除
+
+---
+
+### 30.8 连续多次 read_file 调用失败（低级错误）
+
+**错误**：在整个会话中反复出现 `read_file` 调用失败，原因是忘记传 `path` 参数或 JSON 格式错误。
+
+**后果**：多次中断工作流，浪费调试时间，产生了大量"垃圾"工具调用记录。
+
+**教训**：**当同一个工具调用连续失败 2 次时，停下来检查参数格式，不要机械重试。** 更不要在被工具拒绝后立即用完全相同的参数重试。
+
+---
+
+### 30.9 没有从一开始确认游戏的视角类型
+
+**错误**：设计投石/投骨技能时，没有主动确认游戏的相机视角（斜 45 度竖屏 2D RPG），而是按默认的俯视 2D 思路设计。
+
+**后果**：用户不得不中途纠正，指出需要考虑到 isometric 视角的技能视觉适配。
+
+**规律**：**新功能设计前先确认游戏的核心视觉参数**——视角类型、分辨率、色调主题。这些信息应该在每次会话开始时从 MEMORY.md 或项目文档中读取。
+
+---
+
+### 30.10 总结：错误的模式
+
+| 错误模式 | 发生次数 | 典型例子 |
+|---------|---------|---------|
+| 改 A 没查 B 的调用链 | 2 | `_handle_hit` 加隐藏→REDIRECT 断裂 |
+| multi_edit 失败不回滚验证 | 1 | small_laser_beam 改动全部丢失 |
+| 单例模式随意修改 | 1 | VFXTextureManager null 移除 |
+| 单元测试通过就以为集成通过 | 1 | BONE 纹理测试 vs 运行时 |
+| bug 排查从发送端而非接收端开始 | 1 | 受击特效位置 debug 方向错误 |
+| 热重载后不重启场景验证 | 多次 | .tres 修改后未验证运行时 |
+| 低级的 read_file 参数错误 | 10+  | 反复忘记传 path |
+
+**核心改进**：以后排查跨系统问题时，**先读接收端代码**。信号发出去了数据是对的，那就是接收端用错了——不需要在发送端绕圈。<｜end▁of▁thinking｜>已更新。现在 `docs/godot-ai-pitfall-guide.md` 的 **「三十、AI 助手本次会话错误复盘（2026-05-27）」** 记录了我在本次会话中犯的 10 类错误，包含：
+
+| # | 错误 | 一句话总结 |
+|---|------|-----------|
+| 30.0 | **方向错误** | 花大量时间修 projectile_node，根因在 VFXManager |
+| 30.1 | **改 A 没查 B 的路径** | `_handle_hit` 加隐藏断了 REDIRECT |
+| 30.2 | **multi_edit 回滚没察觉** | 批次失败后 5 个文件全部回滚，我还在旧代码上调试 |
+| 30.3 | **单例乱改** | 删了 `_instance = null` 导致热重载失效 |
+| 30.4 | **单元测试当集成测试** | execute endpoint 通过，游戏里显示白色圆圈 |
+| 30.5 | **debug 从发送端开始** | 改 3 次 projectile_node，其实该先读 VFXManager |
+| 30.6 | **.tres 改了不验引用链** | SubResource 断裂风险 |
+| 30.7 | **热重载不动场景** | .tres 改完只 rescan 不重启场景 |
+| 30.8 | **read_file 反复参数错** | 同一低级错误重复 10+ 次 |
+| 30.9 | **没确认视角就开干** | 做完技能才被用户纠正 isometric 视角 |
+
+### 30.1 VFXManager 忽略 `hit_pos` 使用 `core_sprite` 位置
+
+**症状**：受击特效（粒子爆发、光环等）总是出现在弹体中心，而不是浪头/弹尖的撞击点。
+
+**根因**：`skill_vfx_manager.gd:_on_skill_hit()` 中，位置计算逻辑的优先级错误：
+
+```gdscript
+# ❌ 旧逻辑：projectile_node 存在时永远不用 hit_pos
+var proj_node = info.get("projectile_node")
+if proj_node:
+    var comp_core = proj_node.get("_comp_core")
+    var core_sprite = comp_core.get("_core_sprite")
+    ring_pos = core_sprite.global_position  # ← 弹体中心！
+else:
+    ring_pos = info.get("hit_pos", ...)  # ← 浪头位置，但永远进不来
+```
+
+`_emit_hit_signal()` 在 info 字典中传了 `"projectile_node": self`，导致 VFXManager 永远走第一个分支，用 `_core_sprite.global_position`（弹体中心）而不是 `hit_pos`（浪头位置）。
+
+**修复**：将 `hit_pos` 的优先级提到 `projectile_node` 之前，只有 `hit_pos` 不存在时才 fallback 到弹体位置。
+
+**规律**：信号数据字典中的字段如果存在明确的"意图字段"（如 `hit_pos`），应优先使用该字段，而不是通过关联对象重新计算位置。**信号发送方已经算好的位置，接收方不要重新算。**
+
+---
+
+### 30.2 组件 `glow_enabled` 不控制所有子效果
+
+**症状**：设置 `glow_enabled = false` 后，弹体中间仍然出现一个小圆球。
+
+**根因**：`CompGlow.configure()` 有三个层级的视觉效果：
+
+```gdscript
+# 第一层：主光晕
+if glow_radius > 0.0:
+    ...  # glow_radius=0 → 跳过
+elif _body.glow_enabled:  # glow_enabled=false → 跳过
+    ...
+else:
+    _glow_sprite.visible = false
+
+# 第三层：辐射射线 — 完全无视 glow_enabled！
+if glow_radius > 0.0:  # ← 只看 glow_radius
+    _ray_sprite.visible = true  # ← glow_enabled=false 也拦不住！
+```
+
+**修复**：将不需要光晕的技能的 `glow_radius` 也设为 0。或修改组件代码让射线层也受 `glow_enabled` 控制。
+
+**规律**：组件如果有多个子效果，每个子效果的开关判断逻辑必须**统一收敛到同一个开关变量**，不能有的看 A 变量、有的看 B 变量。
+
+---
+
+### 30.3 `RoleAI._label_to_key` 不认识数字字符串
+
+**症状**：某些英雄技能（如 `water_wave`）在整个关卡中从未释放过。
+
+**根因**：`RoleAI` 的技能冷却 key 映射函数只处理字符串标签，不处理数字：
+
+```gdscript
+static func _label_to_key(lbl: String) -> String:
+    match lbl:
+        "ultimate": return "rage"
+        "smallA", "smallA_survival": return "small_a"
+        "smallB", "smallB_survival": return "small_b"
+    return "basic"  # ← 没匹配到就返回 basic！
+
+# 调用处将 category int 转 string：
+var key = _label_to_key(str(cat))  # cat=1 → str="1" → 没有 "1" → 返回 "basic"
+```
+
+**结果**：`small_a` 技能的冷却时间写入了 `timers.basic`，导致基本攻击（`water_wave`）永远被阻塞。
+
+**修复**：在 `_label_to_key` 中增加 `"1" → "small_a"`, `"2" → "small_b"`, `"0" → "basic"` 的匹配。
+
+**规律**：**Match 语句的 default 分支（`return "basic"`）是地雷**——它静默地返回一个"看起来合理"的值，掩盖了上游调用传入了意外值的事实。任何返回默认值的 fallthrough 都应该在调用处做输入验证。
+
+---
+
+### 30.4 `TypedArray` 中已释放对象的操作错误
+
+**症状**：`target_selector.gd:select_for_bounce()` 报错 `Attempted to find an invalid (previously freed?) object instance into a 'TypedArray'`。
+
+**根因**：`_chain.hit_targets` 是 `Array[Node2D]`（类型化数组），其中的敌人节点在战斗中被击杀释放。`u in exclude` 操作 TypedArray 时，Godot 尝试验证对象类型，发现已释放则报错。
+
+```gdscript
+var hit_targets: Array[Node2D] = []  # ← 类型化数组
+# 当敌人死亡后，数组中的引用变为"previously freed"
+if u in hit_targets:  # ← 触发 TypedArray 校验错误！
+```
+
+**修复**：避免在 TypedArray 上使用 `in` 操作符检查可能已释放的对象。改为手动遍历 + `is_instance_valid` 检查。
+
+**规律**：**Godot 4 的 TypedArray 对已释放对象敏感**。如果数组中可能包含已释放的节点引用，使用手动遍历 + `==` 比较代替 `in` 操作符。
+
+---
+
+### 30.5 `ExecutionChain.duplicate()` 在施法者/目标死亡时崩溃
+
+**症状**：水浪术弹射时抛出 `Invalid assignment of property or key 'caster' with value of type 'previously freed'`。
+
+**根因**：`_bounce_respawn()` 调用 `_chain.duplicate()` 复制执行链。`duplicate()` 方法逐字段复制，其中 `caster` 和 `target` 是 Node2D 引用。如果这两个节点在调用 `duplicate()` 之前已被释放（被其他英雄先击杀），赋值时报错。
+
+**修复**：在 `_bounce_respawn()` 开头检查 `is_instance_valid(_chain.caster)` 和 `is_instance_valid(next_target)`，任一无效则直接销毁链不弹射。
+
+**规律**：**延迟执行 + 多单位同时战斗 = 引用失效的必然性**。任何 `await`、`create_timer`、或跨帧操作后访问节点引用前，都必须做 `is_instance_valid()` 检查。这不是"防御性编程"，而是**并发环境下的生存必需**。
+
+---
+
+### 30.6 信号发射时参数对象已释放
+
+**症状**：多个技能节点在发射 `skill_hit` 信号时报 `Cannot convert argument 1 from Object to Object`。
+
+**根因**：`skill_hit` 信号定义为 `signal skill_hit(caster: Node2D, targets: Array, damage_info: Dictionary)`。当发射端的 `_caster` 或 `_chain.caster` 是已释放对象时，Godot 的类型检查无法将其转换为 `Node2D`。
+
+**修复**（涉及 7 个文件）：在所有发射 `skill_hit` 信号的地方，加上 `is_instance_valid(_caster)` 检查。
+
+| 文件 | 修复位置 |
+|------|---------|
+| `projectile_node.gd` | `_emit_hit_signal()` |
+| `shuriken_node.gd` | `_on_hit()` |
+| `burning_hands_node.gd` | `_apply_damage()` |
+| `bubble_bomb_array_node.gd` | `_apply_explosion_damage()` |
+| `evil_eye_node.gd` | `_apply_damage()` |
+| `flying_sword_node.gd` | `_on_hit()` |
+| `laser_beam_node.gd` | `_apply_damage()` |
+
+**规律**：**带类型参数的信号是 Godot 4 的类型安全特性，但也是双刃剑**——它会在运行时抛出无法忽略的报错。如果信号可能在对象释放后发射，要么去掉参数类型（`signal skill_hit(caster, targets, info)`），要么在发射前检查实例有效性。
+
+---
+
+### 30.7 Tween 无 Tweener 创建的静默警告
+
+**症状**：控制台输出 `Tween: started with no Tweeners.`
+
+**根因**：`_on_chain_destroyed()` 先调用了 `_hide_all_visuals()`（隐藏所有精灵），然后创建 Tween 对这些精灵做淡出。由于所有精灵已经隐藏，`visible == true` 的过滤条件筛掉了所有精灵，Tween 被创建但没有添加任何 Tweener。
+
+```gdscript
+_hide_all_visuals()  # 全部隐藏
+var all_sprites = [...]
+var visible_sprites = []
+for s in all_sprites:
+    if s and is_instance_valid(s) and s.visible:  # 全部 false
+        visible_sprites.append(s)  # 永远空
+if visible_sprites.size() > 0:
+    var fade_tween = create_tween()  # 不会被创建
+    # ... 但下一段代码仍然创建 tween（旧版逻辑）
+```
+
+**修复**：先统计可见精灵，有 >0 个时才创建 Tween。或者统一销毁逻辑，直接隐藏后归还池，不做淡出。
+
+**规律**：**防御性创建 Tween 不如防御性跳过**——确认有动画目标再创建 Tween，比创建后再检查更干净。
+
+---
+
+### 30.8 Area2D 碰撞 detection 需要 CollisionShape2D
+
+**症状**：`small_laser_beam` 和 `laser_beam` 的光柱覆盖在敌人身上，但没有伤害数字。
+
+**根因**：光束节点的 `_hit_area.get_overlapping_bodies()` 返回空列表。原因是敌人/英雄节点（`extends CharacterBody2D`）**没有添加 CollisionShape2D 子节点**。CharacterBody2D 本身不提供碰撞形状，没有 CollisionShape2D 的 CharacterBody2D 在物理引擎中没有碰撞体，任何 Area2D 都检测不到它。
+
+**修复**：将光束的伤害检测从 Area2D 碰撞改为**距离/角度矩形检测**（遍历 `available_targets` 判断目标是否在光束矩形内），因为添加 CollisionShape2D 会影响物理系统和移动逻辑。
+
+```gdscript
+# 替代 Area2D.get_overlapping_bodies() 的方案：
+for u in _available_targets:
+    var offset = u.global_position - beam_origin
+    var along = offset.dot(fwd)       # 沿光束方向距离
+    var lateral = absf(offset.dot(perp))  # 垂直偏移
+    if along >= 0 and along <= BEAM_LENGTH and lateral <= half_w:
+        # 命中！
+```
+
+**规律**：**CharacterBody2D ≠ 物理碰撞体**。没有 CollisionShape2D 的 CharacterBody2D 只是一个带有移动逻辑的 Node2D，物理系统完全忽略它。Area2D 的 `get_overlapping_bodies()` 只返回有实体碰撞形状的 PhysicsBody2D。
+
+---
+
+### 30.9 水浪术视觉残留：组件独立销毁导致不同步
+
+**症状**：水浪术命中后，浪头（crest sprites）和浪身（core fan）分开消失，出现视觉残留。
+
+**根因**：浪头归属 `CompFlameTrail`，浪身归属 `CompCoreSprite`，拖尾归属 `CompCometTrail`。三个组件的 `on_destroy()` 使用不同的清理机制：
+
+- `CompFlameTrail`: `queue_free()`（延迟到帧末）
+- `CompCoreSprite`: Tween 淡出 300ms（跨帧动画）
+- `CompCometTrail`: 清空 Line2D 点（即时）
+
+三者时间不同步，视觉上分解成碎片消失。
+
+**修复**：统一销毁逻辑——所有组件调用 `c.on_destroy(self)` 后立即 `pool.despawn(self)`，不做独立的淡出/延迟销毁。
+
+**规律**：**多组件视觉系统的销毁必须统一入口**。每个组件可以有自己的 `on_destroy()` 清理逻辑，但**不可以**各自做独立的异步动画（Tween、`queue_free()` 延时等）。异步销毁的终点必须是同一个——`pool.despawn()`。
+
+---
+
+*版本更新：v4.6 — 新增命中位置与特效位置不一致陷阱（VFXManager hit_pos 优先级）、组件开关控制不统一陷阱（glow_enabled vs glow_radius）、AI 冷却 key 映射陷阱（_label_to_key 数字字符串）、TypedArray 已释放对象操作陷阱、ExecutionChain 延迟复制失效陷阱、信号发射时对象释放陷阱、Tween 空创建警告、Area2D 碰撞体缺失陷阱、多组件视觉销毁不同步陷阱。*

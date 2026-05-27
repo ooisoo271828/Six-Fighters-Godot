@@ -41,6 +41,7 @@ var _damage_timer: float = 0.0
 var _fading: bool = false
 var _hit_targets: Array = []
 var _all_hit_targets: Array = []
+var _available_targets: Array = []
 
 var _sprite_outer: Sprite2D
 var _sprite_mid: Sprite2D
@@ -246,7 +247,7 @@ func initialize(caster: Node2D, direction: Vector2, damage: float, damage_type: 
 	_all_hit_targets.clear()
 	global_position = caster.global_position + _direction * 70.0
 	rotation = _direction.angle()
-	_hit_area.collision_mask = 4
+	_hit_area.collision_mask = 1
 	_muzzle_particles.emitting = true
 	_show_all()
 	set_process(true)
@@ -307,27 +308,35 @@ func _update_pulse(_dt: float) -> void:
 	_sprite_mid.modulate.a = clampf(MID_COLOR.a * (1.0 + sin(_elapsed * 4.0 + 1.0) * 0.05), 0.55, 0.9)
 
 
+func set_targets(targets: Array) -> void:
+	_available_targets = targets
+
+
 func _apply_damage() -> void:
 	_hit_targets.clear()
 	_all_hit_targets.clear()
-	if not _hit_area or not _hit_area.monitoring:
-		return
-	var bodies: Array = []
-	bodies.append_array(_hit_area.get_overlapping_bodies())
-	bodies.append_array(_hit_area.get_overlapping_areas())
-	for body in bodies:
-		if body == _caster:
+	var fwd := Vector2.RIGHT.rotated(rotation)
+	var perp := Vector2(-fwd.y, fwd.x)
+	var beam_origin := global_position
+	var half_w := BEAM_WIDTH * 0.55
+
+	for u in _available_targets:
+		if not (u and is_instance_valid(u) and u.get("is_alive") == true):
 			continue
-		if not body.has_method("take_damage"):
+		if u == _caster:
 			continue
-		if body in _all_hit_targets:
-			continue
-		_hit_targets.append(body)
-		_all_hit_targets.append(body)
-		if _signal_bus and _signal_bus.has_signal("skill_hit"):
-			var info: Dictionary = {"caster": _caster, "target": body, "damage": _damage, "damage_type": _damage_type, "skill_id": _skill_id, "hit_pos": body.global_position}
-			_signal_bus.skill_hit.emit(_caster, [body], info)
-		_spawn_hit_effect(body.global_position)
+		var offset: Vector2 = u.global_position - beam_origin
+		var along: float = offset.dot(fwd)
+		var lateral: float = absf(offset.dot(perp))
+		if along >= 0 and along <= BEAM_LENGTH and lateral <= half_w:
+			if u in _all_hit_targets:
+				continue
+			_hit_targets.append(u)
+			_all_hit_targets.append(u)
+			if _signal_bus and _signal_bus.has_signal("skill_hit"):
+				var info: Dictionary = {"caster": _caster, "target": u, "damage": _damage, "damage_type": _damage_type, "skill_id": _skill_id, "hit_pos": u.global_position}
+				_signal_bus.skill_hit.emit(_caster, [u], info)
+			_spawn_hit_effect(u.global_position)
 
 
 func _spawn_hit_effect(pos: Vector2) -> void:

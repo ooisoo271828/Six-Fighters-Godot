@@ -27,15 +27,15 @@ func get_all_hero_ids() -> Array[String]:
 
 func _create_ironwall() -> HeroDef:
 	var hero := HeroDef.new("ironwall", "Ironwall", HeroDef.RoleFamily.FRONTLINER, CombatantStats.create_ironwall())
-	hero.set_skills("missile_storm", "", "", "")
+	hero.set_skills("burning_hands", "falling_meteor", "", "")
 	return hero
 
 func _create_ember() -> HeroDef:
 	var hero := HeroDef.new("ember", "Ember", HeroDef.RoleFamily.DPS, CombatantStats.create_ember())
-	hero.set_skills("fireball_basic", "", "", "")
+	hero.set_skills("fireball_basic", "ice_arrow", "", "")
 	return hero
 
 func _create_moss() -> HeroDef:
 	var hero := HeroDef.new("moss", "Moss", HeroDef.RoleFamily.SUPPORT, CombatantStats.create_moss())
-	hero.set_skills("fireball_basic", "", "", "")
+	hero.set_skills("water_wave", "small_laser_beam", "", "")
 	return hero

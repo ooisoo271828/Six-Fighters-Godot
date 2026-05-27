@@ -33,7 +33,7 @@ func _create_beam_node():
 	return node
 
 
-func spawn(caster: Node2D, direction: Vector2, damage: float, damage_type: String, skill_id: String, signal_bus: Node) -> Node2D:
+func spawn(caster: Node2D, direction: Vector2, damage: float, damage_type: String, skill_id: String, signal_bus: Node, targets: Array = []) -> Node2D:
 	var node
 	if _pool.is_empty():
 		node = _create_beam_node()
@@ -42,6 +42,8 @@ func spawn(caster: Node2D, direction: Vector2, damage: float, damage_type: Strin
 		node = _pool.pop_back()
 
 	node.initialize(caster, direction, damage, damage_type, skill_id, signal_bus)
+	if targets.size() > 0 and node.has_method("set_targets"):
+		node.set_targets(targets)
 	node.visible = true
 	_active.append(node)
 	return node

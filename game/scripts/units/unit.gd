@@ -29,6 +29,13 @@ func _setup_visuals() -> void:
 	_sprite.size = Vector2(28, 28)
 	_sprite.color = Color.WHITE
 	add_child(_sprite)
+
+	# 标准碰撞体（所有单位统一半径 14px）
+	var _collision_shape := CollisionShape2D.new()
+	var _shape := CircleShape2D.new()
+	_shape.radius = 14.0
+	_collision_shape.shape = _shape
+	add_child(_collision_shape)
 	
 	# 名称标签
 	_label = Label.new()

@@ -307,7 +307,7 @@ func _apply_damage() -> void:
 		var dy := absf(u.global_position.y - gp.y)
 		if (dx * dx) / (ELLIPSE_A * ELLIPSE_A) + (dy * dy) / (ELLIPSE_B * ELLIPSE_B) <= 1.0:
 			_hit_tick.append(u)
-			if _signal_bus and _signal_bus.has_signal("skill_hit"):
+			if _signal_bus and _signal_bus.has_signal("skill_hit") and is_instance_valid(_caster):
 				_signal_bus.skill_hit.emit(_caster, [u], {
 					"caster": _caster, "target": u, "damage": _damage,
 					"damage_type": _damage_type, "skill_id": _skill_id, "hit_pos": u.global_position,

@@ -16,4 +16,6 @@ effect_type = "emit_flying_sword_storm"
 target_mode = 6
 delivery_type = "projectile"
 max_targets = 10
+collision_shape = 0
+collision_radius = 14.0
 description = "10柄宝剑从天而降，竖直插向目标"

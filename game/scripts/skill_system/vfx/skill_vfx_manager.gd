@@ -112,25 +112,17 @@ func _on_skill_hit(_caster: Node2D, targets: Array, info: Dictionary) -> void:
 	if layers.is_empty():
 		return
 
-	# 使用弹体核心精灵的 global_position（与火球主体圆心精确对齐）
+	# 优先使用 hit_pos（浪头撞击位置），这是由 _get_crest_pos() 精确计算的
+	# 只有 fallback 时才用弹体核心精灵的位置
 	var proj_node: Node2D = info.get("projectile_node")
 	var ring_pos: Vector2
-	if proj_node and is_instance_valid(proj_node):
-		# 读取弹体核心精灵的世界坐标（火球红色球体的真实圆心）
-		var comp_core = proj_node.get("_comp_core")
-		if comp_core:
-			var core_sprite = comp_core.get("_core_sprite") as Node2D
-			if core_sprite:
-				ring_pos = core_sprite.global_position
-			else:
-				ring_pos = proj_node.global_position
-		else:
-			ring_pos = proj_node.global_position
+	var hit_pos: Vector2 = info.get("hit_pos", Vector2.ZERO)
+	if hit_pos != Vector2.ZERO:
+		ring_pos = hit_pos
+	elif proj_node and is_instance_valid(proj_node):
+		ring_pos = proj_node.global_position
 	else:
-		var hit_pos: Vector2 = info.get("hit_pos", Vector2.ZERO)
-		ring_pos = hit_pos if hit_pos != Vector2.ZERO else (
-			targets[0].global_position if targets.size() > 0 and is_instance_valid(targets[0]) else Vector2.ZERO
-		)
+		ring_pos = targets[0].global_position if targets.size() > 0 and is_instance_valid(targets[0]) else Vector2.ZERO
 	for t in targets:
 		if is_instance_valid(t):
 			_execute_layers(layers, ring_pos)
