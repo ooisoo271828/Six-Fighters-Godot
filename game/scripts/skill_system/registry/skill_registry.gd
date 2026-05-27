@@ -7,6 +7,7 @@ const SKILL_DEF_CLASS := preload("res://scripts/skill_system/registry/skill_def.
 const SKILL_VISUAL_DEF_CLASS := preload("res://scripts/skill_system/registry/skill_visual_def.gd")
 
 var _skill_map: Dictionary = {}      # skill_id → SkillDef Resource
+var _monster_skill_map: Dictionary = {}   # skill_id → SkillDef (怪物版数值)
 var _visual_map: Dictionary = {}     # skill_id → SkillVisualDef Resource
 var _effect_factory: Dictionary = {} # effect_type → Effect class path
 var _ready_flag: bool = false
@@ -58,6 +59,10 @@ func register_skill_visual(skill_id: String, visual_def: Resource) -> void:
 
 func get_skill(skill_id: String) -> Resource:
 	return _skill_map.get(skill_id)
+
+## 获取怪物版技能（如果没有独立怪物版，回退到英雄版）
+func get_monster_skill(skill_id: String) -> Resource:
+	return _monster_skill_map.get(skill_id, _skill_map.get(skill_id))
 
 func get_skill_visual(skill_id: String) -> Resource:
 	return _visual_map.get(skill_id)
@@ -160,12 +165,19 @@ func _load_all_skills() -> void:
 		else:
 			register_skill(skill_def)
 			loaded_count += 1
-			
+
 			# 从 CSV 数值表格加载战斗数值
 			var csv_data := SkillDef.load_csv_for_skill(skill_def.skill_id)
 			if not csv_data.is_empty():
 				skill_def.load_values_from_csv(csv_data)
-			
+
+			# 加载怪物版数值（如果存在）
+			var monster_csv_data := SkillDef.load_monster_csv_for_skill(skill_def.skill_id)
+			if not monster_csv_data.is_empty():
+				var monster_skill_def: Resource = skill_def.duplicate()
+				monster_skill_def.load_values_from_csv(monster_csv_data)
+				_monster_skill_map[skill_def.skill_id] = monster_skill_def
+
 			# 尝试加载对应的视觉定义
 			var visual_def: Resource = load(visuals_path + file_name)
 			if visual_def != null and visual_def is SkillVisualDef:

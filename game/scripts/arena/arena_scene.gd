@@ -12,12 +12,12 @@ const FOLLOW_LERP_URGENT := 8.0
 
 # ── Boss 战参数 ──
 const BOSS_WAVE_COUNTS: Array[int] = [6, 8, 10, 12, 18]  # 适配缩小后的Boss区
+const BOSS_WAVE_ELITE_COUNTS: Array[int] = [0, 0, 1, 1, 0]  # 每波精英数
+const BOSS_WAVE_HAS_BOSS: Array[bool] = [false, false, false, false, true]  # 最后一波出Boss
 const BOSS_WAVE_TIMEOUT := 30.0
 const BOSS_WAVE_DEATH_RATIO := 0.9
 const BOSS_SPAWN_INTERVAL := 1.5
 const COUNTDOWN_SEC := 5.0
-const ELITE_HP_MULTIPLIER := 2.5
-const ELITE_ATTACK_MULTIPLIER := 1.8
 
 # ── 阶段枚举 ──
 enum Phase {
@@ -57,6 +57,7 @@ var hero_slot_indices: Array[int] = []
 var enemies: Array[Enemy] = []
 var hero_registry: HeroRegistry
 var skill_registry: SkillRegistry
+var enemy_registry: EnemyRegistry
 var skill_system: Node
 var joystick: VirtualJoystick
 
@@ -115,6 +116,10 @@ func _initialize() -> void:
 
 	hero_registry = HeroRegistry.new()
 	add_child(hero_registry)
+
+	enemy_registry = EnemyRegistry.new()
+	add_child(enemy_registry)
+	enemy_registry.initialize()
 
 	combat_mediator = CombatMediator.new()
 	add_child(combat_mediator)
@@ -218,7 +223,6 @@ func _start_combat() -> void:
 	var result := GameManager.spawn_squad(y_sort_container, _get_spawn_center(), {
 		"hero_registry": hero_registry,
 		"skill_registry": skill_registry,
-		"max_hp": 420.0,
 		"add_shadow": true,
 	})
 	heroes = result["heroes"]
@@ -318,40 +322,36 @@ func _on_wave_spawn(pos: Vector2, _config: WaveConfig, is_elite: bool) -> void:
 	enemy.position = _arena_map.clamp_to_walkable(pos)
 	y_sort_container.add_child(enemy)
 
+	# 从 EnemyRegistry 随机选取变体
+	var enemy_id: String
 	if is_elite:
-		enemy.setup_enemy(false,
-			arena_config.minion_base_hp * ELITE_HP_MULTIPLIER * _config.hp_multiplier,
-			arena_config.minion_base_attack * ELITE_ATTACK_MULTIPLIER * _config.attack_multiplier, 1.2)
-		enemy.modulate = Color(0.9, 0.4, 0.1)
-	else:
-		enemy.setup_enemy(false,
-			arena_config.minion_base_hp * _config.hp_multiplier,
-			arena_config.minion_base_attack * _config.attack_multiplier, 0.9)
-
-	# 普通小怪：丢石头/丢骨头/丢飞镖 三选一
-	# 精英怪：从已有技能池中随机选一个
-	var skill_id: String
-	var attack_range: float = 400.0
-	if is_elite:
-		var elite_skills := [
-			"fireball_basic", "ice_arrow", "water_wave",
-			"small_laser_beam", "scatter_shuriken"
-		]
-		var idx: int = randi() % elite_skills.size()
-		skill_id = elite_skills[idx]
-	else:
-		var r: float = rng_func.call()
-		if r < 0.33:
-			skill_id = "rock_toss"
-		elif r < 0.66:
-			skill_id = "bone_throw"
+		var elite_ids := enemy_registry.get_elite_ids()
+		if elite_ids.is_empty():
+			enemy_id = "elite_fire_ice"
 		else:
-			skill_id = "shuriken_throw"
+			enemy_id = elite_ids[randi() % elite_ids.size()]
+	else:
+		var minion_ids := enemy_registry.get_minion_ids()
+		if minion_ids.is_empty():
+			enemy_id = "minion_rock"
+		else:
+			enemy_id = minion_ids[randi() % minion_ids.size()]
 
-	enemy.set_meta("skill_id", skill_id)
-	enemy.set_meta("attack_range", attack_range)
+	var data: Dictionary = enemy_registry.get_enemy_data(enemy_id)
+	# 应用 WaveConfig 的 hp/attack 倍率
+	if _config.hp_multiplier != 1.0 or _config.attack_multiplier != 1.0:
+		data = data.duplicate()
+		data["max_hp"] = data.get("max_hp", 500.0) * _config.hp_multiplier
+		data["attack"] = data.get("attack", 500.0) * _config.attack_multiplier
 
-	# åºç¨ WaveConfig æ©å±æ ç­¾
+	enemy.setup_from_registry(enemy_id, data)
+
+	if is_elite:
+		enemy.modulate = Color(0.9, 0.4, 0.1)
+
+	enemy.set_meta("attack_range", 400.0)
+
+	# 应用 WaveConfig 扩展标签
 	for key in _config.tags:
 		enemy.set_meta(key, _config.tags[key])
 
@@ -387,21 +387,53 @@ func _start_boss_wave_sequence() -> void:
 
 func _begin_boss_wave() -> void:
 	var count := BOSS_WAVE_COUNTS[_boss_wave_index]
-	_boss_wave_initial_count = count
+	var elite_count := BOSS_WAVE_ELITE_COUNTS[_boss_wave_index]
+	var has_boss := BOSS_WAVE_HAS_BOSS[_boss_wave_index]
+
+	# 如果有 Boss，小怪数减 1（Boss 单独生成）
+	var minion_count := count - 1 if has_boss else count
+	_boss_wave_initial_count = minion_count + elite_count + (1 if has_boss else 0)
 	_boss_wave_time = 0.0
 
 	var boss_center := _arena_map.get_boss_center_world()
 	var zone := SpawnZone.validated(
-		SpawnZone.circle(boss_center, 360.0),  # 适配缩小后的Boss区
+		SpawnZone.circle(boss_center, 360.0),
 		func(p): return _arena_map.is_walkable(p.x, p.y)
 	)
 
-	var wave := WaveConfig.new(count, 4.0)
-	wave.add_zone(zone)
-	wave.set_tag("boss_wave", _boss_wave_index)
+	# 生成小怪 + 精英（通过 WaveSpawner）
+	if minion_count + elite_count > 0:
+		var wave := WaveConfig.new(minion_count + elite_count, 4.0)
+		wave.add_zone(zone)
+		wave.set_elite(elite_count)
+		wave.set_tag("boss_wave", _boss_wave_index)
+		_wave_spawner.start_wave(wave, rng_func, _on_wave_spawn)
+
+	# Boss 单独生成（如果有）
+	if has_boss:
+		_spawn_boss(boss_center)
+
 	wave_label.text = "Boss Wave %d / %d" % [_boss_wave_index + 1, BOSS_WAVE_COUNTS.size()]
 	EventBus.emit_wave_started(_boss_wave_index)
-	_wave_spawner.start_wave(wave, rng_func, _on_wave_spawn)
+
+func _spawn_boss(pos: Vector2) -> void:
+	var boss_ids := enemy_registry.get_boss_ids()
+	var boss_id: String = boss_ids[0] if not boss_ids.is_empty() else "boss_meteor_eye"
+	var data: Dictionary = enemy_registry.get_enemy_data(boss_id)
+
+	var boss := Enemy.new()
+	boss.name = "Boss_%s" % boss_id
+	boss.position = _arena_map.clamp_to_walkable(pos)
+	y_sort_container.add_child(boss)
+
+	boss.setup_from_registry(boss_id, data)
+	boss.modulate = Color(0.5, 0.1, 0.7)  # 紫色
+	boss.set_meta("attack_range", 400.0)
+	boss.set_meta("boss_wave", _boss_wave_index)
+
+	_add_unit_shadow(boss)
+	enemies.append(boss)
+	combat_mediator.register_enemies(enemies)
 
 func _update_boss_wave(dt: float) -> void:
 	_boss_wave_time += dt

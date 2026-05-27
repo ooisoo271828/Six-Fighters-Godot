@@ -9,11 +9,16 @@ var spawn_interval_sec: float
 var wave_break_sec: float
 var minion_base_hp: float
 var minion_base_attack: float
+var minion_base_defense: float
+var elite_attack_multiplier: float
+var elite_defense_multiplier: float
+var elite_hp_multiplier: float
 var boss_base_hp: float
 var boss_phase_count: int
 var boss_hp_phase_fraction: float
 var boss_time_phase_sec: float
 var boss_base_attack: float
+var boss_base_defense: float
 var boss_pattern_cooldown_sec: float
 
 static func create_default() -> ArenaConfig:
@@ -22,12 +27,17 @@ static func create_default() -> ArenaConfig:
 	config.wave_enemy_counts = [4, 6, 8]
 	config.spawn_interval_sec = 1.5
 	config.wave_break_sec = 3.0
-	config.minion_base_hp = 56.0
-	config.minion_base_attack = 15.0
-	config.boss_base_hp = 420.0
+	config.minion_base_hp = 400.0
+	config.minion_base_attack = 500.0
+	config.minion_base_defense = 1765.0
+	config.elite_attack_multiplier = 1.8
+	config.elite_defense_multiplier = 2.43
+	config.elite_hp_multiplier = 4.0
+	config.boss_base_hp = 8000.0
 	config.boss_phase_count = 3
 	config.boss_hp_phase_fraction = 0.3
 	config.boss_time_phase_sec = 20.0
-	config.boss_base_attack = 35.0
+	config.boss_base_attack = 1500.0
+	config.boss_base_defense = 10000.0
 	config.boss_pattern_cooldown_sec = 2.0
 	return config

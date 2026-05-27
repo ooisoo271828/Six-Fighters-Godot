@@ -146,7 +146,6 @@ func _spawn_heroes() -> void:
 	_spawn_config = {
 		"hero_registry": _hero_registry,
 		"skill_registry": null,
-		"max_hp": 420.0,
 		"add_collision_to_first": true,
 		"add_shadow": true,
 		"hide_hp_bar": true,

@@ -3,6 +3,10 @@ extends Resource
 
 ## 战斗参数 - 对应 Web 版本的 CombatParams 类型
 
+# 伤害公式常量
+var DEF_CONST: float
+var ATK_CONST: float
+
 # 命中判定参数
 var hit_chance_min: float
 var hit_chance_max: float

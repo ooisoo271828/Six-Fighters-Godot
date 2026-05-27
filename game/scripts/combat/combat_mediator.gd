@@ -117,7 +117,10 @@ func _update_hero_combat(dt: float) -> void:
 func _resolve_and_apply_damage(attacker: Node2D, target: Node2D, skill_def: Resource) -> void:
 	var result := CombatResolver.resolve_attack(
 		attacker.stats, target.stats,
-		skill_def.base_damage, skill_def.damage_type,
+		skill_def.base_damage,
+		skill_def.skill_coefficient if skill_def.get("skill_coefficient") else 1.0,
+		skill_def.growth_cap if skill_def.get("growth_cap") else 99999.0,
+		skill_def.damage_type,
 		skill_def.stun_chance if skill_def.stun_chance else 0.0,
 		skill_def.stun_duration if skill_def.stun_duration else 0.0,
 		combat_params, rng_func,
@@ -144,19 +147,25 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 	var damage_type_str: String = damage_info.get("damage_type", "physical")
 	var skill_id: String = damage_info.get("skill_id", "")
 
-	# 读取 skill_def 中的附加参数
+	# 读取 skill_def 中的附加参数（根据施法者类型选择英雄版或怪物版）
 	var skill_def: Resource = null
-	if skill_system and skill_system.has_method("get_skill_def"):
-		skill_def = skill_system.get_skill_def(skill_id)
+	var is_monster: bool = caster.get_meta("is_enemy", false)
+	if skill_system:
+		if is_monster and skill_system.has_method("get_monster_skill"):
+			skill_def = skill_system.get_monster_skill(skill_id)
+		elif skill_system.has_method("get_skill_def"):
+			skill_def = skill_system.get_skill_def(skill_id)
 
 	var base_damage: float = damage
 	var dmg_type: int = _string_to_damage_type(damage_type_str)
 	var stun_chance: float = skill_def.stun_chance if skill_def and skill_def.get("stun_chance") else 0.0
 	var stun_duration: float = skill_def.stun_duration if skill_def and skill_def.get("stun_duration") else 0.0
+	var skill_coefficient: float = skill_def.skill_coefficient if skill_def and skill_def.get("skill_coefficient") else 1.0
+	var growth_cap: float = skill_def.growth_cap if skill_def and skill_def.get("growth_cap") else 99999.0
 
 	var result := CombatResolver.resolve_attack(
 		caster.stats, target.stats,
-		base_damage, dmg_type,
+		base_damage, skill_coefficient, growth_cap, dmg_type,
 		stun_chance, stun_duration,
 		combat_params, rng_func,
 		target.status_effects.get_shock_stacks_for_resolution()
@@ -172,7 +181,7 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 	var aoe_radius: float = damage_info.get("hit_aoe_radius", 0.0)
 	if aoe_radius > 0.0:
 		var hit_pos: Vector2 = damage_info.get("hit_pos", target.global_position)
-		_apply_aoe_damage(hit_pos, aoe_radius, caster, target, base_damage, dmg_type, stun_chance, stun_duration)
+		_apply_aoe_damage(hit_pos, aoe_radius, caster, target, base_damage, skill_coefficient, growth_cap, dmg_type, stun_chance, stun_duration)
 
 	# 混合伤害：副伤害类型（如 50% 物理 + 50% 火焰）
 	var sec_type: int = damage_info.get("secondary_damage_type", -1)
@@ -181,7 +190,7 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 		if sec_damage > 0.0:
 			var sec_result := CombatResolver.resolve_attack(
 				caster.stats, target.stats,
-				sec_damage, sec_type,
+				sec_damage, skill_coefficient, growth_cap, sec_type,
 				stun_chance, stun_duration,
 				combat_params, rng_func,
 				target.status_effects.get_shock_stacks_for_resolution()
@@ -204,7 +213,7 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 						continue
 					var sec_aoe_result := CombatResolver.resolve_attack(
 						caster.stats, enemy.stats,
-						sec_damage, sec_type,
+						sec_damage, skill_coefficient, growth_cap, sec_type,
 						stun_chance, stun_duration,
 						combat_params, rng_func,
 						enemy.status_effects.get_shock_stacks_for_resolution()
@@ -215,7 +224,7 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 
 
 ## AOE damage on projectile hit (excludes the primary target)
-func _apply_aoe_damage(hit_pos: Vector2, radius: float, caster: Node2D, primary_target: Node2D, base_damage: float, dmg_type: int, stun_chance: float, stun_duration: float) -> void:
+func _apply_aoe_damage(hit_pos: Vector2, radius: float, caster: Node2D, primary_target: Node2D, base_damage: float, skill_coefficient: float, growth_cap: float, dmg_type: int, stun_chance: float, stun_duration: float) -> void:
 	for enemy in enemies:
 		if not (enemy and is_instance_valid(enemy) and enemy.is_alive):
 			continue
@@ -226,7 +235,7 @@ func _apply_aoe_damage(hit_pos: Vector2, radius: float, caster: Node2D, primary_
 			continue
 		var result := CombatResolver.resolve_attack(
 			caster.stats, enemy.stats,
-			base_damage, dmg_type,
+			base_damage, skill_coefficient, growth_cap, dmg_type,
 			stun_chance, stun_duration,
 			combat_params, rng_func,
 			enemy.status_effects.get_shock_stacks_for_resolution()
@@ -257,7 +266,6 @@ func _update_enemy_combat(dt: float) -> void:
 		var target: Hero = TargetSelector.find_nearest_alive_hero(enemy.position, heroes)
 		if not target:
 			continue
-		var skill_id: String = enemy.get_meta("skill_id", "")
 		var attack_range: float = enemy.get_meta("attack_range", ENEMY_MELEE_RANGE)
 		var dist: float = enemy.position.distance_to(target.position)
 		if dist > attack_range:
@@ -265,6 +273,12 @@ func _update_enemy_combat(dt: float) -> void:
 			enemy.position += dir * ENEMY_SPEED * dt
 			continue
 		if enemy.tick_ai(dt, target):
+			# 优先使用新式 get_next_skill_id()，回退到旧式 get_meta
+			var skill_id: String = ""
+			if enemy.has_method("get_next_skill_id"):
+				skill_id = enemy.get_next_skill_id()
+			if skill_id.is_empty():
+				skill_id = enemy.get_meta("skill_id", "")
 			if skill_id != "" and skill_system and skill_system.has_method("cast_skill"):
 				var alive_heroes := get_alive_heroes()
 				skill_system.cast_skill(enemy, skill_id, alive_heroes)
@@ -272,7 +286,7 @@ func _update_enemy_combat(dt: float) -> void:
 				# 旧版回退：无 skill_id 的敌人走即时伤害
 				var result := CombatResolver.resolve_attack(
 					enemy.stats, target.stats,
-					enemy.base_attack, CombatResolver.DamageType.PHYSICAL,
+					enemy.base_attack, 1.0, 99999.0, CombatResolver.DamageType.PHYSICAL,
 					0.0, 0.0, combat_params, rng_func,
 					target.status_effects.get_shock_stacks_for_resolution()
 				)

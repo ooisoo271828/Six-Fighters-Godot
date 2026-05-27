@@ -135,6 +135,8 @@ static func resolve_attack(
 	attacker: CombatantStats,
 	defender: CombatantStats,
 	base_damage: float,
+	skill_coefficient: float,
+	growth_cap: float,
 	damage_type: int,
 	stun_chance: float,
 	stun_duration_base: float,
@@ -154,7 +156,16 @@ static func resolve_attack(
 		crit = (rng_func.call() as float) < crit_chance(attacker, params)
 		crit_mult = crit_multiplier(attacker, params) if crit else 1.0
 	
-	var base := base_damage * hit_mult * crit_mult
+	# v2: 递减收益 + 防御系数
+	var effective_attack := attacker.attack * params.ATK_CONST / (params.ATK_CONST + attacker.attack)
+	var growth := skill_coefficient * effective_attack
+	if growth_cap > 0:
+		growth = minf(growth, growth_cap)
+	var v2_base_damage := base_damage + growth
+	var defense_mult := params.DEF_CONST / (params.DEF_CONST + defender.defense)
+	v2_base_damage *= defense_mult
+
+	var base := v2_base_damage * hit_mult * crit_mult
 	var elem_mult := element_damage_mult(damage_type, defender, params)
 	
 	var shock_mult := 1.0

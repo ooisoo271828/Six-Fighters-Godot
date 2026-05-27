@@ -18,6 +18,8 @@ var category: int = 0
 @export_enum("PHYSICAL:0", "ELEMENTAL_FIRE:1", "ELEMENTAL_ICE:2", "ELEMENTAL_LIGHTNING:3", "ELEMENTAL_POISON:4")
 var damage_type: int = 0
 @export var base_damage: float = 25.0
+@export var skill_coefficient: float = 1.0
+@export var growth_cap: float = 99999.0
 
 # ── 混合伤害（一半物理一半火焰等） ──
 ## 副伤害类型，-1 = 无混合伤害
@@ -95,6 +97,10 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 	# 战斗属性
 	if csv_data.has("base_damage"):
 		base_damage = float(csv_data["base_damage"])
+	if csv_data.has("skill_coefficient"):
+		skill_coefficient = float(csv_data["skill_coefficient"])
+	if csv_data.has("growth_cap"):
+		growth_cap = float(csv_data["growth_cap"])
 	if csv_data.has("secondary_damage_type"):
 		var sdt_str = csv_data["secondary_damage_type"]
 		match sdt_str:
@@ -176,26 +182,26 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 static func load_csv_for_skill(search_id: String) -> Dictionary:
 	var result := {}
 	var csv_path := "res://docs/design/combat-rules/values/skill-values.csv"
-	
+
 	if not FileAccess.file_exists(csv_path):
 		push_error("[SkillDef] CSV file not found: %s" % csv_path)
 		return result
-	
+
 	var file := FileAccess.open(csv_path, FileAccess.READ)
 	if file == null:
 		push_error("[SkillDef] Cannot open CSV file: %s" % csv_path)
 		return result
-	
+
 	# 读取表头
 	var header_line := file.get_line()
 	var headers := header_line.split(",")
-	
+
 	# 找到关键列的索引
 	var category_idx := -1
 	var parameter_idx := -1
 	var key_idx := -1
 	var value_idx := -1
-	
+
 	for i in range(headers.size()):
 		var h := headers[i].strip_edges()
 		if h == "category":
@@ -206,40 +212,102 @@ static func load_csv_for_skill(search_id: String) -> Dictionary:
 			key_idx = i
 		elif h == "value":
 			value_idx = i
-	
+
 	if category_idx == -1 or parameter_idx == -1 or key_idx == -1 or value_idx == -1:
 		push_error("[SkillDef] Invalid CSV format: missing required columns")
 		file.close()
 		return result
-	
+
 	# 读取数据行
 	while not file.eof_reached():
 		var line := file.get_line()
 		if line.is_empty():
 			continue
-		
+
 		var row := line.split(",")
 		if row.size() <= max(category_idx, parameter_idx, key_idx, value_idx):
 			continue
-		
+
 		var row_category = row[category_idx].strip_edges()
 		if row_category != search_id:
 			continue
-		
+
 		var _parameter = row[parameter_idx].strip_edges()
 		var key = row[key_idx].strip_edges()
 		var value = row[value_idx].strip_edges()
-		
+
 		# 存储到 result 中
-		# 使用 parameter + "_" + key 作为复合键，或者只用 key
-		# 这里选择只用 key，因为 parameter 主要用于分类
 		result[key] = value
-	
+
 	file.close()
-	
+
 	if result.is_empty():
 		push_warning("[SkillDef] No CSV data found for skill_id: %s" % search_id)
-	
+
+	return result
+
+## 静态方法：从 monster-skill-values.csv 加载怪物版技能数值
+## 返回：Dictionary { "base_damage": 30, "cooldown": 7.0, ... }
+static func load_monster_csv_for_skill(search_id: String) -> Dictionary:
+	var result := {}
+	var csv_path := "res://docs/design/combat-rules/values/monster-skill-values.csv"
+
+	if not FileAccess.file_exists(csv_path):
+		push_warning("[SkillDef] Monster CSV file not found: %s" % csv_path)
+		return result
+
+	var file := FileAccess.open(csv_path, FileAccess.READ)
+	if file == null:
+		push_error("[SkillDef] Cannot open monster CSV file: %s" % csv_path)
+		return result
+
+	# 读取表头
+	var header_line := file.get_line()
+	var headers := header_line.split(",")
+
+	# 找到关键列的索引
+	var category_idx := -1
+	var key_idx := -1
+	var value_idx := -1
+
+	for i in range(headers.size()):
+		var h := headers[i].strip_edges()
+		if h == "category":
+			category_idx = i
+		elif h == "key":
+			key_idx = i
+		elif h == "value":
+			value_idx = i
+
+	if category_idx == -1 or key_idx == -1 or value_idx == -1:
+		push_error("[SkillDef] Invalid monster CSV format: missing required columns")
+		file.close()
+		return result
+
+	# 读取数据行
+	while not file.eof_reached():
+		var line := file.get_line()
+		if line.is_empty():
+			continue
+
+		var row := line.split(",")
+		if row.size() <= max(category_idx, key_idx, value_idx):
+			continue
+
+		var row_category = row[category_idx].strip_edges()
+		if row_category != search_id:
+			continue
+
+		var key = row[key_idx].strip_edges()
+		var value = row[value_idx].strip_edges()
+
+		result[key] = value
+
+	file.close()
+
+	if result.is_empty():
+		push_warning("[SkillDef] No monster CSV data found for skill_id: %s" % search_id)
+
 	return result
 
 # ── 验证 ──

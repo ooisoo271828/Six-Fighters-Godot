@@ -22,7 +22,11 @@ func _load_combat_params() -> void:
 
 func _create_default_combat_params() -> Resource:
 	var params := preload("res://scripts/combat/combat_params.gd").new()
-	
+
+	# 伤害公式常量
+	params.DEF_CONST = 10000.0
+	params.ATK_CONST = 8000.0
+
 	# 命中判定参数
 	params.hit_chance_min = 0.05
 	params.hit_chance_max = 0.95
@@ -30,10 +34,10 @@ func _create_default_combat_params() -> Resource:
 	params.hit_chance_bias = 0.0
 	params.glancing_min = 0.3
 	params.glancing_max = 0.5
-	params.deflect_mult = 0.75
-	
+	params.deflect_mult = 0.5
+
 	# 命中圆桌
-	params.hit_roundtable_softmax_k = 2.0
+	params.hit_roundtable_softmax_k = 7.0
 	params.hit_roundtable_min_prob = 0.05
 	params.hit_roundtable_min_outcomes = 2
 	
@@ -144,14 +148,12 @@ func get_formation_offset(slot_index: int) -> Vector2:
 ## config 可选键:
 ##   hero_registry: HeroRegistry（必填）
 ##   skill_registry: SkillRegistry（可选，小镇传 null）
-##   max_hp: float（默认 420）
 ##   add_collision_to_first: bool（默认 false，领队加碰撞体）
 ##   add_shadow: bool（默认 true）
 ##   hide_hp_bar: bool（默认 false）
 func spawn_squad(parent: Node, center_pos: Vector2, config: Dictionary = {}) -> Dictionary:
 	var hero_registry: HeroRegistry = config.get("hero_registry")
 	var squad_skill_registry = config.get("skill_registry", null)
-	var max_hp: float = config.get("max_hp", 420.0)
 	var add_collision: bool = config.get("add_collision_to_first", false)
 	var add_shadow: bool = config.get("add_shadow", true)
 	var hide_hp_bar: bool = config.get("hide_hp_bar", false)
@@ -171,6 +173,9 @@ func spawn_squad(parent: Node, center_pos: Vector2, config: Dictionary = {}) -> 
 		var hero_def: HeroDef = hero_registry.get_hero(hero_id)
 		if not hero_def:
 			continue
+
+		# HP 从 HeroDef meta 读取（由 hero-values.csv 加载）
+		var max_hp: float = hero_def.get_meta("max_hp", 600.0)
 
 		var hero := Hero.new()
 		hero.name = "Hero_%s" % hero_id

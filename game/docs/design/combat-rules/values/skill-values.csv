@@ -1,58 +1,108 @@
 id,domain,category,parameter,key,value,min,max,step,unit,notes
-1,skill,fireball_basic,damage,base_damage,42,0,500,1,,
-2,skill,fireball_basic,cooldown,cooldown,4.0,0,60,0.1,s,
+1,skill,fireball_basic,damage,base_damage,20,0,500,1,,v2: 固定值
+2,skill,fireball_basic,cooldown,cooldown,7.0,0,60,0.1,s,
 3,skill,fireball_basic,range,cast_range,700,0,1000,1,px,
 4,skill,fireball_basic,timing,cast_time,0,0,10,0.1,s,
 5,skill,fireball_basic,timing,telegraph_ms,420,0,2000,1,ms,
 6,skill,fireball_basic,timing,travel_ms,1400,0,10000,1,ms,
 7,skill,fireball_basic,impact,impact_level,strong,,,enum,,
-8,skill,fireball_basic,telegraph,telegraph_shape,rect,,,enum,
+8,skill,fireball_basic,telegraph,telegraph_shape,rect,,,enum,,
 9,skill,fireball_basic,behavior,effect_type,emit_projectile,,,str,,
 10,skill,fireball_basic,damage,damage_type,elemental_fire,,,enum,,
-11,skill,missile_storm,damage,base_damage,30,0,500,1,,
-12,skill,missile_storm,cooldown,cooldown,5.0,0,60,0.1,s,
-13,skill,missile_storm,range,cast_range,560,0,1000,1,px,
-14,skill,missile_storm,timing,cast_time,0,0,10,0.1,s,
-15,skill,missile_storm,timing,telegraph_ms,220,0,2000,1,ms,
-16,skill,missile_storm,timing,travel_ms,560,0,10000,1,ms,
-17,skill,missile_storm,impact,impact_level,medium,,,enum,,
-18,skill,missile_storm,telegraph,telegraph_shape,circle,,,enum,,
-19,skill,missile_storm,behavior,effect_type,emit_projectile,,,str,,
-20,skill,missile_storm,damage,damage_type,physical,,,enum,,
-21,skill,missile_storm,behavior,projectile_count_min,9,1,20,1,,
-22,skill,missile_storm,behavior,projectile_count_max,12,1,20,1,,
-23,skill,ice_arrow,damage,base_damage,28.0,0,500,1,,
-24,skill,ice_arrow,cooldown,cooldown,3.5,0,60,0.1,s,
-25,skill,ice_arrow,range,cast_range,500.0,0,1000,1,px,
-26,skill,ice_arrow,timing,cast_time,0,0,10,0.1,s,
-27,skill,ice_arrow,timing,telegraph_ms,300,0,2000,1,ms,
-28,skill,ice_arrow,telegraph,telegraph_shape,circle,,,enum,,
-29,skill,ice_arrow,behavior,effect_type,emit_projectile,,,str,,
-30,skill,ice_arrow,damage,damage_type,elemental_ice,,,enum,,
-31,skill,ice_arrow,behavior,projectile_count_min,3,1,20,1,,
-32,skill,ice_arrow,behavior,projectile_count_max,3,1,20,1,,
-33,skill,falling_meteor,damage,base_damage,60,0,500,1,
-34,skill,falling_meteor,damage,damage_type,physical,,,enum,
-35,skill,falling_meteor,damage,secondary_damage_type,elemental_fire,,,enum,
-36,skill,falling_meteor,damage,secondary_damage_ratio,0.5,0,1,0.1,
-37,skill,falling_meteor,cooldown,cooldown,6.0,0,60,0.1,s,
-38,skill,falling_meteor,range,cast_range,600,0,1000,1,px,
-39,skill,falling_meteor,timing,cast_time,0,0,10,0.1,s,
-40,skill,falling_meteor,timing,telegraph_ms,600,0,2000,1,ms,
-41,skill,falling_meteor,timing,travel_ms,1500,0,10000,1,ms,
-42,skill,falling_meteor,impact,impact_level,strong,,,enum,
-43,skill,falling_meteor,telegraph,telegraph_shape,rect,,,enum,
-44,skill,falling_meteor,behavior,effect_type,emit_meteor,,,str,
-47,skill,water_wave,damage,base_damage,35,0,500,1,,
-48,skill,water_wave,cooldown,cooldown,5.0,0,60,0.1,s,
-49,skill,water_wave,range,cast_range,500,0,1000,1,px,
-50,skill,water_wave,timing,cast_time,0,0,10,0.1,s,
-51,skill,water_wave,timing,telegraph_ms,350,0,2000,1,ms,
-52,skill,water_wave,behavior,effect_type,emit_projectile,,,str,
-53,skill,water_wave,damage,damage_type,physical,,,enum,,
-54,skill,water_wave,behavior,tracking_enabled,false,,,bool,
-55,skill,water_wave,behavior,turn_rate,4.0,,,float,
-56,skill,water_wave,behavior,hit_precision_radius,14.0,,,float,
-57,skill,water_wave,behavior,bounce_remaining,2,,,int,
-58,skill,water_wave,behavior,bounce_type,respawn,,,enum,
-59,skill,water_wave,behavior,bounce_damage_scale,1.0,,,float,
+11,skill,fireball_basic,damage,skill_coefficient,1.2,0,10,0.1,,v2: 技能系数
+12,skill,fireball_basic,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+13,skill,missile_storm,damage,base_damage,15,0,500,1,,v2: 固定值
+14,skill,missile_storm,cooldown,cooldown,7.0,0,60,0.1,s,
+15,skill,missile_storm,range,cast_range,560,0,1000,1,px,
+16,skill,missile_storm,timing,cast_time,0,0,10,0.1,s,
+17,skill,missile_storm,timing,telegraph_ms,220,0,2000,1,ms,
+18,skill,missile_storm,timing,travel_ms,560,0,10000,1,ms,
+19,skill,missile_storm,impact,impact_level,medium,,,enum,,
+20,skill,missile_storm,telegraph,telegraph_shape,circle,,,enum,,
+21,skill,missile_storm,behavior,effect_type,emit_projectile,,,str,,
+22,skill,missile_storm,damage,damage_type,physical,,,enum,,
+23,skill,missile_storm,behavior,projectile_count_min,9,1,20,1,,
+24,skill,missile_storm,behavior,projectile_count_max,12,1,20,1,,
+25,skill,missile_storm,damage,skill_coefficient,0.6,0,10,0.1,,v2: 技能系数
+26,skill,missile_storm,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+27,skill,ice_arrow,damage,base_damage,12,0,500,1,,v2: 固定值
+28,skill,ice_arrow,cooldown,cooldown,6.0,0,60,0.1,s,
+29,skill,ice_arrow,range,cast_range,500.0,0,1000,1,px,
+30,skill,ice_arrow,timing,cast_time,0,0,10,0.1,s,
+31,skill,ice_arrow,timing,telegraph_ms,300,0,2000,1,ms,
+32,skill,ice_arrow,telegraph,telegraph_shape,circle,,,enum,,
+33,skill,ice_arrow,behavior,effect_type,emit_projectile,,,str,,
+34,skill,ice_arrow,damage,damage_type,elemental_ice,,,enum,,
+35,skill,ice_arrow,behavior,projectile_count_min,3,1,20,1,,
+36,skill,ice_arrow,behavior,projectile_count_max,3,1,20,1,,
+37,skill,ice_arrow,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
+38,skill,ice_arrow,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+39,skill,falling_meteor,damage,base_damage,30,0,500,1,,v2: 固定值
+40,skill,falling_meteor,damage,damage_type,physical,,,enum,
+41,skill,falling_meteor,damage,secondary_damage_type,elemental_fire,,,enum,
+42,skill,falling_meteor,damage,secondary_damage_ratio,0.5,0,1,0.1,
+43,skill,falling_meteor,cooldown,cooldown,8.0,0,60,0.1,s,
+44,skill,falling_meteor,range,cast_range,600,0,1000,1,px,
+45,skill,falling_meteor,timing,cast_time,0,0,10,0.1,s,
+46,skill,falling_meteor,timing,telegraph_ms,600,0,2000,1,ms,
+47,skill,falling_meteor,timing,travel_ms,1500,0,10000,1,ms,
+48,skill,falling_meteor,impact,impact_level,strong,,,enum,
+49,skill,falling_meteor,telegraph,telegraph_shape,rect,,,enum,
+50,skill,falling_meteor,behavior,effect_type,emit_meteor,,,str,
+51,skill,falling_meteor,damage,skill_coefficient,1.0,0,10,0.1,,v2: 技能系数
+52,skill,falling_meteor,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+53,skill,water_wave,damage,base_damage,15,0,500,1,,v2: 固定值
+54,skill,water_wave,cooldown,cooldown,7.0,0,60,0.1,s,
+55,skill,water_wave,range,cast_range,500,0,1000,1,px,
+56,skill,water_wave,timing,cast_time,0,0,10,0.1,s,
+57,skill,water_wave,timing,telegraph_ms,350,0,2000,1,ms,
+58,skill,water_wave,behavior,effect_type,emit_projectile,,,str,
+59,skill,water_wave,damage,damage_type,physical,,,enum,,
+60,skill,water_wave,behavior,tracking_enabled,false,,,bool,
+61,skill,water_wave,behavior,turn_rate,4.0,,,float,
+62,skill,water_wave,behavior,hit_precision_radius,14.0,,,float,
+63,skill,water_wave,behavior,bounce_remaining,2,,,int,
+64,skill,water_wave,behavior,bounce_type,respawn,,,enum,
+65,skill,water_wave,behavior,bounce_damage_scale,1.0,,,float,
+66,skill,water_wave,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
+67,skill,water_wave,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+68,skill,rock_toss,damage,base_damage,8,0,500,1,,v2: 小怪普攻
+69,skill,rock_toss,damage,skill_coefficient,0.2,0,10,0.1,,v2: 技能系数
+70,skill,rock_toss,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+71,skill,rock_toss,damage,damage_type,physical,,,enum,,
+72,skill,bone_throw,damage,base_damage,10,0,500,1,,v2: 小怪普攻
+73,skill,bone_throw,damage,skill_coefficient,0.25,0,10,0.1,,v2: 技能系数
+74,skill,bone_throw,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+75,skill,bone_throw,damage,damage_type,physical,,,enum,,
+76,skill,shuriken_throw,damage,base_damage,6,0,500,1,,v2: 小怪普攻
+77,skill,shuriken_throw,damage,skill_coefficient,0.15,0,10,0.1,,v2: 技能系数
+78,skill,shuriken_throw,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+79,skill,shuriken_throw,damage,damage_type,physical,,,enum,,
+80,skill,burning_hands,damage,base_damage,10,0,500,1,,v2: 持续灼烧
+81,skill,burning_hands,damage,skill_coefficient,0.3,0,10,0.1,,v2: 技能系数
+82,skill,burning_hands,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+83,skill,burning_hands,damage,damage_type,elemental_fire,,,enum,,
+84,skill,small_laser_beam,damage,base_damage,8,0,500,1,,v2: 5道光柱
+85,skill,small_laser_beam,damage,skill_coefficient,0.4,0,10,0.1,,v2: 技能系数
+86,skill,small_laser_beam,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+87,skill,small_laser_beam,damage,damage_type,physical,,,enum,,
+88,skill,laser_beam,damage,base_damage,12,0,500,1,,v2: 持续4秒
+89,skill,laser_beam,damage,skill_coefficient,0.6,0,10,0.1,,v2: 技能系数
+90,skill,laser_beam,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+91,skill,laser_beam,damage,damage_type,physical,,,enum,,
+92,skill,evil_eye_laser,damage,base_damage,15,0,500,1,,v2: 椭圆扫描
+93,skill,evil_eye_laser,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
+94,skill,evil_eye_laser,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+95,skill,evil_eye_laser,damage,damage_type,physical,,,enum,,
+96,skill,bubble_bomb_array,damage,base_damage,20,0,500,1,,v2: 8颗延时炸弹
+97,skill,bubble_bomb_array,damage,skill_coefficient,0.8,0,10,0.1,,v2: 技能系数
+98,skill,bubble_bomb_array,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+99,skill,bubble_bomb_array,damage,damage_type,physical,,,enum,,
+100,skill,flying_sword_storm,damage,base_damage,10,0,500,1,,v2: 10柄飞剑
+101,skill,flying_sword_storm,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
+102,skill,flying_sword_storm,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+103,skill,flying_sword_storm,damage,damage_type,physical,,,enum,,
+104,skill,scatter_shuriken,damage,base_damage,12,0,500,1,,v2: 9发扇形
+105,skill,scatter_shuriken,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
+106,skill,scatter_shuriken,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+107,skill,scatter_shuriken,damage,damage_type,physical,,,enum,,
