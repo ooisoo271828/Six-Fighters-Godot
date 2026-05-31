@@ -1,0 +1,68 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="4_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="5_iv"]
+
+[sub_resource type="Resource" id="body_moss"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://circle"
+core_color = Color(0.3, 0.7, 0.3, 1)
+core_width = 28.0
+core_height = 28.0
+core_radius = 14.0
+inner_enabled = true
+inner_color = Color(0.5, 0.9, 0.4, 1)
+inner_width = 16.0
+inner_height = 16.0
+nose_enabled = false
+glow_radius = 6.0
+glow_alpha = 0.3
+glow_color = Color(0.3, 0.8, 0.3, 1)
+glow_enabled = true
+jitter_enabled = false
+core_rotation_speed = 3.0
+
+[sub_resource type="Resource" id="ctc_moss"]
+script = ExtResource("4_ctc")
+enabled = true
+max_samples = 3
+outer_width = 1.5
+outer_color = Color(0.3, 0.6, 0.2, 1)
+outer_alpha = 0.2
+mid_width = 1.0
+mid_color = Color(0.4, 0.7, 0.3, 1)
+mid_alpha = 0.15
+inner_width = 0.5
+inner_color = Color(0.5, 0.8, 0.4, 1)
+inner_alpha = 0.05
+
+[sub_resource type="Resource" id="trail_moss"]
+script = ExtResource("3_td")
+comet = SubResource("ctc_moss")
+
+[sub_resource type="Resource" id="impact_moss"]
+script = ExtResource("5_iv")
+spark_count_min = 6
+spark_count_max = 12
+spark_speed_min = 50.0
+spark_speed_max = 150.0
+spark_life_min = 0.2
+spark_life_max = 0.4
+spark_color = Color(0.4, 0.8, 0.3, 1)
+spark_particle_count = 10
+spark_lifetime = 0.3
+shake_strength = 1.5
+shake_duration = 0.06
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "moss_shot"
+projectile_kind = 0
+speed = 220.0
+projectile_scale = 0.7
+body = SubResource("body_moss")
+trail = SubResource("trail_moss")
+impact = SubResource("impact_moss")

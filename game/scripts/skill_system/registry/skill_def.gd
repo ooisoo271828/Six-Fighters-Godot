@@ -342,3 +342,73 @@ func get_target_mode_name() -> String:
 		5: return "ALL"
 		6: return "MAX_COVERAGE"
 	return "NEAREST"
+
+# ── 目标选择（技能内禀属性） ──
+
+## 根据技能的 target_mode 和 cast_range 选择目标
+## 外围模块只能调用此方法，不能自行定义目标选择逻辑
+func find_target(hero_pos: Vector2, enemies: Array) -> Node2D:
+	var valid_targets: Array[Node2D] = []
+
+	# 筛选范围内的有效目标
+	for enemy in enemies:
+		if enemy and is_instance_valid(enemy) and enemy.is_alive:
+			var dist := hero_pos.distance_to(enemy.position)
+			if dist <= cast_range:
+				valid_targets.append(enemy)
+
+	if valid_targets.is_empty():
+		return null
+
+	# 根据 target_mode 选择目标
+	match target_mode:
+		0:  # NEAREST
+			var nearest: Node2D = valid_targets[0]
+			var min_dist := hero_pos.distance_to(nearest.position)
+			for t in valid_targets:
+				var d := hero_pos.distance_to(t.position)
+				if d < min_dist:
+					min_dist = d
+					nearest = t
+			return nearest
+
+		1:  # FARTHEST
+			var farthest: Node2D = valid_targets[0]
+			var max_dist := hero_pos.distance_to(farthest.position)
+			for t in valid_targets:
+				var d := hero_pos.distance_to(t.position)
+				if d > max_dist:
+					max_dist = d
+					farthest = t
+			return farthest
+
+		2:  # LOWEST_HP
+			var lowest: Node2D = valid_targets[0]
+			var min_hp: float = lowest.current_hp
+			for t in valid_targets:
+				if t.current_hp < min_hp:
+					min_hp = t.current_hp
+					lowest = t
+			return lowest
+
+		3:  # HIGHEST_HP
+			var highest: Node2D = valid_targets[0]
+			var max_hp: float = highest.current_hp
+			for t in valid_targets:
+				if t.current_hp > max_hp:
+					max_hp = t.current_hp
+					highest = t
+			return highest
+
+		4:  # RANDOM
+			return valid_targets[randi() % valid_targets.size()]
+
+		_:  # ALL, MAX_COVERAGE, 默认返回最近
+			var nearest: Node2D = valid_targets[0]
+			var min_dist := hero_pos.distance_to(nearest.position)
+			for t in valid_targets:
+				var d := hero_pos.distance_to(t.position)
+				if d < min_dist:
+					min_dist = d
+					nearest = t
+			return nearest

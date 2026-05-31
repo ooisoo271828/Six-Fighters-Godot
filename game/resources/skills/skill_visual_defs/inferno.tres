@@ -88,7 +88,7 @@ tier_C = "ring_fire"
 
 [resource]
 script = ExtResource("1_svd")
-skill_id = "fireball_basic"
+skill_id = "inferno"
 projectile_kind = 1
 telegraph_shape = 1
 speed = 225.0

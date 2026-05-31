@@ -6,7 +6,7 @@
 script = ExtResource("1")
 skill_id = "flying_sword_storm"
 display_name = "飞剑风暴"
-category = 1
+category = 3
 damage_type = 0
 base_damage = 28.0
 cooldown = 12.0

@@ -106,3 +106,21 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 105,skill,scatter_shuriken,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 106,skill,scatter_shuriken,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 107,skill,scatter_shuriken,damage,damage_type,physical,,,enum,,
+108,skill,ember_shot,damage,base_damage,8,0,500,1,,v2: ember普攻
+109,skill,ember_shot,damage,skill_coefficient,0.18,0,10,0.1,,v2: 技能系数
+110,skill,ember_shot,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+111,skill,ember_shot,damage,damage_type,elemental_fire,,,enum,,
+112,skill,ember_shot,cooldown,cooldown,2.5,0,60,0.1,s,
+113,skill,ember_shot,range,cast_range,600,0,1000,1,px,
+114,skill,moss_shot,damage,base_damage,8,0,500,1,,v2: moss普攻
+115,skill,moss_shot,damage,skill_coefficient,0.15,0,10,0.1,,v2: 技能系数
+116,skill,moss_shot,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+117,skill,moss_shot,damage,damage_type,physical,,,enum,,
+118,skill,moss_shot,cooldown,cooldown,3.0,0,60,0.1,s,
+119,skill,moss_shot,range,cast_range,500,0,1000,1,px,
+120,skill,ironwall_strike,damage,base_damage,15,0,500,1,,v2: ironwall普攻
+121,skill,ironwall_strike,damage,skill_coefficient,0.30,0,10,0.1,,v2: 技能系数
+122,skill,ironwall_strike,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+123,skill,ironwall_strike,damage,damage_type,physical,,,enum,,
+124,skill,ironwall_strike,cooldown,cooldown,1.5,0,60,0.1,s,
+125,skill,ironwall_strike,range,cast_range,200,0,1000,1,px,,

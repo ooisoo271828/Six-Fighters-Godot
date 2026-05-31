@@ -6,6 +6,7 @@
 script = ExtResource("1_def")
 skill_id = "water_wave"
 display_name = "水浪术"
+category = 1
 damage_type = 0
 base_damage = 35.0
 cooldown = 5.0

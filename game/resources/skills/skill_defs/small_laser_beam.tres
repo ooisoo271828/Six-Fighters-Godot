@@ -6,7 +6,7 @@
 script = ExtResource("1")
 skill_id = "small_laser_beam"
 display_name = "小激光术"
-category = 1
+category = 2
 damage_type = 2
 base_damage = 18.0
 cooldown = 4.0

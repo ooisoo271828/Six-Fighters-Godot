@@ -1,6 +1,6 @@
-## CombatMediator — 战斗循环编排器
+## CombatMediator — 战斗循环编排器 v2.0
 ## 由各战斗场景实例化为子节点，编排英雄/敌人的战斗循环
-## 包含：目标选择、AI tick、技能施放分流（即时/投射物）、伤害结算、DOT、清理
+## 包含：独立触发AI、释放队列、技能施放分流（即时/投射物）、伤害结算、DOT、清理
 class_name CombatMediator
 extends Node
 
@@ -21,6 +21,9 @@ var rng_func: Callable
 # ── 单位列表 ──
 var heroes: Array[Hero] = []
 var enemies: Array[Enemy] = []
+
+# ── 释放队列 ──
+var _cast_queues: Dictionary = {}  # hero_id -> CastQueue
 
 # ── 系统引用 ──
 var skill_system: Node
@@ -78,39 +81,67 @@ func _update_dots(dt: float) -> void:
 
 
 # ══════════════════════════════════════════
-#  英雄战斗循环
+#  英雄战斗循环（v2.0 独立触发 + 释放队列）
 # ══════════════════════════════════════════
 
 func _update_hero_combat(dt: float) -> void:
 	for hero in heroes:
 		if not (hero and is_instance_valid(hero) and hero.is_alive):
 			continue
+
+		# 眩晕时：停止CD递减，停止技能释放
 		if hero.status_effects.is_stunned():
 			continue
-		var nearest_enemy: Enemy = TargetSelector.find_nearest_alive_enemy(hero.position, enemies)
-		if not nearest_enemy:
-			continue
-		# AI 决策仍需要一个参考目标
-		var pick: RoleAI.AutonomyPick = hero.tick_ai(dt, nearest_enemy, combat_params, rng_func)
-		if not pick:
-			continue
 
-		# 获取技能定义
-		var skill_def: Resource = null
-		if skill_system and skill_system.has_method("get_skill_def"):
-			skill_def = skill_system.get_skill_def(pick.skill.skill_id)
+		# 更新CD计时器
+		RoleAI.tick_timers(hero.timers, dt)
 
-		# 目标选择由 SkillSystem 内部根据 SkillDef 配置完成
-		var alive_enemies := get_alive_enemies()
-		skill_system.cast_skill(hero, pick.skill.skill_id, alive_enemies)
+		# 独立检查每个技能是否满足释放条件
+		var casts := RoleAI.check_casts(
+			hero.hero_def,
+			hero.timers,
+			hero.skill_registry,
+			hero.position,
+			enemies
+		)
 
-		# 即时伤害：用 SkillSystem 选出的目标（最近的）做结算
-		var delivery: String = skill_def.delivery_type if skill_def and skill_def.get("delivery_type") else "projectile"
-		if delivery == "instant":
-			var cast_range: float = skill_def.cast_range if skill_def and skill_def.get("cast_range") else ATTACK_RANGE
-			var instant_target: Node2D = TargetSelector.find_nearest_in_range(hero.position, alive_enemies, cast_range)
-			if instant_target:
-				_resolve_and_apply_damage(hero, instant_target, pick.skill)
+		# 添加到释放队列
+		if not _cast_queues.has(hero.hero_id):
+			_cast_queues[hero.hero_id] = RoleAI.create_cast_queue()
+		var queue: RoleAI.CastQueue = _cast_queues[hero.hero_id]
+		for cast in casts:
+			queue.add(cast)
+
+		# 从队列取出一个执行
+		var to_cast := queue.update(dt)
+		if to_cast:
+			# 检查目标是否仍然有效（队列等待期间可能已被销毁）
+			var valid_target: Node2D = null
+			if to_cast.target and is_instance_valid(to_cast.target) and to_cast.target.is_alive:
+				valid_target = to_cast.target
+			_execute_hero_skill(hero, to_cast.skill, valid_target)
+
+
+func _execute_hero_skill(hero: Hero, skill_def: SkillDef, target: Node2D) -> void:
+	if not skill_system:
+		return
+
+	# 检查目标是否仍然有效（队列等待期间可能已被销毁）
+	var valid_target: Node2D = null
+	if target and is_instance_valid(target) and target.is_alive:
+		valid_target = target
+
+	# 获取技能定义
+	var skill_id := skill_def.skill_id
+	var alive_enemies := get_alive_enemies()
+
+	# 调用 SkillSystem 施法
+	skill_system.cast_skill(hero, skill_id, alive_enemies)
+
+	# 即时伤害：直接结算（需要有效目标）
+	var delivery: String = skill_def.delivery_type if skill_def.get("delivery_type") else "projectile"
+	if delivery == "instant" and valid_target:
+		_resolve_and_apply_damage(hero, valid_target, skill_def)
 
 
 ## 即时伤害结算
@@ -126,10 +157,20 @@ func _resolve_and_apply_damage(attacker: Node2D, target: Node2D, skill_def: Reso
 		combat_params, rng_func,
 		target.status_effects.get_shock_stacks_for_resolution()
 	)
-	damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, skill_def.damage_type, false)
+
+	var is_player_target := target is Hero
+	damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, skill_def.damage_type, is_player_target)
 	target.take_damage(result.instant_damage)
+
+	# 攻击怒气
 	if attacker.get("timers") and attacker.timers.get("rage") != null:
-		attacker.timers.rage = minf(100.0, attacker.timers.rage + result.instant_damage * 0.15)
+		RoleAI.add_attack_rage(attacker.timers, result.instant_damage)
+
+	# 受伤怒气（英雄受伤时）
+	if is_player_target and target.get("timers") and target.timers.get("rage") != null:
+		var damage_taken_rate: float = target.get_meta("damage_taken_rage_rate", 0.0)
+		RoleAI.add_damage_taken_rage(target.timers, result.instant_damage, damage_taken_rate)
+
 	target.apply_status_updates(result.status_updates, combat_params)
 
 
@@ -173,8 +214,16 @@ func _on_projectile_hit(caster: Node2D, targets: Array, damage_info: Dictionary)
 	var is_player_target := target is Hero
 	damage_dealt.emit(target, result.instant_damage, result.crit, result.hit_outcome, dmg_type, is_player_target)
 	target.take_damage(result.instant_damage)
+
+	# 攻击怒气
 	if caster.get("timers") and caster.timers.get("rage") != null:
-		caster.timers.rage = minf(100.0, caster.timers.rage + result.instant_damage * 0.15)
+		RoleAI.add_attack_rage(caster.timers, result.instant_damage)
+
+	# 受伤怒气（英雄受伤时）
+	if is_player_target and target.get("timers") and target.timers.get("rage") != null:
+		var damage_taken_rate: float = target.get_meta("damage_taken_rage_rate", 0.0)
+		RoleAI.add_damage_taken_rage(target.timers, result.instant_damage, damage_taken_rate)
+
 	target.apply_status_updates(result.status_updates, combat_params)
 
 	# AOE on hit

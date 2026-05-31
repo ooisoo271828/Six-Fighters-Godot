@@ -163,6 +163,12 @@ func _build_hero(hero_id: String, data: Dictionary) -> void:
 		max_hp = float(data["stats"].get("max_hp", "600"))
 	hero.set_meta("max_hp", max_hp)
 
+	# 存储 damage_taken_rage_rate 到 meta
+	var damage_taken_rage_rate := 0.0
+	if data.has("stats"):
+		damage_taken_rage_rate = float(data["stats"].get("damage_taken_rage_rate", "0"))
+	hero.set_meta("damage_taken_rage_rate", damage_taken_rage_rate)
+
 	_register_hero(hero)
 
 func _register_hero(hero: HeroDef) -> void:

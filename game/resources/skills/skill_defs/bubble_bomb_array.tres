@@ -6,7 +6,7 @@
 script = ExtResource("1")
 skill_id = "bubble_bomb_array"
 display_name = "气泡炸弹阵"
-category = 1
+category = 3
 damage_type = 2
 base_damage = 35.0
 cooldown = 10.0

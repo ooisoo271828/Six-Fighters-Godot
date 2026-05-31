@@ -4,17 +4,18 @@
 
 [resource]
 script = ExtResource("1")
-skill_id = "burning_hands"
-display_name = "火焰之手"
-category = 2
-damage_type = 1
-base_damage = 22.0
-cooldown = 5.0
-cast_range = 300.0
+skill_id = "ironwall_strike"
+display_name = "盾击"
+category = 0
+damage_type = 0
+base_damage = 15.0
+skill_coefficient = 0.30
+cooldown = 1.5
+cast_range = 200.0
 effect_type = "emit_burning_hands"
-target_mode = 6
+target_mode = 0
 delivery_type = "instant"
-max_targets = 0
+max_targets = 1
 collision_shape = 0
 collision_radius = 14.0
-description = "双掌推出火浪，对扇形范围内所有敌人造成持续火焰伤害，每0.5秒判定一次，共9次"
+description = "用盾牌猛击前方敌人，造成物理伤害"

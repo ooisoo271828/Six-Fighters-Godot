@@ -6,7 +6,7 @@
 script = ExtResource("1_583yo")
 skill_id = "falling_meteor"
 display_name = "落石流星"
-category = 2
+category = 1
 damage_type = 0
 base_damage = 60.0
 secondary_damage_type = 1

@@ -68,6 +68,7 @@ var wave_label: Label
 var result_label: Label
 var countdown_label: Label
 var _exit_dialog: PanelContainer
+var _battle_hud: BattleHUD
 
 # 走廊阶段
 var _corridor_wave_idx := 0
@@ -201,6 +202,10 @@ func _create_hud() -> void:
 	exit_btn.pressed.connect(_on_exit_pressed)
 	hud_layer.add_child(exit_btn)
 
+	# 创建战斗HUD（英雄状态面板）
+	_battle_hud = BattleHUD.new()
+	hud_layer.add_child(_battle_hud)
+
 	_setup_exit_dialog()
 
 func _setup_joystick() -> void:
@@ -233,6 +238,11 @@ func _start_combat() -> void:
 	combat_mediator.set_skill_system(skill_system)
 	# 敌人攻击现在通过 cast_skill() 走 SkillSystem，不再需要回调
 	combat_mediator.damage_dealt.connect(_on_damage_dealt)
+
+	# 初始化战斗HUD
+	if _battle_hud:
+		_battle_hud.setup_heroes(heroes, skill_registry)
+
 	EventBus.emit_combat_started()
 
 func _get_spawn_center() -> Vector2:
@@ -626,4 +636,5 @@ func _on_exit_cancelled() -> void:
 		backdrop.visible = false
 
 func _update_ui() -> void:
-	pass
+	if _battle_hud:
+		_battle_hud.update_all()

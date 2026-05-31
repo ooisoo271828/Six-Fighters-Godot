@@ -1,0 +1,67 @@
+[gd_resource type="Resource" script_class="SkillVisualDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/skill_system/registry/skill_visual_def.gd" id="1_svd"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/projectile_visual.gd" id="2_pv"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/trail_def.gd" id="3_td"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/comet_trail_config.gd" id="4_ctc"]
+[ext_resource type="Script" path="res://scripts/skill_system/registry/impact_visual.gd" id="5_iv"]
+
+[sub_resource type="Resource" id="body_ember"]
+script = ExtResource("2_pv")
+tex_core_path = "vfx://circle"
+core_color = Color(1.0, 0.5, 0.2, 1)
+core_width = 30.0
+core_height = 30.0
+core_radius = 15.0
+inner_enabled = true
+inner_color = Color(1.0, 0.8, 0.3, 1)
+inner_width = 18.0
+inner_height = 18.0
+nose_enabled = false
+glow_radius = 8.0
+glow_alpha = 0.4
+glow_color = Color(1.0, 0.4, 0.1, 1)
+glow_enabled = true
+jitter_enabled = false
+
+[sub_resource type="Resource" id="ctc_ember"]
+script = ExtResource("4_ctc")
+enabled = true
+max_samples = 3
+outer_width = 2.0
+outer_color = Color(1.0, 0.4, 0.1, 1)
+outer_alpha = 0.3
+mid_width = 1.2
+mid_color = Color(1.0, 0.6, 0.2, 1)
+mid_alpha = 0.2
+inner_width = 0.6
+inner_color = Color(1.0, 0.8, 0.3, 1)
+inner_alpha = 0.1
+
+[sub_resource type="Resource" id="trail_ember"]
+script = ExtResource("3_td")
+comet = SubResource("ctc_ember")
+
+[sub_resource type="Resource" id="impact_ember"]
+script = ExtResource("5_iv")
+spark_count_min = 10
+spark_count_max = 20
+spark_speed_min = 80.0
+spark_speed_max = 200.0
+spark_life_min = 0.2
+spark_life_max = 0.5
+spark_color = Color(1.0, 0.6, 0.2, 1)
+spark_particle_count = 15
+spark_lifetime = 0.4
+shake_strength = 2.0
+shake_duration = 0.08
+
+[resource]
+script = ExtResource("1_svd")
+skill_id = "ember_shot"
+projectile_kind = 1
+speed = 250.0
+projectile_scale = 0.6
+body = SubResource("body_ember")
+trail = SubResource("trail_ember")
+impact = SubResource("impact_ember")

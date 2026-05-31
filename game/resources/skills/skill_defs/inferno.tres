@@ -4,8 +4,9 @@
 
 [resource]
 script = ExtResource("1_583yo")
-skill_id = "fireball_basic"
-display_name = "火球术"
+skill_id = "inferno"
+display_name = "烈焰风暴"
+category = 3
 damage_type = 1
 base_damage = 80.0
 cooldown = 4.0

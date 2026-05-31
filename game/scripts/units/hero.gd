@@ -19,8 +19,12 @@ func setup_hero(p_hero_def: HeroDef, p_max_hp: float, p_skill_registry: SkillReg
 	role_family = p_hero_def.role_family
 	skill_registry = p_skill_registry
 	timers = RoleAI.create_timers()
-	
+
 	setup(hero_id, p_hero_def.display_name, p_hero_def.base_stats, p_max_hp)
+
+	# 设置受伤怒气系数（从HeroDef meta读取）
+	var damage_taken_rate: float = p_hero_def.get_meta("damage_taken_rage_rate", 0.0)
+	set_meta("damage_taken_rage_rate", damage_taken_rate)
 	
 	# 设置颜色表示职业
 	match role_family:
@@ -40,26 +44,8 @@ func can_attack() -> bool:
 func get_status() -> EntityStatus:
 	return status_effects
 
-func tick_ai(dt: float, _target: Node2D, _combat_params: CombatParams, _rng_func: Callable) -> RoleAI.AutonomyPick:
-	if not can_attack():
-		return null
-	
-	RoleAI.tick_timers(timers, dt)
-	
-	# 直接使用保存的 hero_def，不需要从 registry 重新查找
-	if not hero_def:
-		return null
-	
-	var reg: SkillRegistry = skill_registry
-	if not reg:
-		if GameManager and GameManager.skill_registry:
-			reg = GameManager.skill_registry
-		else:
-			return null
-	
-	var pick := RoleAI.pick_action(hero_def, timers, get_hp_fraction(), reg)
-	
-	if pick:
-		RoleAI.add_rage(timers, 0.0)
-	
-	return pick
+## 旧版tick_ai已废弃，新版RoleAI使用独立触发 + 释放队列
+## 由CombatMediator._update_hero_combat()直接调用RoleAI.check_casts()
+## 保留此方法签名以兼容可能的外部调用
+func tick_ai(_dt: float, _target: Node2D, _combat_params: CombatParams, _rng_func: Callable) -> Variant:
+	return null
