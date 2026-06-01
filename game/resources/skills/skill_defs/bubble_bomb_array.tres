@@ -6,16 +6,4 @@
 script = ExtResource("1")
 skill_id = "bubble_bomb_array"
 display_name = "气泡炸弹阵"
-category = 3
-damage_type = 2
-base_damage = 35.0
-cooldown = 10.0
-cast_range = 350.0
-telegraph_ms = 600
-effect_type = "emit_bubble_bomb_array"
-target_mode = 6
-delivery_type = "instant"
-max_targets = 8
-collision_shape = 0
-collision_radius = 45.0
 description = "在椭圆区域内生成8个延时爆炸的气泡炸弹"

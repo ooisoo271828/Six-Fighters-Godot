@@ -6,16 +6,4 @@
 script = ExtResource("1_583yo")
 skill_id = "falling_meteor"
 display_name = "落石流星"
-category = 1
-damage_type = 0
-base_damage = 60.0
-secondary_damage_type = 1
-secondary_damage_ratio = 0.5
-cooldown = 6.0
-telegraph_ms = 600
-effect_type = "emit_meteor"
-target_mode = 4
-hit_aoe_radius = 80.0
-collision_shape = 0
-collision_radius = 30.0
 description = "召唤一颗流星从天空坠落，对目标区域造成物理与火焰混合伤害"

@@ -1,16 +1,18 @@
 id,domain,category,parameter,key,value,min,max,step,unit,notes
-1,skill,fireball_basic,damage,base_damage,20,0,500,1,,v2: 固定值
-2,skill,fireball_basic,cooldown,cooldown,7.0,0,60,0.1,s,
-3,skill,fireball_basic,range,cast_range,700,0,1000,1,px,
-4,skill,fireball_basic,timing,cast_time,0,0,10,0.1,s,
-5,skill,fireball_basic,timing,telegraph_ms,420,0,2000,1,ms,
-6,skill,fireball_basic,timing,travel_ms,1400,0,10000,1,ms,
-7,skill,fireball_basic,impact,impact_level,strong,,,enum,,
-8,skill,fireball_basic,telegraph,telegraph_shape,rect,,,enum,,
-9,skill,fireball_basic,behavior,effect_type,emit_projectile,,,str,,
-10,skill,fireball_basic,damage,damage_type,elemental_fire,,,enum,,
-11,skill,fireball_basic,damage,skill_coefficient,1.2,0,10,0.1,,v2: 技能系数
-12,skill,fireball_basic,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+1,skill,inferno,damage,base_damage,30,0,500,1,,v2: 固定值
+2,skill,inferno,cooldown,cooldown,0,0,60,0.1,s,,怒气技能无CD
+3,skill,inferno,range,cast_range,700,0,1000,1,px,
+4,skill,inferno,timing,cast_time,0,0,10,0.1,s,
+5,skill,inferno,timing,telegraph_ms,420,0,2000,1,ms,
+6,skill,inferno,timing,travel_ms,1400,0,10000,1,ms,
+7,skill,inferno,impact,impact_level,strong,,,enum,,
+8,skill,inferno,telegraph,telegraph_shape,rect,,,enum,,
+9,skill,inferno,behavior,effect_type,emit_projectile,,,str,,
+10,skill,inferno,damage,damage_type,elemental_fire,,,enum,,
+11,skill,inferno,damage,skill_coefficient,1.3,0,10,0.1,,v2: 技能系数
+12,skill,inferno,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+138,skill,inferno,identity,category,3,,,,,,
+139,skill,inferno,rage,rage_cost,100,,,,,,
 13,skill,missile_storm,damage,base_damage,15,0,500,1,,v2: 固定值
 14,skill,missile_storm,cooldown,cooldown,7.0,0,60,0.1,s,
 15,skill,missile_storm,range,cast_range,560,0,1000,1,px,
@@ -37,12 +39,13 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 36,skill,ice_arrow,behavior,projectile_count_max,3,1,20,1,,
 37,skill,ice_arrow,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 38,skill,ice_arrow,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+136,skill,ice_arrow,identity,category,1,,,,,,
 39,skill,falling_meteor,damage,base_damage,30,0,500,1,,v2: 固定值
 40,skill,falling_meteor,damage,damage_type,physical,,,enum,
 41,skill,falling_meteor,damage,secondary_damage_type,elemental_fire,,,enum,
 42,skill,falling_meteor,damage,secondary_damage_ratio,0.5,0,1,0.1,
-43,skill,falling_meteor,cooldown,cooldown,8.0,0,60,0.1,s,
-44,skill,falling_meteor,range,cast_range,600,0,1000,1,px,
+43,skill,falling_meteor,cooldown,cooldown,6.0,0,60,0.1,s,
+44,skill,falling_meteor,range,cast_range,700,0,1000,1,px,
 45,skill,falling_meteor,timing,cast_time,0,0,10,0.1,s,
 46,skill,falling_meteor,timing,telegraph_ms,600,0,2000,1,ms,
 47,skill,falling_meteor,timing,travel_ms,1500,0,10000,1,ms,
@@ -51,6 +54,7 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 50,skill,falling_meteor,behavior,effect_type,emit_meteor,,,str,
 51,skill,falling_meteor,damage,skill_coefficient,1.0,0,10,0.1,,v2: 技能系数
 52,skill,falling_meteor,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+146,skill,falling_meteor,identity,category,1,,,,,,
 53,skill,water_wave,damage,base_damage,15,0,500,1,,v2: 固定值
 54,skill,water_wave,cooldown,cooldown,7.0,0,60,0.1,s,
 55,skill,water_wave,range,cast_range,500,0,1000,1,px,
@@ -66,6 +70,7 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 65,skill,water_wave,behavior,bounce_damage_scale,1.0,,,float,
 66,skill,water_wave,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 67,skill,water_wave,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
+141,skill,water_wave,identity,category,1,,,,,,
 68,skill,rock_toss,damage,base_damage,8,0,500,1,,v2: 小怪普攻
 69,skill,rock_toss,damage,skill_coefficient,0.2,0,10,0.1,,v2: 技能系数
 70,skill,rock_toss,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
@@ -82,10 +87,16 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 81,skill,burning_hands,damage,skill_coefficient,0.3,0,10,0.1,,v2: 技能系数
 82,skill,burning_hands,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 83,skill,burning_hands,damage,damage_type,elemental_fire,,,enum,,
+126,skill,burning_hands,cooldown,cooldown,6.5,0,60,0.1,s,
+127,skill,burning_hands,range,cast_range,450,0,1000,1,px,
+137,skill,burning_hands,identity,category,2,,,,,,
 84,skill,small_laser_beam,damage,base_damage,8,0,500,1,,v2: 5道光柱
 85,skill,small_laser_beam,damage,skill_coefficient,0.4,0,10,0.1,,v2: 技能系数
 86,skill,small_laser_beam,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 87,skill,small_laser_beam,damage,damage_type,physical,,,enum,,
+128,skill,small_laser_beam,cooldown,cooldown,6.0,0,60,0.1,s,
+129,skill,small_laser_beam,range,cast_range,400,0,1000,1,px,
+142,skill,small_laser_beam,identity,category,2,,,,,,
 88,skill,laser_beam,damage,base_damage,12,0,500,1,,v2: 持续4秒
 89,skill,laser_beam,damage,skill_coefficient,0.6,0,10,0.1,,v2: 技能系数
 90,skill,laser_beam,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
@@ -94,14 +105,25 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 93,skill,evil_eye_laser,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 94,skill,evil_eye_laser,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 95,skill,evil_eye_laser,damage,damage_type,physical,,,enum,,
+130,skill,evil_eye_laser,cooldown,cooldown,7.0,0,60,0.1,s,
+131,skill,evil_eye_laser,range,cast_range,500,0,1000,1,px,
+147,skill,evil_eye_laser,identity,category,2,,,,,,
 96,skill,bubble_bomb_array,damage,base_damage,20,0,500,1,,v2: 8颗延时炸弹
-97,skill,bubble_bomb_array,damage,skill_coefficient,0.8,0,10,0.1,,v2: 技能系数
+97,skill,bubble_bomb_array,damage,skill_coefficient,1.0,0,10,0.1,,v2: 技能系数
 98,skill,bubble_bomb_array,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 99,skill,bubble_bomb_array,damage,damage_type,physical,,,enum,,
+132,skill,bubble_bomb_array,range,cast_range,600,0,1000,1,px,,怒气技能无CD
+250,skill,bubble_bomb_array,cooldown,cooldown,0,0,60,0.1,s,,怒气技能无CD
+143,skill,bubble_bomb_array,identity,category,3,,,,,,
+144,skill,bubble_bomb_array,rage,rage_cost,100,,,,,,
 100,skill,flying_sword_storm,damage,base_damage,10,0,500,1,,v2: 10柄飞剑
 101,skill,flying_sword_storm,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 102,skill,flying_sword_storm,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 103,skill,flying_sword_storm,damage,damage_type,physical,,,enum,,
+133,skill,flying_sword_storm,cooldown,cooldown,0,0,60,0.1,s,,怒气技能无CD
+134,skill,flying_sword_storm,range,cast_range,600,0,1000,1,px,
+148,skill,flying_sword_storm,identity,category,3,,,,,,
+149,skill,flying_sword_storm,rage,rage_cost,100,,,,,,
 104,skill,scatter_shuriken,damage,base_damage,12,0,500,1,,v2: 9发扇形
 105,skill,scatter_shuriken,damage,skill_coefficient,0.5,0,10,0.1,,v2: 技能系数
 106,skill,scatter_shuriken,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
@@ -112,15 +134,119 @@ id,domain,category,parameter,key,value,min,max,step,unit,notes
 111,skill,ember_shot,damage,damage_type,elemental_fire,,,enum,,
 112,skill,ember_shot,cooldown,cooldown,2.5,0,60,0.1,s,
 113,skill,ember_shot,range,cast_range,600,0,1000,1,px,
+135,skill,ember_shot,identity,category,0,,,,,,
 114,skill,moss_shot,damage,base_damage,8,0,500,1,,v2: moss普攻
 115,skill,moss_shot,damage,skill_coefficient,0.15,0,10,0.1,,v2: 技能系数
 116,skill,moss_shot,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 117,skill,moss_shot,damage,damage_type,physical,,,enum,,
 118,skill,moss_shot,cooldown,cooldown,3.0,0,60,0.1,s,
 119,skill,moss_shot,range,cast_range,500,0,1000,1,px,
+140,skill,moss_shot,identity,category,0,,,,,,
 120,skill,ironwall_strike,damage,base_damage,15,0,500,1,,v2: ironwall普攻
 121,skill,ironwall_strike,damage,skill_coefficient,0.30,0,10,0.1,,v2: 技能系数
 122,skill,ironwall_strike,damage,growth_cap,99999,0,999999,1,,v2: 成长上限(0=无上限)
 123,skill,ironwall_strike,damage,damage_type,physical,,,enum,,
 124,skill,ironwall_strike,cooldown,cooldown,1.5,0,60,0.1,s,
 125,skill,ironwall_strike,range,cast_range,200,0,1000,1,px,,
+145,skill,ironwall_strike,identity,category,0,,,,,,
+150,skill,ember_shot,structure,target_mode,0,,,,,NEAREST
+151,skill,ember_shot,structure,effect_type,emit_projectile,,,,,
+152,skill,ember_shot,structure,collision_shape,0,,,,,CIRCLE
+153,skill,ember_shot,structure,collision_radius,14.0,,,,,
+154,skill,ember_shot,structure,hit_precision_radius,12.0,,,,,
+155,skill,ice_arrow,structure,target_mode,0,,,,,NEAREST
+156,skill,ice_arrow,structure,effect_type,emit_projectile,,,,,
+157,skill,ice_arrow,structure,collision_shape,1,,,,,RECT
+158,skill,ice_arrow,structure,collision_width,8.0,,,,,
+159,skill,ice_arrow,structure,collision_height,24.0,,,,,
+160,skill,ice_arrow,structure,hit_precision_radius,14.0,,,,,
+161,skill,ice_arrow,structure,hit_aoe_radius,14.0,,,,,
+162,skill,burning_hands,structure,target_mode,6,,,,,MAX_COVERAGE
+163,skill,burning_hands,structure,effect_type,emit_burning_hands,,,,,
+164,skill,burning_hands,structure,delivery_type,instant,,,,,
+165,skill,burning_hands,structure,max_targets,0,,,,,
+166,skill,burning_hands,structure,collision_shape,0,,,,,CIRCLE
+167,skill,burning_hands,structure,collision_radius,14.0,,,,,
+168,skill,inferno,structure,effect_type,emit_projectile,,,,,
+169,skill,inferno,structure,collision_shape,0,,,,,CIRCLE
+170,skill,inferno,structure,collision_radius,20.0,,,,,
+171,skill,inferno,structure,hit_precision_radius,20.0,,,,,
+172,skill,inferno,structure,hit_aoe_radius,42.0,,,,,
+173,skill,moss_shot,structure,target_mode,0,,,,,NEAREST
+174,skill,moss_shot,structure,effect_type,emit_projectile,,,,,
+175,skill,moss_shot,structure,collision_shape,0,,,,,CIRCLE
+176,skill,moss_shot,structure,collision_radius,14.0,,,,,
+177,skill,moss_shot,structure,hit_precision_radius,12.0,,,,,
+178,skill,water_wave,structure,target_mode,2,,,,,LOWEST_HP
+179,skill,water_wave,structure,effect_type,emit_projectile,,,,,
+180,skill,water_wave,structure,collision_shape,0,,,,,CIRCLE
+181,skill,water_wave,structure,collision_radius,24.0,,,,,
+182,skill,water_wave,structure,hit_precision_radius,14.0,,,,,
+183,skill,small_laser_beam,structure,target_mode,6,,,,,MAX_COVERAGE
+184,skill,small_laser_beam,structure,effect_type,emit_small_laser_beam,,,,,
+185,skill,small_laser_beam,structure,delivery_type,instant,,,,,
+186,skill,small_laser_beam,structure,max_targets,0,,,,,
+187,skill,small_laser_beam,structure,collision_shape,1,,,,,RECT
+188,skill,small_laser_beam,structure,collision_width,40.0,,,,,
+189,skill,small_laser_beam,structure,collision_height,560.0,,,,,
+190,skill,bubble_bomb_array,structure,target_mode,6,,,,,MAX_COVERAGE
+191,skill,bubble_bomb_array,structure,effect_type,emit_bubble_bomb_array,,,,,
+192,skill,bubble_bomb_array,structure,delivery_type,instant,,,,,
+193,skill,bubble_bomb_array,structure,max_targets,8,,,,,
+194,skill,bubble_bomb_array,structure,collision_shape,0,,,,,CIRCLE
+195,skill,bubble_bomb_array,structure,collision_radius,45.0,,,,,
+196,skill,ironwall_strike,structure,target_mode,0,,,,,NEAREST
+197,skill,ironwall_strike,structure,effect_type,emit_burning_hands,,,,,
+198,skill,ironwall_strike,structure,delivery_type,instant,,,,,
+199,skill,ironwall_strike,structure,max_targets,1,,,,,
+200,skill,ironwall_strike,structure,collision_shape,0,,,,,CIRCLE
+201,skill,ironwall_strike,structure,collision_radius,14.0,,,,,
+202,skill,falling_meteor,structure,effect_type,emit_meteor,,,,,
+203,skill,falling_meteor,structure,collision_shape,0,,,,,CIRCLE
+204,skill,falling_meteor,structure,collision_radius,30.0,,,,,
+205,skill,falling_meteor,structure,hit_aoe_radius,80.0,,,,,
+206,skill,evil_eye_laser,structure,target_mode,6,,,,,MAX_COVERAGE
+207,skill,evil_eye_laser,structure,effect_type,emit_evil_eye_laser,,,,,
+208,skill,evil_eye_laser,structure,delivery_type,instant,,,,,
+209,skill,evil_eye_laser,structure,max_targets,0,,,,,
+210,skill,evil_eye_laser,structure,collision_shape,1,,,,,RECT
+211,skill,evil_eye_laser,structure,collision_width,120.0,,,,,
+212,skill,evil_eye_laser,structure,collision_height,50.0,,,,,
+213,skill,flying_sword_storm,structure,target_mode,6,,,,,MAX_COVERAGE
+214,skill,flying_sword_storm,structure,effect_type,emit_flying_sword_storm,,,,,
+215,skill,flying_sword_storm,structure,delivery_type,projectile,,,,,
+216,skill,flying_sword_storm,structure,max_targets,10,,,,,
+217,skill,flying_sword_storm,structure,collision_shape,0,,,,,CIRCLE
+218,skill,flying_sword_storm,structure,collision_radius,14.0,,,,,
+219,skill,scatter_shuriken,structure,target_mode,0,,,,,NEAREST
+220,skill,scatter_shuriken,structure,effect_type,emit_scatter_shuriken,,,,,
+221,skill,scatter_shuriken,structure,delivery_type,projectile,,,,,
+222,skill,scatter_shuriken,structure,max_targets,1,,,,,
+223,skill,scatter_shuriken,structure,collision_shape,0,,,,,CIRCLE
+224,skill,scatter_shuriken,structure,collision_radius,10.0,,,,,
+225,skill,missile_storm,structure,collision_shape,0,,,,,CIRCLE
+226,skill,missile_storm,structure,collision_radius,12.0,,,,,
+227,skill,missile_storm,structure,hit_precision_radius,14.0,,,,,
+228,skill,missile_storm,structure,hit_aoe_radius,14.0,,,,,
+229,skill,laser_beam,structure,target_mode,6,,,,,MAX_COVERAGE
+230,skill,laser_beam,structure,effect_type,emit_laser_beam,,,,,
+231,skill,laser_beam,structure,delivery_type,instant,,,,,
+232,skill,laser_beam,structure,max_targets,0,,,,,
+233,skill,laser_beam,structure,collision_shape,1,,,,,RECT
+234,skill,laser_beam,structure,collision_width,90.0,,,,,
+235,skill,laser_beam,structure,collision_height,900.0,,,,,
+236,skill,laser_beam,structure,category,1,,,,,SMALL_A
+237,skill,rock_toss,structure,target_mode,0,,,,,NEAREST
+238,skill,rock_toss,structure,collision_shape,0,,,,,CIRCLE
+239,skill,rock_toss,structure,collision_radius,14.0,,,,,
+240,skill,rock_toss,structure,hit_precision_radius,12.0,,,,,
+241,skill,bone_throw,structure,target_mode,0,,,,,NEAREST
+242,skill,bone_throw,structure,collision_shape,1,,,,,RECT
+243,skill,bone_throw,structure,collision_width,8.0,,,,,
+244,skill,bone_throw,structure,collision_height,32.0,,,,,
+245,skill,bone_throw,structure,hit_precision_radius,12.0,,,,,
+246,skill,shuriken_throw,structure,target_mode,0,,,,,NEAREST
+247,skill,shuriken_throw,structure,collision_shape,0,,,,,CIRCLE
+248,skill,shuriken_throw,structure,collision_radius,10.0,,,,,
+249,skill,shuriken_throw,structure,hit_precision_radius,14.0,,,,,
+

@@ -125,6 +125,8 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 		cooldown = float(csv_data["cooldown"])
 	if csv_data.has("rage_cost"):
 		rage_cost = float(csv_data["rage_cost"])
+	if csv_data.has("category"):
+		category = int(csv_data["category"])
 	if csv_data.has("stun_chance"):
 		stun_chance = float(csv_data["stun_chance"])
 	if csv_data.has("stun_duration"):
@@ -139,14 +141,14 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 		telegraph_ms = int(csv_data["telegraph_ms"])
 	
 	# 目标选取
-	#if csv_data.has("target_mode"):
-	#	target_mode = int(csv_data["target_mode"])
+	if csv_data.has("target_mode"):
+		target_mode = int(csv_data["target_mode"])
 	if csv_data.has("max_targets"):
 		max_targets = int(csv_data["max_targets"])
 	
 	# Effect 类型
-	#if csv_data.has("effect_type"):
-	#	effect_type = csv_data["effect_type"]
+	if csv_data.has("effect_type"):
+		effect_type = csv_data["effect_type"]
 	
 	# 行为参数（特殊，因为不是所有技能都有）
 	# 这些参数可能不存储在 SkillDef 中，而是存储在 SkillVisualDef 或 Effect 参数中
@@ -174,6 +176,14 @@ func load_values_from_csv(csv_data: Dictionary) -> void:
 		bounce_damage_scale = float(csv_data["bounce_damage_scale"])
 	if csv_data.has("hit_aoe_radius"):
 		hit_aoe_radius = float(csv_data["hit_aoe_radius"])
+	if csv_data.has("collision_shape"):
+		collision_shape = int(csv_data["collision_shape"])
+	if csv_data.has("collision_radius"):
+		collision_radius = float(csv_data["collision_radius"])
+	if csv_data.has("collision_width"):
+		collision_width = float(csv_data["collision_width"])
+	if csv_data.has("collision_height"):
+		collision_height = float(csv_data["collision_height"])
 
 	print("[SkillDef] Loaded CSV values for %s: base_damage=%.1f, cooldown=%.1f" % [skill_id, base_damage, cooldown])
 

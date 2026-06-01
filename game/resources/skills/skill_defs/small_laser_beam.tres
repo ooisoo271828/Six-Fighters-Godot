@@ -6,16 +6,4 @@
 script = ExtResource("1")
 skill_id = "small_laser_beam"
 display_name = "小激光术"
-category = 2
-damage_type = 2
-base_damage = 18.0
-cooldown = 4.0
-cast_range = 850.0
-effect_type = "emit_small_laser_beam"
-target_mode = 6
-delivery_type = "instant"
-max_targets = 0
-collision_shape = 1
-collision_width = 40.0
-collision_height = 560.0
 description = "释放5道冰蓝激光柱，在120°扇区内随机索敌"

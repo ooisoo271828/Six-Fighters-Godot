@@ -6,16 +6,4 @@
 script = ExtResource("1")
 skill_id = "ironwall_strike"
 display_name = "盾击"
-category = 0
-damage_type = 0
-base_damage = 15.0
-skill_coefficient = 0.30
-cooldown = 1.5
-cast_range = 200.0
-effect_type = "emit_burning_hands"
-target_mode = 0
-delivery_type = "instant"
-max_targets = 1
-collision_shape = 0
-collision_radius = 14.0
 description = "用盾牌猛击前方敌人，造成物理伤害"
